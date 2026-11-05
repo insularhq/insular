@@ -1,0 +1,8 @@
+# One ring CA for every namespace. It lives in cert-policy, which every unit issuing from it comes after (the
+# bring-up order is derived from the units' dependsOn). The CA keypair is copied into cert-manager's namespace inside
+# the ring during bring-up; its public part is ConfigMap ring-ca.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata: {name: ring-ca}
+spec:
+  ca: {secretName: ring-ca}
