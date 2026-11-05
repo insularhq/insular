@@ -1,0 +1,215 @@
+# Protecting the sources of truth (ADR-0079). Every master of platform/sources-of-truth.yaml is a crown jewel: one write
+# propagates through generators to everything downstream, and one bulk read is a map of the estate. Levers (the tooling
+# and control planes that can rewrite a master without touching it, and the out-of-band plane under the host) are
+# protected the same way. Access is decided by three layers together, deny overriding:
+#   RBAC     coarse: which roles may take which action at all; compiled into the product's own permissions
+#   ABAC     fine: attributes of subject, resource, action and environment, decided by the local PDP (AuthZEN to OPA)
+#   dynamic  risk: the adaptive band (platform/adaptive-policy.yaml) raises the requirement or denies
+# Checked by tools/master_protection.py.
+
+risks: [RI-11, RI-12, RI-13, RI-22, RI-23, RI-24]   # the risks this protection model treats (a private register)
+
+principles:
+  - "no standing human write access to any master: people propose, approvers approve, a pipeline identity applies; direct human writes exist only as just-in-time elevation or break-glass"
+  - "separation of duties: the proposer never approves; apply and approve are disjoint roles per master; bots propose and never approve or merge"
+  - "protection grows with blast radius: fleet scope needs two approvers, one of them the security officer (or the external approver in single-operator start-up mode); parent scope two approvers; site scope one approver plus automation checks"
+  - "reads are controlled too: read scopes per fact class, bulk read and export as their own action, cumulative quotas per person and device across all masters"
+  - "a lever is protected like a master: whoever can change the gate, a generator, the CI, the policy bundles, the gateway or the BMC can change every master"
+  - "every write is signed by a signer that is not the applier, against a digest-bound approval; generated output is rebuilt independently and must match byte for byte"
+  - "drift on a master or lever is an incident, measured by an identity that cannot write"
+  - "the protection rules are a fleet-scope lever: they change upward freely, downward only with the external approver and a 7-day delay"
+  - "a site that is cut off decides access to its own masters locally; isolation raises the band one step and raises the break-glass bar one step"
+
+identities:
+  role_registry: "governance/roles.yaml and governance/separation.yaml are the one registry; hyphen and underscore are the same name; anything else fails the checker (A22)"
+  pipelines: "one pipeline identity per master or lever (pipeline-<name>), never shared; OIDC or SPIFFE tokens only for protected refs with pinned project, workflow path and commit; ephemeral single-use runners without shared caches; a pipeline reaches only its own target, never edits its own registration or policy, and gets per-job dynamic secrets (A1)"
+  protected_spiffe_ids: "collector, OPA, gateway, pipelines, bundle signer and federation identities: registered only with external-approver-grade approval; selectors require namespace, service account and image digest; admin, downstream and federates_with changes are fleet scope (A13)"
+  bots: "bots and automation propose; they never approve or merge (A22, A23)"
+
+actions:
+  read:         "read single records within the subject's read scope"
+  bulk-read:    "list, search, export or replicate many records; reconnaissance value"
+  propose:      "open a change (a merge request, a DCIM change set, a provisioning request)"
+  approve:      "approve someone else's proposal; signed with the approver's own hardware-bound key over the change digest"
+  apply:        "write the approved change into the master; only the master's own pipeline identity"
+  administer:   "change the master's own access control, schema, integrations or keys"
+  restore:      "restore a master from backup; afterwards permissions, revocation lists, SPIRE entries and OpenBao policies are regenerated and re-applied before service resumes (A18)"
+  break-glass:  "act outside the flow in an emergency"
+
+approvals:   # A4, A7, A20
+  digest: "sha256 over the rendered plan, the target ref and the base commit; the approval signs the digest, apply recomputes it and refuses on mismatch"
+  expiry: {fleet: "72h", parent: "72h", site: "7d"}
+  voided_by: "any new commit, force-push or base change"
+  signing: "keys in an HSM or a signing service whose policy demands a digest-bound approval proof; the applier cannot sign; TUF-style roles (offline root, separate targets, snapshot and timestamp keys); consumers verify the approval proof, not only the signature"
+  independent_build: "a second build path (another runner, pinned toolchain, another host where possible) regenerates every generated output; apply requires byte equality; approvers see the generated diff (A3)"
+  direction: "the gate classifies a change as tightening or loosening from its diff; loosening takes the stronger bar (A10)"
+  max_age: "proposals older than 30 days are closed unapproved"
+
+pep_hardening:   # A8: every rule is tested by a negative suite on each bundle change
+  - "ext_authz failure_mode_allow false on every write and bulk-read route; OPA default allow false"
+  - "bundles verified on fetch and on load from disk; no OPA management API exposed"
+  - "backends reachable only from the gateway; tested in CI by attempting direct access"
+  - "bodies over the inspected limit are rejected, never passed; client identity headers stripped; paths canonicalised; method overrides blocked"
+  - "native backdoors closed: NetBox custom scripts and webhooks off or allow-listed, short-lived tokens, no standing superuser"
+
+anti_rollback:   # A9
+  bundles: "a signed monotonic version and an expiry in every bundle; the site keeps a high-water mark; one manifest binds policy, data and federation bundles"
+  time: "trusted time from NTS plus a TPM-backed clock; past expiry a bundle is rejected, before expiry its age raises the band"
+
+protected_names:   # A11: names whose certificates or records open the estate
+  names: [idp, vault, gateway, git, registry, hawkbit, ca]
+  issuance: "only through an authorisation that does not derive from DNS (ACME external account binding or CA policy generated from git); CAA with accounturi and validationmethods in a separately approved zone; TSIG keys scoped to _acme-challenge names; alert on every issuance for these names; short-lived leaf certificates"
+
+data_hygiene:   # A12
+  - "allocation grants no policy: firewall and identity policy are keyed to workload identity, never to an address"
+  - "generators treat master data as typed values with strict character sets and lengths"
+  - "rule-bearing attributes (role, tag, zone, group) raise the approval class"
+  - "site exports open a proposal in git, never push; custody, clearance and host-trust fields are not accepted from a site export"
+
+drift:   # A17
+  identity: "a dedicated read-only identity per master and lever, never the applier"
+  compare: "live state against the independently rebuilt signed state; extras count (users, tokens, roles, realms, policies, webhooks); cannot-read counts as drift"
+  schedule: "randomised, with a stated maximum interval per master; a missed run is an incident (heartbeat)"
+  ignores: "ignore lists live in a protected file with fleet-scope approval"
+
+audit:   # A19
+  - "only collectors write the audit store; pipelines and people have no write"
+  - "the retention floor changes only upward, or with the external approver"
+  - "the head hash of every chain is anchored off-site on a schedule"
+  - "operators read their own entries; auditors read all"
+  - "the audit administrator is never the platform administrator (AU-9(4), AU-9(5))"
+
+read_side:   # A21
+  risks: [RI-12]
+  scopes: "read scopes per fact class: the address plan and the estate register are narrower than policy; CI jobs get only the paths they need"
+  quotas: {single_reads_per_hour_per_master: 200, reads_per_day_across_masters: 1000, counted_per: "person and device, across all their subjects"}
+  surfaces: "search, typeahead, Backstage, the SPOG and observability pass the same ABAC as the master"
+  leaks: "opaque random IDs, uniform error responses, a redaction schema and separate retention for decision logs, backups encrypted per master with keys held by a different role"
+
+risk_effects:   # dynamic layer: the adaptive band of the request; deny overrides everything
+  green: {read: allow, bulk-read: "allow within quota", propose: allow, approve: allow, apply: "pipeline only", administer: "four-eyes", restore: "both custodians", break-glass: "sealed procedure"}
+  amber: {read: "step-up", bulk-read: deny, propose: "step-up", approve: "step-up and a second approver", apply: "pipeline only, after a re-check of the approval", administer: deny, restore: "both custodians and the external approver", break-glass: "sealed procedure, both custodians"}
+  red:   {read: "minimal, logged", bulk-read: deny, propose: deny, approve: deny, apply: "only restoring changes (direction restore or reduce, classified from the diff)", administer: deny, restore: "both custodians and the external approver", break-glass: "sealed procedure, both custodians"}
+  black: {read: deny, bulk-read: deny, propose: deny, approve: deny, apply: "only restoring changes (direction restore or reduce, classified from the diff)", administer: deny, restore: "both custodians and the external approver", break-glass: "sealed procedure, both custodians"}
+
+break_glass:   # A15, A16
+  custody: "credentials sealed in OpenBao under a four-eyes unseal (ADR-0059 pattern); one custodian alone cannot open them"
+  loud: "alert before release: the unseal path first confirms delivery to an external notary and a second channel the operator does not control; every alert route has a heartbeat, silence or a route change is an alarm"
+  expiry: "one hour, then the credential is rotated automatically"
+  independence: "break-glass accounts do not depend on the directory or system being recovered; every path is tested every 90 days"
+  review: "a post-incident review within 48 hours by someone other than the actor; masters are snapshotted and diffed before and after; state created during break-glass is quarantined until reviewed; access runs through a recording proxy"
+  wan_down: "a cut-off site uses its local sealed credentials with two distinct local officers; alerts go into a hash-chained local queue whose head is witnessed over any narrow channel; on reconnect the parent opens an isolation-window review and accepts nothing silently; a defined local apply path keeps break-glass the exception"
+
+supply_chain:   # A23
+  - "hash-pinned lockfiles and a private index with reserved namespaces for the gate, generators and checkers"
+  - "provenance verified at job start (SLSA level 3 target for the gate and generators); an SBOM stored with each generated output"
+  - "the required pipeline runs from the target branch, never from the merge request; a pinned copy of the checker, hash in a protected file, sits outside the merge request (A2)"
+
+masters:   # one entry per master system of platform/sources-of-truth.yaml
+  git:
+    facts: [intent-and-policy, architecture, address-plan, estate-register, dns-records, firmware-and-bios, change-records]
+    pep: "forge branch protection and CODEOWNERS; signed commits required; no force-push or deletion on protected refs; the gate as a required pipeline from the target branch"
+    pdp: "the gate (tools/gate.py) plus OPA on merge-request attributes"
+    rbac: {read: [platform_operator, security_officer, auditor, release_manager, owner], propose: [platform_operator, release_manager, security_officer], approve: [owner, security_officer], apply: [pipeline-git], administer: [owner, security_officer], restore: [owner, security_officer]}
+    human_write: propose-only
+  site DCIM/IPAM:
+    facts: [site-allocations, physical-assets, inter-site-links, places]
+    pep: "NetBox object permissions generated from this file; write API behind the gateway with ext_authz; custom scripts and webhooks off"
+    pdp: "OPA through ext_authz on the write API"
+    rbac: {read: [platform_operator, security_officer, auditor, service_desk], propose: [platform_operator, service_desk], approve: [security_officer], apply: [pipeline-dcim], administer: [owner, security_officer], restore: [owner, security_officer]}
+    human_write: propose-only
+  site Keycloak:
+    facts: [people, credentials-and-passkeys]
+    pep: "Keycloak admin fine-grained permissions generated from this file; replicated people are read-only locally; the admin console only through Warpgate; the SCIM token scoped and short-lived"
+    pdp: "OPA for administrative actions through the gateway; Keycloak policies for realm-internal ones"
+    rbac: {read: [identity-admin, tenant_admin, auditor], propose: [tenant_admin, identity-admin], approve: [security_officer], apply: [pipeline-keycloak], administer: [owner, security_officer], restore: [owner, security_officer]}
+    human_write: jit
+  site enrolment service:
+    facts: [devices]
+    pep: "the enrolment ceremony: officer on a thin client plus the person, four eyes, with a proof of person that does not come from the same replica"
+    pdp: "OPA (AuthZEN) on every enrolment step"
+    rbac: {read: [security_officer, auditor, service_desk], propose: [service_desk, tenant_admin], approve: [security_officer], apply: [pipeline-enrolment], administer: [owner, security_officer], restore: [owner, security_officer]}
+    human_write: propose-only
+  site SPIRE:
+    facts: [workload-identity]
+    pep: "registration entries generated from git; the SPIRE server API reachable only by the registration pipeline, which cannot register itself"
+    pdp: "the generator; protected SPIFFE IDs need external-approver-grade approval"
+    rbac: {read: [platform_operator, auditor], propose: [platform_operator], approve: [security_officer], apply: [pipeline-spire], administer: [owner, security_officer], restore: [owner, security_officer]}
+    human_write: none
+  site OpenBao:
+    facts: [secrets]
+    pep: "OpenBao policies generated from this file; root token sealed, never used outside break-glass; per-job dynamic secrets"
+    pdp: "OpenBao policies; OPA for elevation requests"
+    rbac: {read: [pipeline-openbao], propose: [platform_operator], approve: [security_officer], apply: [pipeline-openbao], administer: [owner, security_officer], restore: [owner, security_officer]}
+    human_write: jit
+  site intermediate CA:
+    facts: [certificates]
+    pep: "issuance only through ACME and cert-manager with name constraints and the protected-names rule; the intermediate key never leaves its HSM or OpenBao; serial counters and revocation state in a monotonic store"
+    pdp: "issuance policy (name constraints, lifetimes, protected names); OPA for manual issuance"
+    rbac: {read: [platform_operator, auditor], propose: [platform_operator], approve: [pki_custodian, security_officer], apply: [pipeline-ca], administer: [pki_custodian, owner], restore: [pki_custodian, owner]}
+    human_write: none
+  tenant GLPI:
+    facts: [tickets]
+    pep: "GLPI profiles generated from this file; GLPI is a view for approvals: the approval itself is signed by the approver's key and becomes a record in git"
+    pdp: "OPA for approval actions through the gateway"
+    rbac: {read: [service_desk, tenant_admin, auditor], propose: [service_desk, tenant_admin], approve: [owner], apply: [pipeline-glpi], administer: [owner, security_officer], restore: [owner, security_officer]}
+    human_write: direct-append
+  audit and telemetry store:
+    facts: [telemetry-and-audit]
+    pep: "append-only ingestion by collector identities only; no delete API; retention floor entrenched; chain heads anchored off-site"
+    pdp: "the collectors' SPIFFE identities; OPA for read access"
+    rbac: {read: [security_officer, auditor], propose: [], approve: [security_officer], apply: [collector], administer: [owner, security_officer], restore: [owner, security_officer]}
+    human_write: none
+
+levers:   # A2, A10 and the out-of-band plane: no facts of their own, but each can rewrite masters or the host underneath
+  control-plane code:
+    what: "the gate, checkers, generators, schemas, CI definitions, CODEOWNERS, bot config, lockfiles"
+    pep: "forge protection with two approvers; required pipeline from the target branch; pinned checker hash"
+    rbac: {propose: [platform_operator, release_manager], approve: [owner, security_officer], apply: [pipeline-control-plane], administer: [owner, security_officer]}
+  forge and runners:
+    what: "forge settings, branch protection, runner registration and configuration"
+    pep: "settings exported and compared by a read-only identity; runner registration only with the external approver"
+    rbac: {propose: [platform_operator], approve: [owner, security_officer], apply: [pipeline-forge], administer: [owner, security_officer]}
+  policy and gateway config:
+    what: "OPA bundles, the gateway's ext_authz and route configuration, Cilium policies"
+    pep: "signed, anti-rollback bundles; negative test suite on every change"
+    rbac: {propose: [security_officer, platform_operator], approve: [owner, security_officer], apply: [pipeline-policy], administer: [owner, security_officer]}
+  alerting:
+    what: "alert routes, receivers and silences (Alertmanager, ntfy, the external notary)"
+    pep: "routes generated from git; heartbeat per route; a silence longer than one hour needs approval"
+    rbac: {propose: [security_officer, platform_operator], approve: [owner, security_officer], apply: [pipeline-alerting], administer: [owner, security_officer]}
+  device and network control:
+    what: "hawkBit targets and rollouts, NetBird peers, groups and policies"
+    pep: "generated from the enrolment master; a rollout to more than one site is fleet scope; NetBird groups, policies, posture checks, networks, DNS and setup keys are desired state in git, applied by pipeline-devices as a signed OpenTofu plan (netbirdio/netbird provider, encrypted state, setup keys kept outside state) with a short-lived token of a NetBird service user from OpenBao (ADR-0122)"
+    rbac: {propose: [platform_operator, security_officer], approve: [owner, security_officer], apply: [pipeline-devices], administer: [owner, security_officer]}
+  registry and bundle repository:
+    what: "the OCI registry, signature mirror and bundle repository"
+    pep: "write only by the release pipeline after signing; deletion and tag overwrite forbidden"
+    rbac: {propose: [release_manager], approve: [owner, security_officer], apply: [pipeline-release], administer: [owner, security_officer]}
+  out-of-band management:
+    what: "BMCs reached through Redfish: power, virtual media, boot order, firmware and BIOS settings (ADR-0083)"
+    pep: "an isolated management network reachable only through the bastion; Redfish sessions with per-operation accounts from OpenBao; IPMI disabled; virtual media and firmware updates only from signed images"
+    rbac: {propose: [platform_operator], approve: [security_officer], apply: [pipeline-oob], administer: [owner, security_officer]}
+
+tiers:   # clean source principle (Microsoft enterprise access model): every dependency of a Tier 0 asset is Tier 0 too
+  tier0: [git, site Keycloak, site OpenBao, site intermediate CA, site SPIRE, audit and telemetry store, site DCIM/IPAM, site enrolment service, control-plane code, forge and runners, policy and gateway config, registry and bundle repository, out-of-band management, alerting]
+  tier1: [tenant GLPI, device and network control]
+  tier0_dependencies: [host-os, orchestration, sandboxing, privileged-access, overlay-vpn, host-updates]   # capabilities every Tier 0 asset runs on or is administered through: Tier 0 by the clean-source rule
+  rule: "no write path from a lower tier into Tier 0: a lower-tier system may only open a proposal that Tier 0 processes under its own approvals (GLPI is never the approval authority for Tier 0)"
+  admin_devices: "Tier 0 is administered only from dedicated admin devices (the boot stick or a privileged access workstation), never from a daily-use device; just-in-time elevation does not make up for a weaker device"
+
+prior_art:
+  - "NIST SP 800-53 r5 CM-5(1), CM-5(4) dual authorisation with rotating approvers, CM-5(5), CM-3(7), AU-9(4) and AU-9(5): the audit administrator is not the platform administrator"
+  - "SLSA source track and OpenSSF Scorecard branch protection: two-party review on protected refs; a signed commit alone does not prove two approvals"
+  - "Microsoft enterprise access model: clean source, Tier 0 is the whole control plane, privileged access devices"
+  - "emergency access: break-glass accounts do not depend on the directory being recovered, are tested every 90 days and alert on every use"
+  - "NIST SP 800-207: a PEP that cannot reach its PDP decides on local, bounded, aging policy"
+
+product_notes:   # what the products enforce natively, and their bypasses (the checker's coverage does not replace a lab test)
+  NetBox: "object permissions with constraints; branching's protect-main is bypassed by the bypass permission that superusers hold implicitly: no standing superuser"
+  SPIRE: "admin_ids in static configuration grant the admin API: managed as control-plane code"
+  Keycloak: "realm-admin is full control and the SCIM service account writes into the replica: both are Tier 0 identities"
+  OpenBao: "control groups exist as a policy stanza since 2.7.0, still marked development and without approver notification: approvals stay in the decision inbox, OpenBao enforces the result"
+  Forgejo: "branch protection, required approvals and status checks, signed commits; exact settings to be verified per version"
+
+interim_exit: "single-operator start-up mode ends when a second custodian is named, enrolled and has completed one review of every self-approval made in the mode; until then the verifier runs on infrastructure the operator does not administer day to day"

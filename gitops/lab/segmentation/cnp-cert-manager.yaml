@@ -1,0 +1,12 @@
+# cert-manager's webhook answers only the API server (on K3s it runs in each server node's process, hence host
+# and remote-node too); Prometheus scrapes the metrics port; nothing else reaches cert-manager.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata: {name: ingress, namespace: cert-manager}
+spec:
+  endpointSelector: {}
+  ingress:
+    - fromEntities: [kube-apiserver, host, remote-node]
+      toPorts: [{ports: [{port: "10250", protocol: TCP}]}]
+    - fromEndpoints: [{matchLabels: {k8s:io.kubernetes.pod.namespace: vdh-pharos, app: prometheus}}]
+      toPorts: [{ports: [{port: "9402", protocol: TCP}]}]

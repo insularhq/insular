@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Service
+metadata: {name: synapse, namespace: vdh-tenant-demo}
+spec:
+  ipFamilies: [IPv6]
+  selector: {app: synapse}
+  ports: [{name: http, port: 8008, targetPort: 8008}]

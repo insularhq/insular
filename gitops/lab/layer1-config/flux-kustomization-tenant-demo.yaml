@@ -1,0 +1,13 @@
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: tenant-demo, namespace: flux-system}
+spec:
+  interval: 10m
+  dependsOn: [{name: segmentation}, {name: identity}, {name: backup-plugin}]
+  sourceRef: {kind: OCIRepository, name: lab-gitops}
+  path: ./tenant-demo
+  prune: true
+  wait: false   # OpenCloud waits for the lab CA ConfigMap the script makes inside the ring
+  timeout: 10m
+  postBuild:   # the ring's own domain; without the ConfigMap the lab default applies
+    substituteFrom: [{kind: ConfigMap, name: ring-settings, optional: true}]

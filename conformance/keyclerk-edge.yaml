@@ -1,0 +1,33 @@
+# What this model requires of KeyClerk's edge (engine decisions 0013 to 0016 and amendment 0014d,
+# recorded for the model in ADR-0182): the pinned engine gives every verdict of the edge conformance set it shipped at
+# its pinned tag, the set ReliKey's agent runs too. The set is vendored (frameworks/external-pins.yaml,
+# keyclerk-edge-conformance) and moves only with the engine pin. An obligation is removed only with a decision record.
+name: keyclerk-edge
+pin: frameworks/external-pins.yaml#keyclerk-edge-conformance
+obligations:
+- id: KE-1
+  source: ADR-0182
+  statement: the edge conformance set is the one shipped with the pinned engine, and the engine ships every policy module it names, by hash
+  tests:
+  - test_the_edge_set_is_the_one_shipped_with_the_pinned_engine
+- id: KE-2
+  source: ADR-0182
+  statement: an edge admits a bundle only when it is sealed by the pinned bundle key over its own bytes, above the serial floor, inside the ceiling and with leases inside their horizon; every recorded verdict and live lease is reproduced
+  tests:
+  - test_the_pinned_engine_verifies_bundles_as_recorded
+- id: KE-3
+  source: ADR-0182
+  statement: officer statements for enrolment and rotation (one or two nodes), sealed ceilings and the ended notice bound to its enrolment keys give their recorded verdicts
+  tests:
+  - test_the_pinned_engine_gives_the_recorded_statement_ceiling_ending_unlock_and_module_verdicts
+- id: KE-4
+  source: ADR-0182
+  statement: a phoned unlock code (kc-unlock-v2 over P-256) is the same from the node and from the desk, and refused when either side does not hold its key
+  tests:
+  - test_the_pinned_engine_gives_the_recorded_statement_ceiling_ending_unlock_and_module_verdicts
+- id: KE-5
+  source: ADR-0182
+  statement: an edge fetches policy modules by hash, and the edge policy (edge.rego) answers every recorded case and passes its own tests
+  tests:
+  - test_the_pinned_engine_answers_every_edge_policy_case
+  - test_the_pinned_engines_edge_policy_tests_pass

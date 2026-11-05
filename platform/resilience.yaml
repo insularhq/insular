@@ -1,0 +1,519 @@
+# Resilience profile of every runtime component, per size: how it is made highly available, what fails when it fails,
+# how it comes back (rebuilt from code, rebuilt plus data, or never snapshot-restored), and what it needs from the
+# network (own routed range, no layer-2 stretching) and from DNS. Checked by tools/resilience.py with the seams in
+# platform/seams.yaml. Principles: replicate in the application, never in a stretched network or shared storage;
+# every site stands alone; rebuild from code first, restore only data.
+
+ha_patterns:
+  active-active:  "stateless replicas behind a load balancer or DNS; any replica serves any request"
+  quorum:         "Raft or etcd consensus: one leader writes, the majority must live; 3 members survive 1 loss, 5 survive 2"
+  active-passive: "one primary with replicas; failover promotes a replica (automatic inside a site, manual across sites)"
+  leader-elected: "controllers with leader election: one acts, the others wait hot"
+  per-node:       "a daemon or runtime on every node; its failure domain is that node"
+  dual-write:     "two independent stores both receive every write; readers deduplicate"
+  independent:    "separate instances per site or location, never clustered; they exchange signed records"
+  single:         "one instance; highly available only by being rebuilt and restored"
+
+restore_kinds:
+  reprovision:      "rebuilt from git and signed images; holds no data worth restoring"
+  reprovision+data: "rebuilt from git and signed images, then its data restored from an application-level backup"
+  reprovision+rekey: "rebuilt, then keys or certificates issued anew; old material is not restored"
+
+failure_modes:
+  fail-closed: "requests that depend on it are denied"
+  fail-static: "everything keeps running on the last known good state (config, keys, tokens, certificates) until it expires"
+  degrade:     "the function is lost or reduced; nothing is denied that would otherwise be allowed"
+
+rules:
+  - "no layer-2 network is stretched between sites; each site and instance has its own routed ranges"
+  - "pod, service and load-balancer ranges are unique per instance from S (the K3s defaults are never used), so federation, routed admin access or a cluster mesh never need renumbering"
+  - "virtual IPs inside a site are announced by Cilium (BGP to the site router preferred, ARP announcements where no router speaks BGP); no MetalLB, no kube-vip"
+  - "replication happens in the application (etcd, Raft, PostgreSQL streaming, dual-write); storage is local; no shared or stretched storage"
+  - "a VM or volume snapshot is never the restore path for a consensus member or a database primary: they restore from their own application-consistent backup"
+  - "every component with data names its backup and its restore drill; every component without data is rebuilt, never restored"
+  - "the public DNS of the platform is at external providers, never on the instance it names; inside an instance names are a convenience, never a trust anchor (identity is mTLS and tokens)"
+
+address_plan: "platform/addressing.yaml (ADR-0075: IPv6-native inside, IPv4 only as carrier, addresses carry no meaning)"
+
+dns:
+  public:   {where: "external EU DNS provider(s), records as code (OpenTofu)", L: "a second provider as secondary (NOTIFY and zone transfer); DNSSEC signed"}
+  cluster:  {impl: "CoreDNS (bundled with K3s)", S: "2 replicas", M: "plus NodeLocal DNSCache so a CoreDNS outage does not stop running services"}
+  site:     {impl: "Knot Resolver with Knot DNS (CZ.NIC, CZ): validating resolver and the Isle's signed zone, must run local during DDIL (ADR-0172)", from: S}
+  internal_names: "<service>.<instance>.<tenant>.<platform domain>, served inside only; certificates from the instance CA"
+  ddil: "site zone and cached platform names valid for 168 h (platform/edge.yaml)"
+  failure: "cluster DNS down: new connections and Cilium FQDN egress rules fail (fail-closed for egress); running connections continue"
+
+components:
+  # --- S core --------------------------------------------------------------------------------------------------
+  K3s:
+    state: quorum-data
+    ha: {S: single, M: quorum, L: quorum}
+    tolerates: "M and L: 1 of 3 servers; agents keep running workloads with the API down"
+    fails: "no scheduling, no reconciliation, no new service-account tokens; running pods continue"
+    mode: fail-static
+    restore: reprovision
+    data: "nothing that git does not hold; embedded etcd snapshots to object storage only shorten the rebuild"
+    snapshot: forbidden
+    net: "own node range; agents join through a DNS name over all servers (the K3s agent balances itself), no VIP"
+    dns: [api.<instance>]
+  Cilium:
+    state: config
+    ha: {S: per-node, M: per-node, L: per-node}
+    fails: "agent down: existing flows stay enforced from eBPF maps, new pods get no network; operator down: no new IP allocation"
+    mode: fail-closed
+    restore: reprovision
+    net: "pods routed natively inside a site segment or encapsulated (Geneve) across subnets; LB IPAM and BGP or ARP announcements for virtual IPs"
+    notes: "Hubble (part of Cilium) is the seam observer: per-flow L3 to L7 with both identities"
+  WireGuard:
+    state: config
+    ha: {S: per-node, M: per-node, L: per-node}
+    fails: "admin path down; break-glass through the provider console (platform/bootstrap.yaml)"
+    mode: fail-closed
+    restore: reprovision+rekey
+    net: "own admin overlay prefix from platform/addressing.yaml, routed"
+  Envoy Gateway:
+    state: config
+    ha: {S: single, M: active-active, L: active-active}
+    tolerates: "control plane down: proxies keep their last configuration"
+    fails: "proxies down: every inbound request fails"
+    mode: fail-static
+    restore: reprovision
+    net: "virtual IP from Cilium LB IPAM (on-premise) or the provider load balancer (cloud)"
+    dns: ["<cell>.<instance> public A/AAAA", "per-tenant hostnames"]
+  cert-manager:
+    state: config
+    ha: {S: leader-elected, M: leader-elected, L: leader-elected}
+    fails: "no renewals; certificates stay valid to expiry (public 90 days, alert at 30)"
+    mode: fail-static
+    restore: reprovision+rekey
+    dns: ["ACME DNS-01 records at the public provider, or HTTP-01 through the gateway"]
+  Keycloak:
+    state: data
+    ha: {S: single, M: active-active, L: independent}
+    tolerates: "M: 2+ replicas with a shared session cache; L: one per site, federated, never stretched"
+    fails: "no new logins or token refresh; issued tokens stay valid to expiry (minutes per label)"
+    mode: fail-static
+    restore: reprovision+data
+    data: "realms as code; users, credentials (passkeys), sessions and signing keys in PostgreSQL"
+    backing: [PostgreSQL]
+    snapshot: forbidden
+    dns: [id.<instance>]
+  cert-manager approver-policy: {state: none, ha: {S: single, M: single, L: single}, fails: "no certificate request is approved; certificates already issued keep working until renewal is due", mode: degrade, restore: reprovision, data: "none: the policies are in git", backing: []}
+  keycloak-config-cli:
+    state: none
+    ha: {S: single, M: single, L: single}
+    tolerates: "a failed run is retried by the Job; the realm stays as last applied"
+    fails: "a realm change waits; logins and running services are not affected"
+    mode: fail-static
+    restore: reprovision
+    data: "none: reads the realm from the model, writes it to Keycloak"
+    backing: [Keycloak]
+    snapshot: forbidden
+    dns: []
+  PostgreSQL:
+    state: data
+    ha: {S: single, M: active-passive, L: active-passive}
+    tolerates: "M: synchronous replica in the site, automatic failover; L: replica cluster per site, promoted by a person"
+    fails: "every service with a database stops writing; reads only where replicas serve them"
+    mode: fail-closed
+    restore: reprovision+data
+    data: "base backup plus WAL to object storage (point in time); CloudNativePG volume snapshots are application-consistent and allowed"
+    snapshot: app-consistent-only
+  CloudNativePG:
+    state: config
+    ha: {S: leader-elected, M: leader-elected, L: leader-elected}
+    fails: "no failover, no new backups; running databases continue"
+    mode: fail-static
+    restore: reprovision
+  OpenBao:
+    state: quorum-data
+    ha: {S: single, M: quorum, L: quorum}
+    tolerates: "M and L: 1 of 3 (Raft); standbys forward to the active node; one cluster per site"
+    fails: "no new secrets, certificates or SSH certificates; sealed after a restart without its seal device; running workloads keep their mounted secrets"
+    mode: fail-closed
+    restore: reprovision+data
+    data: "Raft snapshot plus the seal (TPM or HSM) and recovery shares on the break-glass tokens"
+    snapshot: forbidden
+  OPA:
+    state: config
+    ha: {S: active-active, M: active-active, L: active-active}
+    fails: "the enforcement point that asks it denies (fail-closed); bundles persist on disk across restarts"
+    mode: fail-closed
+    restore: reprovision
+  CryptPad:
+    state: data
+    ha: {S: single, M: single, L: single}
+    tolerates: "nothing: CryptPad does not cluster; a standby is restored, not replicated"
+    fails: "the vault is unavailable; data is end-to-end encrypted, so backups hold ciphertext only"
+    mode: degrade
+    restore: reprovision+data
+    data: "blob, block and datastore directories via restic, quiesced"
+    snapshot: app-consistent-only
+    dns: [vault.<instance>, "sandbox.<instance> (CryptPad needs a separate sandbox origin)"]
+  OpenTelemetry Collector:
+    state: none
+    ha: {S: per-node, M: active-active, L: active-active}
+    fails: "telemetry gap; a bounded on-disk queue rides out short outages"
+    mode: degrade
+    restore: reprovision
+  VictoriaMetrics:
+    state: data
+    ha: {S: single, M: dual-write, L: dual-write}
+    fails: "no metrics: the evaluator reports UNKNOWN, never green"
+    mode: degrade
+    restore: reprovision+data
+    data: "vmbackup from instant snapshots to object storage"
+    snapshot: app-consistent-only
+  VictoriaLogs:
+    state: data
+    ha: {S: single, M: dual-write, L: dual-write}
+    fails: "no log search; detections that query logs go UNKNOWN; the audit chain is separate and signed"
+    mode: degrade
+    restore: reprovision+data
+    data: "partition snapshots to object storage"
+    snapshot: app-consistent-only
+  Grafana:
+    state: config
+    ha: {S: single, M: active-active, L: active-active}
+    fails: "no pane and no Grafana alerts; the off-instance dead-man heartbeat still fires"
+    mode: degrade
+    restore: reprovision
+    data: "dashboards and alert rules are generated as code; only preferences in its database"
+    backing: [PostgreSQL]
+    dns: [pane.<instance>]
+  Flux:
+    state: config
+    ha: {S: leader-elected, M: leader-elected, L: leader-elected}
+    fails: "no reconciliation, drift not repaired; running workloads continue"
+    mode: fail-static
+    restore: reprovision
+  restic:
+    state: none
+    ha: {S: single, M: single, L: single}
+    fails: "no new backups: the recovery point ages and alerts at its threshold"
+    mode: degrade
+    restore: reprovision
+    data: "the repository is the backup; its key on the break-glass tokens, not only in OpenBao"
+  evaluator:
+    state: none
+    ha: {S: independent, M: independent, L: independent}
+    tolerates: "one on the instance, one off the instance (CI); each watches the other through the dead-man heartbeat"
+    fails: "the light goes UNKNOWN at the parent; never green"
+    mode: degrade
+    restore: reprovision
+  Warpgate:
+    state: data
+    ha: {M: single, L: active-active}
+    tolerates: "L: several nodes on a shared PostgreSQL with recordings in object storage"
+    fails: "no privileged sessions through the bastion; the operator falls back to WireGuard with OpenBao SSH certificates (break-glass path unchanged)"
+    mode: fail-closed
+    restore: reprovision+data
+    data: "target definitions as code; its database; session recordings in an object-storage bucket replicated to the audit store"
+    backing: [PostgreSQL, Garage]
+  KeyClerk:
+    state: data
+    ha: {S: single, M: single, L: single}
+    fails: "no new requests or approvals; grants already in Keycloak and the PDP stay, and ending leases waits for the reconciler (its age is a tile); edges keep their last bundle until its lease ends"
+    mode: degrade
+    restore: reprovision+data
+    data: "its signed change log and store (SQLite) on its volume, copied off the Isle with the Isle's backups; the log verifies end to end after a restore"
+    backing: []
+  ReliKey agent:
+    state: data
+    ha: {S: single, M: single, L: single}
+    fails: "the site's bastion keeps what it was last told; a lease past its end is ended by the agent's own clock from the verified bundle, never extended; a silent edge is a tile at the core (keyclerk_edges_silent)"
+    mode: fail-closed
+    restore: reprovision+data
+    data: "its floors and the verified bundle in its state directory, restored with the appliance's disk; the floors are what refuse an older bundle after a restore, so an agent rebuilt without them pulls again only at the serial the core records for it"
+    backing: []
+  Coraza:
+    state: none
+    ha: {S: active-active, M: active-active, L: active-active}
+    fails: "loaded in every proxy replica; a failed load blocks the route (fail-closed), never bypasses the firewall"
+    mode: fail-closed
+    restore: reprovision
+  OWASP CRS:
+    state: config
+    ha: {S: active-active, M: active-active, L: active-active}
+    fails: "rules are part of the signed bundle; an invalid set fails the release, not the traffic"
+    mode: fail-static
+    restore: reprovision
+  hawkBit:
+    state: data
+    ha: {M: single, L: active-active}
+    tolerates: "L: stateless server replicas on the shared PostgreSQL, per the upstream documentation"
+    fails: "no new stick rollouts; sticks keep their current slot and update at the next campaign"
+    mode: degrade
+    restore: reprovision+data
+    data: "campaigns and device records in PostgreSQL; images are signed artefacts in the registry"
+    backing: [PostgreSQL]
+  Knot DNS:
+    state: config
+    ha: {S: single, M: active-passive, L: active-passive}
+    fails: "no new signatures and no tenant names from the resolver; signatures already issued stay valid for 9 days and secondaries keep the zones for their SOA expire (ADR-0172)"
+    mode: fail-static
+    restore: reprovision+data
+  Knot Resolver:
+    state: none
+    ha: {S: single, M: per-node, L: per-node}
+    fails: "names stop resolving for clients that point at it; a second resolver in the clients' configuration takes over where there is one"
+    mode: fail-static
+    restore: reprovision
+  session-agent:
+    state: none
+    ha: {S: per-node, M: per-node, L: per-node}
+    fails: "apps inside that desktop get no tokens; the user signs in again by CIBA"
+    mode: degrade
+    restore: reprovision
+  neko-rooms:
+    state: config
+    ha: {M: single, L: active-passive}
+    fails: "no new remote-browser sessions; running sessions continue until logout"
+    mode: degrade
+    restore: reprovision
+  Neko:
+    state: none
+    ha: {M: active-active, L: active-active}
+    fails: "no outside sites for stick users; platform apps unaffected"
+    mode: degrade
+    restore: reprovision
+    net: "own egress segment behind three perimeters (platform/egress.yaml); ingress only through the VPN and gateway"
+  Nextcloud:
+    state: data
+    ha: {S: single, M: active-active, L: active-active}
+    tolerates: "M and L: stateless web replicas on shared PostgreSQL and object storage; file locking in the database"
+    fails: "Internal files and Office documents unavailable; CryptPad is unaffected"
+    mode: degrade
+    restore: reprovision+data
+    data: "database dump and the object-storage bucket of files"
+    backing: [PostgreSQL, Garage]
+  OpenCloud:
+    state: data
+    ha: {S: single, M: single, L: single}
+    tolerates: "one replica with its data on a local volume; a node loss is an outage until the pod is rescheduled with its volume"
+    fails: "tenant files unavailable; sign-in through Keycloak is unaffected"
+    mode: degrade
+    restore: reprovision+data
+    data: "the data volume copied out over WebDAV or as files; snapshots only when the process is quiesced"
+  Collabora Online:
+    state: none
+    ha: {S: single, M: active-active, L: active-active}
+    fails: "documents open read-only in the file host until the editor returns"
+    mode: degrade
+    restore: reprovision
+  enrolment-service:
+    state: config
+    ha: {M: active-active, L: independent}
+    fails: "no new sticks can be enrolled; enrolled sticks are unaffected"
+    mode: fail-closed
+    restore: reprovision
+    data: "enrolment records are signed entries in the audit chain"
+  decision-inbox:
+    state: config
+    ha: {S: single, M: active-active, L: independent}
+    fails: "decisions wait; nothing is approved by default"
+    mode: fail-closed
+    restore: reprovision
+    data: "decision records are signed files in git"
+
+  SUSE Micro:
+    state: config
+    ha: {S: per-node, M: per-node, L: per-node}
+    fails: "a failed update rolls back to the previous snapshot on reboot; a lost host is rebuilt"
+    mode: fail-static
+    restore: reprovision
+    net: "host range per instance; first boot from Combustion/Ignition, not cloud-init"
+  system-upgrade-controller:
+    state: config
+    ha: {S: leader-elected, M: leader-elected, L: leader-elected}
+    fails: "no upgrades roll out; hosts stay on their current version"
+    mode: fail-static
+    restore: reprovision
+  Uyuni:
+    state: data
+    ha: {S: single, M: single, L: single}
+    fails: "no central patch channels or Salt runs; hosts keep updating through their plans"
+    mode: degrade
+    restore: reprovision+data
+    data: "its database and channel definitions"
+    backing: [PostgreSQL]
+
+  # --- M modules -----------------------------------------------------------------------------------------------
+  Backstage:
+    state: config
+    ha: {M: active-active, L: active-active}
+    fails: "front door down; Grafana and the decision inbox stay reachable directly"
+    mode: degrade
+    restore: reprovision
+    backing: [PostgreSQL]
+  gVisor:
+    state: none
+    ha: {M: per-node, L: per-node}
+    fails: "Sensitive pods cannot start on that node (the RuntimeClass is required)"
+    mode: fail-closed
+    restore: reprovision
+  NetBird:
+    state: data
+    ha: {M: single, L: single}
+    tolerates: "management down: peers keep existing tunnels; no new peers or policy changes; relays are separate"
+    fails: "people cannot join from new devices; device posture changes are not applied"
+    mode: fail-static
+    restore: reprovision+data
+    data: "management store (accounts, peers, policies) in its database"
+    backing: [PostgreSQL]
+    net: "people overlay prefix from platform/addressing.yaml; site and infrastructure links never depend on it"
+    dns: [netbird.<platform domain>]
+  Falco:
+    state: none
+    ha: {M: per-node, L: per-node}
+    fails: "runtime detection gap on that node; the evaluator sees the missing heartbeat"
+    mode: degrade
+    restore: reprovision
+  Gatus:
+    state: config
+    ha: {M: independent, L: independent}
+    tolerates: "runs off the instance, at two locations"
+    fails: "status page stale; the other location still answers"
+    mode: degrade
+    restore: reprovision
+  GLPI:
+    state: data
+    ha: {M: single, L: independent}
+    fails: "no ticket workflow; git inventory and signed decision records stay the source of truth"
+    mode: degrade
+    restore: reprovision+data
+    data: "tickets and approvals in its database; the CMDB is a view rebuilt from git"
+    backing: [MariaDB]
+  ntfy:
+    state: config
+    ha: {M: independent, L: independent}
+    fails: "one alert channel lost; mail and Matrix carry on (platform/communication.yaml)"
+    mode: degrade
+    restore: reprovision
+  RAUC:
+    state: none
+    ha: {M: per-node, L: per-node}
+    fails: "no update on that device; A/B slots fall back to the last good slot"
+    mode: fail-static
+    restore: reprovision
+  rest-server:
+    state: data
+    ha: {M: single, L: independent}
+    fails: "the append-only cyber vault takes no new snapshots; existing ones are intact"
+    mode: degrade
+    restore: reprovision+data
+    data: "it holds the backups: copied with restic copy to a second, offline-rotated location"
+  NATS:
+    state: quorum-data
+    ha: {M: quorum, L: quorum}
+    tolerates: "JetStream clusters of 3; sites join as leaf nodes; super-clusters over gateways, never stretched"
+    fails: "events buffer at the publishers and leaf nodes; federation lags"
+    mode: degrade
+    restore: reprovision+data
+    data: "JetStream streams are replicated; a lost cluster is rebuilt and refilled from the leaf nodes"
+    snapshot: forbidden
+
+  # --- L modules -----------------------------------------------------------------------------------------------
+  SPIRE:
+    state: data
+    ha: {L: active-active}
+    tolerates: "several servers on one datastore; agents cache SVIDs and keep serving until they expire"
+    fails: "no new or renewed workload identities; mTLS fails when SVIDs expire"
+    mode: fail-static
+    restore: reprovision+data
+    data: "registration entries as code; the datastore in PostgreSQL; trust bundles federated per site"
+    backing: [PostgreSQL]
+  Kata Containers:
+    state: none
+    ha: {L: per-node}
+    fails: "Restricted pods cannot start on that node"
+    mode: fail-closed
+    restore: reprovision
+  Keylime:
+    state: data
+    ha: {M: active-passive, L: active-passive}
+    fails: "attestation goes stale: the ZTOP shows UNKNOWN, a Hull's Skiff goes to quarantine (M, ADR-0125) and Restricted access that needs it is denied"
+    mode: fail-closed
+    restore: reprovision+data
+    data: "registrar and verifier records; agents re-register"
+    backing: [PostgreSQL]
+  Apache Tika:    {state: none, ha: {L: active-active}, fails: "releases wait (the gateway is fail-closed)", mode: fail-closed, restore: reprovision}
+  ClamAV:         {state: config, ha: {L: active-active}, fails: "releases wait; stale signatures block after their age limit", mode: fail-closed, restore: reprovision, data: "signatures from a local mirror (DDIL)"}
+  YARA-X:         {state: none, ha: {L: active-active}, fails: "releases wait", mode: fail-closed, restore: reprovision}
+  Dangerzone:     {state: none, ha: {L: active-active}, fails: "releases wait", mode: fail-closed, restore: reprovision}
+  ExifTool:       {state: none, ha: {L: active-active}, fails: "releases wait", mode: fail-closed, restore: reprovision}
+  gitleaks:       {state: none, ha: {L: active-active}, fails: "releases wait", mode: fail-closed, restore: reprovision}
+  OpenTDF:
+    state: data
+    ha: {L: active-active}
+    fails: "sealed segments cannot be opened; nothing is released in clear"
+    mode: fail-closed
+    restore: reprovision+data
+    data: "policy and attribute definitions in PostgreSQL; the key access keys in OpenBao and the HSM (loss makes ciphertext unrecoverable: escrowed)"
+    backing: [PostgreSQL]
+  Apache Guacamole:
+    state: config
+    ha: {L: active-active}
+    fails: "browser desktop sessions drop and must reconnect"
+    mode: degrade
+    restore: reprovision
+    backing: [PostgreSQL]
+  Suricata:
+    state: none
+    ha: {L: per-node}
+    fails: "network detection gap on that segment"
+    mode: degrade
+    restore: reprovision
+    net: "reads a mirror port inside the site (local layer 2 only, never stretched)"
+
+  # --- substrate and optional modules -------------------------------------------------------------------------
+  Proxmox VE:
+    state: config
+    ha: {S: single, M: quorum, L: quorum}
+    tolerates: "a cluster of 3 per site (corosync over a routed, low-latency link); VM HA only with replicated local ZFS"
+    fails: "VM management lost; running VMs continue"
+    mode: fail-static
+    restore: reprovision
+    net: "own host range per site; never one cluster across sites"
+  Proxmox Backup Server:
+    state: data
+    ha: {S: single, M: active-passive, L: active-passive}
+    fails: "no VM-level backups; application backups continue"
+    mode: degrade
+    restore: reprovision+data
+    data: "datastore pulled by a second PBS at another location (sync jobs)"
+  Synapse:      {state: data, ha: {S: single, M: single, L: independent}, fails: "chat down; Matrix federation queues", mode: degrade, restore: reprovision+data, data: "RocksDB snapshot via its admin API", snapshot: app-consistent-only}
+  Element Web:  {state: none, ha: {S: active-active, M: active-active, L: active-active}, fails: "chat web client down", mode: degrade, restore: reprovision}
+  Forgejo:      {state: data, ha: {S: single, M: single, L: single}, fails: "forge down; git mirrors still serve", mode: degrade, restore: reprovision+data, data: "repositories and database", backing: [PostgreSQL]}
+  NetBox:       {state: data, ha: {S: single, M: single, L: active-passive}, fails: "the site's DCIM/IPAM unreadable; gates keep working from git (ADR-0172); drift reads unknown", mode: degrade, restore: reprovision+data, data: "the site's IPAM and DCIM records; seeded again from the address plan, the rest from the database backup", backing: [PostgreSQL]}
+  Valkey:       {state: none, ha: {S: single, M: single, L: single}, fails: "NetBox's background tasks and cache pause", mode: degrade, restore: reprovision, data: "none: tasks and cache are rebuilt", backing: []}
+  ipam-drift:   {state: none, ha: {S: single, M: single, L: single}, fails: "drift reads unknown with its age; nothing else depends on it", mode: degrade, restore: reprovision, data: "none: the next run compares again", backing: []}
+  Argo Workflows: {state: config, ha: {S: leader-elected, M: leader-elected, L: leader-elected}, fails: "no new runs; runbooks run as plain jobs through the execution path", mode: degrade, restore: reprovision, backing: [PostgreSQL]}
+  Argo Events:  {state: config, ha: {S: leader-elected, M: leader-elected, L: leader-elected}, fails: "no event triggers", mode: degrade, restore: reprovision}
+  Gammu:        {state: none, ha: {S: per-node, M: per-node, L: per-node}, fails: "SMS channel at that site lost", mode: degrade, restore: reprovision}
+  libosdp:      {state: none, ha: {S: per-node, M: per-node, L: per-node}, fails: "readers at that site get no decision: doors stay locked, egress stays with the door hardware", mode: fail-closed, restore: reprovision}
+  Asterisk:     {state: config, ha: {S: single, M: single, L: independent}, fails: "voice alerting lost at that site", mode: degrade, restore: reprovision}
+  Apicurio Registry: {state: data, ha: {S: active-active, M: active-active, L: active-active}, fails: "no new schemas; producers with cached schemas continue", mode: fail-static, restore: reprovision+data, data: "schemas in git; registry database", backing: [PostgreSQL]}
+  Apache Camel: {state: none, ha: {S: active-active, M: active-active, L: active-active}, fails: "routes stop; idempotent consumers resume from NATS", mode: degrade, restore: reprovision}
+  Debezium:     {state: config, ha: {S: active-passive, M: active-passive, L: active-passive}, fails: "change events pause; offsets resume without loss", mode: degrade, restore: reprovision}
+  Archivematica: {state: data, ha: {S: single, M: single, L: single}, fails: "no ingest; stored packages are BagIt and readable without it", mode: degrade, restore: reprovision+data, data: "AIP storage copied to two locations; database dump", backing: [MariaDB]}
+  Great Expectations: {state: none, ha: {S: single, M: single, L: single}, fails: "data checks do not run: products go UNKNOWN", mode: degrade, restore: reprovision}
+  Garage:       {state: quorum-data, ha: {S: single, M: quorum, L: quorum}, tolerates: "replication factor 3 across zones; built for geo-distribution over routed links", fails: "object storage read-only or down below quorum", mode: degrade, restore: reprovision+data, data: "buckets copied over S3 to a second cluster or provider", snapshot: forbidden}
+  Trino:        {state: none, ha: {S: single, M: single, L: active-passive}, fails: "queries fail (the coordinator is a single point; workers are active-active)", mode: degrade, restore: reprovision, backing: [Iceberg REST catalog]}
+  OpenMetadata: {state: data, ha: {S: single, M: active-active, L: active-active}, fails: "catalog view down; contracts and lineage stay in git and events", mode: degrade, restore: reprovision+data, data: "database dump; the search index is rebuilt", backing: [PostgreSQL, OpenSearch]}
+  Eclipse EDC:  {state: data, ha: {S: active-active, M: active-active, L: active-active}, fails: "no new contract negotiations; agreed transfers finish", mode: degrade, restore: reprovision+data, data: "contract agreements in its database", backing: [PostgreSQL]}
+  llama.cpp:    {state: none, ha: {S: single, M: active-active, L: active-active}, fails: "local inference down: callers fail closed (no fallback to an external model)", mode: fail-closed, restore: reprovision, data: "model files are signed OCI artefacts"}
+  NeMo Guardrails: {state: none, ha: {S: active-active, M: active-active, L: active-active}, fails: "inference denied (guard is in the path)", mode: fail-closed, restore: reprovision}
+  vLLM:         {state: none, ha: {S: single, M: active-active, L: active-active}, fails: "GPU inference down: callers fail closed", mode: fail-closed, restore: reprovision}
+  ai-egress-gate:      {state: data, ha: {S: single, M: single, L: independent}, fails: "AI egress denied: the inference gateway reaches no model without the gate (ADR-0164)", mode: fail-closed, restore: reprovision+data, data: "the egress journal, mappings and consent leases per tenant, sealed; keys from the Isle's secrets by adapter"}
+  MLflow:       {state: data, ha: {S: single, M: active-active, L: active-active}, fails: "no model registration; serving uses pinned artefacts", mode: fail-static, restore: reprovision+data, data: "registry database; artefacts in object storage", backing: [PostgreSQL, Garage]}
+  Wazuh:        {state: quorum-data, ha: {S: single, M: quorum, L: quorum}, fails: "SIEM down; Falco and Suricata events still land in VictoriaLogs", mode: degrade, restore: reprovision+data, data: "indexer snapshots; agent keys", backing: [Wazuh indexer]}
+  step-ca:      {state: data, ha: {S: single, M: single, L: single}, fails: "no new legacy RSA certificates", mode: fail-static, restore: reprovision+data, data: "CA database; keys on the HSM", backing: [PostgreSQL]}
+
+# Backing services that some components require but the bill of materials does not declare. Each must become a
+# declared component (BOM, lock, provenance, profile) or the component must be configured onto a declared one.
+undeclared_backing:
+  MariaDB: "GLPI and Archivematica support only MySQL or MariaDB, not PostgreSQL (verify per version)"
+  OpenSearch: "OpenMetadata needs a search engine (OpenSearch or Elasticsearch)"
+  Iceberg REST catalog: "Trino with Iceberg needs a catalog service (candidates: Lakekeeper, Apache Polaris, Nessie)"
+  Wazuh indexer: "Wazuh ships its own OpenSearch fork as indexer; a second search cluster beside OpenSearch"

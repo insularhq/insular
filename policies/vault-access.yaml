@@ -1,0 +1,36 @@
+# Example access policy for the vault, written against the identity model. Rules are deny-overrides: every listed
+# condition must hold for every subject in the actor chain.
+rules:
+  - id: read-sensitive-document
+    action: read
+    resource_type: sensitive-document
+    subject_types: [person, agent]
+    roles: [consultant, tenant-member]
+    require_attributes: {acr: phishing-resistant}
+    require_context: {device_posture: compliant, evidence_state: GREEN}
+  - id: export-engagement-archive
+    action: export
+    resource_type: engagement-archive
+    subject_types: [person, agent]
+    roles: [tenant-admin]
+    require_attributes: {acr: phishing-resistant}
+    require_context: {device_posture: compliant, evidence_state: GREEN}
+    irreversible: true
+  - id: workload-reads-kek
+    action: unwrap
+    resource_type: data-key
+    subject_types: [workload]
+    require_context: {evidence_state: GREEN, tenant_unwrap_grant: valid}
+  - id: device-enrol
+    action: enrol
+    resource_type: fleet
+    subject_types: [device]
+    require_context: {device_posture: compliant}
+  - id: break-glass-use
+    action: break-glass
+    resource_type: site
+    subject_types: [person]
+    roles: [site-sysadmin]
+    require_attributes: {acr: phishing-resistant, certification: break-glass-qualified}
+    require_context: {break_glass_unlock: two-of-three}
+    irreversible: false

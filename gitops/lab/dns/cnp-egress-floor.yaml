@@ -1,0 +1,8 @@
+# The signer reaches nothing outside its namespace; the resolver's way out is its own policy (resolver-to-world)
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata: {name: egress-floor, namespace: vdh-dns}
+spec:
+  endpointSelector: {}
+  egress:
+    - toEndpoints: [{matchLabels: {k8s:io.kubernetes.pod.namespace: vdh-dns}}]

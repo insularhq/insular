@@ -1,0 +1,75 @@
+# Self-hosting without a separate management domain. The provider's own management runs as a tenant of an
+# ordinary instance, with the same packs, gate, identity model and execution path as any client. What is NOT allowed
+# is a hidden loop: every cycle in the administration dependency graph must contain an edge with a declared
+# out-of-band break path. The set of out-of-band elements is kept as small as possible and drilled.
+
+# Runtime dependencies needed to ADMINISTER the platform (edge a -> b: a needs b to work).
+depends_on:
+  admin-login:      [keycloak, openbao-ssh-ca, wireguard]
+  keycloak:         [postgresql, k3s, envoy-gateway, openbao-secrets]
+  postgresql:       [k3s, storage]
+  openbao-ssh-ca:   [openbao]
+  openbao-secrets:  [openbao]
+  openbao:          [k3s, unseal]
+  openbao-restore:  [restic]
+  restic:           [openbao, storage]
+  unseal:           [tpm]
+  envoy-gateway:    [k3s, cert-manager, dns-external]
+  cert-manager:     [k3s, dns-external]
+  k3s:              [host, k3s-datastore]
+  k3s-datastore:    [storage]
+  flux:             [k3s, release-loader, release-root-public]
+  release-loader:   [release-media, tpm]   # ADR-0129: ships in the signed OS image, fills the in-site mirror
+  grafana:          [keycloak, victoriametrics]
+  victoriametrics:  [k3s, storage]
+  evaluator:        [ci-external, release-root-public]
+  host:             [provider]
+
+# Edges that close a cycle when something breaks: to repair X you need Y, and Y needs X.
+repair_needs:
+  keycloak: [admin-login]
+  openbao:  [admin-login]
+  k3s:      [admin-login]
+  flux:     [admin-login]
+  openbao-restore: [restic]
+
+# Each repair edge declares how it is broken without the platform itself.
+breaks:
+  keycloak->admin-login: "break-glass: 2-of-3 hardware tokens unlock the offline break-glass SSH CA, which mints a certificate valid at most 4 hours at the moment of use; every use alerts the security officer and lands in the audit chain; tokens and CA rotated after use; WireGuard key on the same tokens"
+  openbao->admin-login:  "same break-glass path; OpenBao recovery shares (2-of-3) on hardware tokens"
+  k3s->admin-login:      "same break-glass path, or the provider's console with the host's local emergency account (FIDO2-bound)"
+  openbao-restore->restic: "the restic repository key is not only in OpenBao: its shares sit on the same 2-of-3 break-glass tokens, so a total OpenBao loss is restorable; restore drilled monthly"
+  flux->admin-login:     "same break-glass path; the release loader reloads the last verified release from media; the mirror holds only current and fallback targets (ADR-0129)"
+
+design_choices_that_avoid_cycles:
+  - "K3s encrypts its secrets with a TPM-sealed local key, not through OpenBao (no K3s <-> OpenBao loop)"
+  - "DNS for the platform is at an external provider, never self-hosted on the instance it names"
+  - "Flux trusts a release root public key and the TUF root embedded at install time, not a key fetched from the instance"
+  - "the evaluator and dead-man heartbeat run off-instance (CI), so a failing instance cannot silence its own alarm"
+  - "the in-site mirror holds only TUF targets of the current and fallback release, written only by the release loader from media or the parent (ADR-0129); no upstream registry is needed to bootstrap"
+
+# The irreducible out-of-band set: everything else is managed in-band like any tenant.
+out_of_band:
+  offline-roots:    {what: "root keys in two HSMs, separate custody", drill: yearly}
+  break-glass:      {what: "2-of-3 hardware tokens unlock the offline break-glass SSH CA, which mints a certificate valid at most 4 hours at the moment of use; every use alerts the security officer and lands in the audit chain; tokens and CA rotated after use", drill: quarterly}
+  release-root:     {what: "public release root and the site-release TUF root (2-of-3 hardware keys in separate custody, ADR-0129) embedded in the installer with a minimum root version; private parts offline", drill: yearly}
+  repo-copies:      {what: "the model and bundles mirrored to a second forge and an offline copy", drill: quarterly}
+  provider-console: {what: "hosting provider console with FIDO2 on the account", drill: yearly}
+  external-watch:   {what: "off-instance evaluator and dead-man heartbeat in CI", drill: continuous}
+
+# What an instance may do to itself. Widening its own trust always needs the external authority.
+self_management:
+  allowed_in_band: [observe, restore, reduce]
+  requires_external_authority:
+    - rotate-release-root
+    - rotate-tuf-root
+    - change-policy-bundle-signing-key
+    - replace-identity-broker
+    - change-own-autonomy-matrix
+    - re-admit-after-compromise
+  external_authority: "offline ceremony with witness, or the parent instance plus a person (M/L: two management instances supervise each other and CI observes both)"
+
+stages:
+  - {stage: seed, what: "the progenitor medium: a signed, read-only bootable USB that starts any machine into a temporary bootstrap cluster with the installer; plus the Chartroom instance file and the hardware tokens, brought apart; it installs the Chartroom, pivots to it and holds nothing after (ADR-0132 amendment 2)"}
+  - {stage: first-instance, what: "S instance hosting the management tenant; manages itself in-band within self_management limits"}
+  - {stage: fleet, what: "the management instance manages client instances through the same execution path; from M, a second management instance and mutual supervision"}

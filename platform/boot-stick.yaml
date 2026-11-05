@@ -1,0 +1,178 @@
+# The boot stick as a complete, offline-capable endpoint: what must work before the network exists (boot chain,
+# drivers, sign-in, the local account, cached policy), then how the network is bootstrapped, re-validated and revoked.
+# The stick itself holds no usable secret: everything personal sits in an encrypted area that only the user's FIDO2
+# key or smartcard plus PIN can open. Prior art: Tails (encrypted persistent storage unlocked at the welcome screen,
+# before any network), ChromeOS (verified boot, offline sign-in with cached credentials), systemd-homed (portable,
+# signed user records with FIDO2 or PKCS#11 unlock).
+
+image:
+  build: "mkosi from openSUSE packages (same package base as the SUSE Micro hosts), signed by the release key"
+  updates: "RAUC A/B slots on the stick; staged rollout by Eclipse hawkBit; the tenant's image_version_min is enforced at sign-in"
+  boot_chain:
+    - "UEFI Secure Boot: shim carrying the VDHome certificate (pki: release root), signed under the Microsoft 2023 UEFI CA; enrolling a MOK changes the laptop and is a disclosed fallback only (ADR-0138 D1)"
+    - "hardened against its host: IOMMU strict, kernel lockdown, Thunderbolt and new HID devices refused after sign-in (USBGuard); the laptop is only a terminal and is never enrolled (ADR-0138 D1)"
+    - "unified kernel image (kernel, initrd and command line signed as one)"
+    - "read-only root verified by dm-verity; the root hash is inside the signed UKI"
+    - "measured into the TPM when the laptop has one (posture signal: image measured), otherwise self-reported (weaker, shown as such)"
+
+stages:   # strictly in this order; each stage works without the network unless marked online
+  - {stage: hardware,   offline: true, does: "load drivers for storage, input, display, network, FIDO2 and smartcard readers (image_bom)"}
+  - {stage: sign-in,    offline: true, does: "the user presents a FIDO2 key (hmac-secret) or a smartcard (PIV, PKCS#11) with PIN; this unlocks the user's encrypted home (systemd-homed, LUKS2) on the stick's persistent partition"}
+  - {stage: identity,   offline: true, does: "the user record is signed by the tenant's identity key and checked offline: roles, labels allowed, max offline age, image_version_min; a cached revocation list is checked"}
+  - {stage: policy,     offline: true, does: "the newest signed policy bundle (OPA, network profiles, label floors) from the encrypted home or the image is verified; older than its label's max age means bootstrap-only mode"}
+  - {stage: network,    offline: false, does: "on a tenant network that asks for 802.1X and proves itself (pinned RADIUS CA and name), EAP-TLS with the pseudonymous certificate; elsewhere NetworkManager joins Wi-Fi or Ethernet and a captive portal opens only in an isolated, single-purpose browser with no platform access"}
+  - {stage: vpn,        offline: false, does: "NetBird connects with the user peer from the encrypted home; the peer is a user peer (SSO through Keycloak at enrolment and at every login expiry), so its network lease expires like any other (ADR-0122); while the lease is valid no IdP login is needed before the tunnel; the stick also keeps a login-network machine peer (Keycloak and the enrolment service only), so a lapsed lease means a new sign-in through it; a lost home means a new enrolment, never a public login (ADR-0138 D7)"}
+  - {stage: revalidate, offline: false, does: "Keycloak sign-in with the passkey (acr per label); fresh revocation list, user record and policy bundle are fetched and cached; a revoked user or stick wipes the home's key slots"}
+  - {stage: work,       offline: false, does: "browser or VDI to the platform; posture signals (image measurement, version, bundle age) go to OPA as timestamped context"}
+
+enrolment:   # the initial bootstrap: blank stick to personal stick (tools/stick_enrol.py); four eyes, always
+  principle: "a stick becomes personal only in a ceremony launched by a security officer from their own connected, verified device, with the user present; the user enrols their own keys and PINs"
+  preconditions:
+    - "the user exists in Keycloak (provisioned by the tenant admin) and their identity is proofed: in person with an ID document, or remotely with a Belgian eID signature or another eIDAS substantial means"
+    - "two FIDO2 keys issued to the user in the estate register, delivered sealed and separately from the stick; PINs never shipped"
+    - "the stick is in the register, delivered sealed, and carries a signed image at or above the tenant's minimum"
+  officer_needs: "their own boot stick on any laptop used as a terminal, and their own FIDO2 keys: no station, no officer PC, no USB access to the user's stick, no local keys; acts for Restricted users only from the managed device in the secure room (ADR-0138 D2)"
+  why_no_station: >-
+    writing the image needs no trust (anyone may write it: Secure Boot and dm-verity verify it at boot); every key is
+    created on the user's stick or signed by the platform; the officer's authority is their role plus a WebAuthn
+    assertion over the approval, which the server verifies; four eyes and freshness are decided by OPA, not the client
+  officer_route: >-
+    the enrolment console is opened in the browser of the officer's own boot stick (browser route), so WebAuthn reaches the
+    officer's key locally; inside VDI the passkey would need FIDO2 redirection, which Guacamole does not offer
+  pseudonym: >-
+    the officer (or the tenant admin) creates the account under a pseudonymous id in Keycloak with roles and labels;
+    the real identity and the proofing record (method, officer, time) are sealed in the tenant's identity register,
+    never on the stick and never in the account
+  places:
+    in-person: "user and officer side by side; the stick boots on any laptop; the officer uses their own boot stick; officers themselves are only ever enrolled in person (ADR-0138 D3)"
+    remote: "the stick boots in enrolment mode on the user's laptop and reaches only the enrolment service (bootstrap network); the officer verifies the user by video and an eID signature made on the stick"
+  steps:
+    - {step: code,          does: "a stick without a home boots into enrolment mode; the user types the officer's code: the full single-use NetBird setup key for the bootstrap group as about ten words with a checksum, valid at most 10 minutes, read out, never mailed (ADR-0138 D6); the stick checks the ring CA against its signed ring partition before the tunnel; through the tunnel the stick opens one session with the enrolment service and shows its serial, image measurement, a fresh session key and an enrolment key made in RAM that later moves into the home and binds the stick"}
+    - {step: account,       does: "in the console the officer creates or selects the pseudonymous account and enters the stick's code"}
+    - {step: ticket,        does: "the officer creates a signed enrolment ticket bound to user and the stick's enrolment key: single use, valid 10 minutes; the stick shows the same binding before the keys step (ADR-0138 D2)"}
+    - {step: sas,           does: "stick and console show the same six-digit code derived from the session: the officer compares it with the user (in person or on the video call), which binds this stick to this console session"}
+    - {step: identity,      does: "the officer confirms the proofed identity (in person, or an eID signature made on the stick and verified by the service) and approves with a passkey assertion over the approval (bound to user, stick and ticket)"}
+    - {step: image,         does: "the stick's image is verified (signature and measurement) or written fresh from the signed release"}
+    - {step: home,          does: "systemd-homed creates the user's encrypted home on the stick"}
+    - {step: keys,          does: "the user enrols both FIDO2 keys with a PIN of their choice (user verification on); a smartcard may be added as a third token"}
+    - {step: user-record,   does: "the enrolment service has the tenant identity key (OpenBao) sign the user record bound to the stick serial and the FIDO2 credential ids, and sends it to the stick encrypted to the session key"}
+    - {step: passkey,       does: "the same FIDO2 keys get passkeys in Keycloak for online sign-in"}
+    - {step: nac-cert,      does: "a key pair is generated in the home (or on the user's PIV token) and vdh-int-nac issues the pseudonymous 802.1X certificate; the tenant's network profiles are cached"}
+    - {step: vpn,           does: "the NetBird peer key is generated inside the home; the bootstrap group reaches only the enrolment service; after the officer's approval the enrolment service issues a login-network machine peer (Keycloak and the enrolment service), then the client signs in through Keycloak SSO with the user's passkey and becomes a user peer in the user's groups, approved by the enrolment service against the ticket with the user role; the bootstrap peer is deleted explicitly, because a revoked key leaves its peer (ADR-0138 D7) (ADR-0122: setup keys are for machines, people get user peers whose login expiry is their network lease)"}
+    - {step: policy-cache,  does: "signed policy bundle, revocation list and time reference are cached in the home"}
+    - {step: offline-test,  does: "network disconnected, the user signs in on the stick: proves sign-in before network"}
+    - {step: record,        does: "stick issued_to the user in the register; the enrolment record (officer, user, time, image, evidence) lands in the audit chain"}
+  re-enrolment: "lost or replaced key, new stick, forgotten PIN or revocation: the same ceremony; the old home is destroyed"
+
+nac:   # enterprise network access control (802.1X) on a tenant's own networks (tools/nac.py)
+  problem: "the tenant's NAC admits PCs by the computer account of the installed OS; a booted stick is another OS and must not borrow or replace that identity"
+  credential: >-
+    one X.509 certificate per user and stick, issued at enrolment by the tenant's NAC intermediate (vdh-int-nac),
+    subject = the account's pseudonym, extended key usage clientAuth only, valid at most 30 days and renewed at every
+    online revalidation; its own key, generated on the PIV applet of the user's standard FIDO2 key by default (so it
+    cannot be copied off), or in the encrypted home where the key has no PIV. It is the only X.509 on the stick: the platform itself uses passkeys and
+    NetBird keys, so nothing is shared between the network and the platform.
+  when_offered: "only when the network asks for EAP (wired EAPOL request or an enterprise SSID from the signed tenant profile) and the RADIUS server certificate chains to the pinned tenant CA and matches the expected name"
+  method: "EAP-TLS, TLS 1.3 where the RADIUS server supports it (client certificate encrypted); anonymous outer identity; WPA3-Enterprise on Wi-Fi"
+  profiles: "per tenant in the signed policy bundle: SSIDs, wired networks, RADIUS CA pin, server name, minimum TLS, expected VLAN or role"
+  placement: "the tenant's NAC maps the certificate (policy OID for a VDHome boot stick) to a restricted role: internet egress to NetBird and the gateway only, never the corporate LAN"
+  revocation: "revoked with the passkeys, NetBird peer, user record and stick serial (RK-01, RK-04); the RADIUS server checks OCSP or a CRL; the 30-day validity bounds a missed check"
+  privacy: "per-network randomised MAC address, pseudonymous or no DHCP hostname, mDNS and LLDP off"
+  elsewhere: "no certificate is offered: open or guest network, isolated captive-portal browser, then NetBird"
+  captive_browser: "runs as a separate unprivileged user in a sandbox with no access to the home, no persistent storage and no platform destinations; closed once the network is online"
+  time: "before the tunnel only NTS-authenticated time is accepted, and never earlier than the last revalidation stored in the home (no rolling back the clock to revive expired certificates or lists)"
+
+eid:   # using the Belgian eID on the stick (remote proofing at enrolment, recovery release)
+  readers: "USB CCID-class readers and built-in CCID readers work through pcsc-lite and the CCID driver; non-CCID readers do not: tenants using eID get a known-good USB reader with the stick (like the Ethernet adapter); readers are on the tested hardware list"
+  middleware: "eid-mw PKCS#11 module, built reproducibly from source or taken from the signed upstream packages for openSUSE, pinned like any image component; handles both card generations (older RSA cards and the newer ECC cards) until each card expires"
+  key_used: "the eID authentication key, never the signature key: the signature key makes a qualified electronic signature (a legal act), which a technical request must not produce"
+  pin: "entered in a stick dialog or on a pinpad reader (secure PIN entry preferred); the eID PIN is the user's own and is never stored"
+  when: "in enrolment and recovery mode, before any home is open, so the middleware, reader drivers and dialog live in the image"
+  network: "recovery mode has no NetBird key (it is in the locked home): it bootstraps like enrolment, with a one-off setup key from the officer; the eID certificate is checked by OCSP online, or against a cached CRL at a DDIL site"
+  privacy: "the release service verifies the certificate, hashes the national register number to match the sealed register and discards the rest; the name and number are never logged in clear"
+  without_eid: "foreign staff: another eIDAS-notified eID if its middleware is packaged and tested, otherwise the in-person check with two officers"
+
+recovery:   # the escrowed passphrase: a recovery key for one stick's home, never a login to any service (tools/stick_recovery.py)
+  passphrase: "seven words from the tenant's fixed word list (EFF large list or a Dutch or French equivalent, 7776 words: about 90 bits), generated on the stick at enrolment; set as an additional homed password (its own LUKS2 key slot, Argon2id); homed's own modhex recovery key is not used, because words can be read out in DDIL"
+  nobody_sees_it: "written by the stick to the enrolment service and into OpenBao; neither the user nor the officer is shown it at enrolment"
+  escrow: >-
+    KV path tenant/<tenant>/stick-recovery/<pseudonym>/<stick> in the OpenBao instance of the user's site or group,
+    wrapped with the tenant-held key-encryption key so the VDHome operator cannot read it even with OpenBao root
+    (depends on PKI-01); every read is in the OpenBao audit log and the audit chain
+  four_eyes: >-
+    native OpenBao control group (OpenBao 2.7.0 or later) on that path: a read is wrapped and executes only after a
+    member of the site's security-officer group authorises the accessor; OpenBao sends no notification, so the
+    decision inbox shows the pending request; officers authenticate to OpenBao through Keycloak with a passkey step-up
+    and can approve but never read the path themselves
+  the_user: >-
+    the user signs this very request (pseudonym, stick, nonce) with their Belgian eID on the stick's card reader; the
+    release service checks the chain and revocation and matches the eID holder to the pseudonym through a hash of the
+    national register number kept in the sealed identity register. Without a Belgian eID: another eIDAS-notified eID at
+    substantial or high, or an in-person ID check with two officers approving
+  delivery: "the unwrapped passphrase goes to the stick encrypted to its session key and opens the home without anyone seeing it; only in DDIL without a path to the stick does the officer's console show the words, to be typed by the user"
+  after_use: "single use: the stick generates a new passphrase, escrows it, removes the old key slot; rotated yearly in any case"
+  why_safe: "the passphrase opens only that stick's home: the officer alone has no stick, the thief alone has no eID and no approval"
+
+release_modes:   # who must be involved before the user's encrypted home opens (tools/stick_release.py)
+  self: "the user's FIDO2 key or smartcard with PIN alone; works fully offline"
+  four-eyes-online: >-
+    the home key is split: the user's FIDO2 key unlocks one share, the key access service holds the other. After the
+    user proves presence (FIDO2 with PIN, unlocking nothing), the stick joins a bootstrap network that reaches only the
+    release service (NetBird bootstrap group); a security officer, already signed in on their own connected device,
+    approves this user, this stick and this request; the approval is signed, single-use and valid for 10 minutes; then
+    the share is released, the home opens and the full VPN starts. Not available offline.
+  four-eyes-in-person: >-
+    for DDIL: the officer is physically present and touches their own FIDO2 key; the two FIDO2 shares are combined
+    (2-of-2 secret sharing) offline. Both persons and the stick are logged and synchronised at the next revalidation.
+  by_label: {Internal: self, Sensitive: self, Restricted: four-eyes-online}
+  risk_triggers_enabled: false   # optional per tenant; the four eyes that always apply are at enrolment
+  risk_triggers: [first-sign-in-on-this-stick, new-hardware, image-changed, offline-limit-exceeded, posture-failed, revocation-list-stale, travel-flagged]
+  officers: "at least two security officers per tenant with a deputy roster, so release is never a single point of failure"
+  enforcement: "switched on per tenant, group or label through platform/enforcement-rollout.yaml (announce, observe, warn, enforce)"
+  privacy: "every release shows who approved whom and when: inform staff and the works council where employee monitoring rules apply"
+  order_change: "in four-eyes-online mode the sign-in stage unlocks nothing; network and release come before the home opens"
+
+offline_limits:   # how long a stick may run on cached identity and policy before it must revalidate
+  Internal: {max_offline_hours: 168, offline_work: "cached vault documents in the encrypted home"}
+  Sensitive: {max_offline_hours: 24, offline_work: "none: sign-in offline only unlocks the device and prepares the network"}
+  Restricted: {allowed: false, why: "the managed device floor applies; were a tenant to allow a stick for Restricted, four-eyes-online release is required"}
+
+persistence:
+  where: "a LUKS2 partition per user on the stick, managed by systemd-homed; nothing in the read-only image is personal"
+  holds: [user record (signed), NetBird peer key, cached policy bundle, cached revocation list, browser profile, Wi-Fi profiles, small document cache (Internal only)]
+  unlock: "FIDO2 hmac-secret or PKCS#11 smartcard, both with PIN; two keys enrolled per user (the backup FIDO2 key)"
+  never: [passwords, platform tokens beyond their lifetime, Sensitive documents at rest, the user's real name or tenant name outside the encrypted home]
+  document_cache: "off by default; a tenant may enable a small Internal cache, accepting that a lost stick with key and PIN exposes it"
+  integrity: "systemd-homed offers no authenticated encryption (verified 2026-10-07): the home is LUKS2 without dm-integrity, so a stick that left custody is never trusted again and is wiped and re-enrolled"
+  loss: >-
+    stick alone: ciphertext and a public image, nothing to brute-force (the key comes from the FIDO2 token, not the PIN).
+    Stick with key: 8 PIN attempts, then the key locks. Stick with key and PIN: the user, until revoked; the home opens
+    on any Linux machine, so offline limits do not protect what is at rest, only what needs the platform. On report:
+    passkeys, NetBird peer, user record and stick serial revoked at once (within the hour); never reuse a found stick.
+  recovery: "order: primary FIDO2 key, backup key, escrowed recovery passphrase (four eyes plus the user), re-enrolment (old data gone)"
+
+image_bom:   # inside the stick image; the platform BOM covers what runs on servers
+  - {item: "kernel with broad hardware modules", why: "arbitrary laptops"}
+  - {item: linux-firmware, why: "Wi-Fi, Ethernet, GPU and Bluetooth firmware", licence_note: "redistributable binary firmware, not open source: listed as a declared exception, verified by hash"}
+  - {item: "Mesa and kernel display drivers (i915, amdgpu, nouveau, modesetting)", why: "display on any laptop"}
+  - {item: systemd-homed and systemd-cryptenroll, why: "portable encrypted homes, FIDO2 and PKCS#11 unlock"}
+  - {item: libfido2, why: "FIDO2 keys over USB and NFC (Yubico, SE)"}
+  - {item: "pcsc-lite, CCID driver, OpenSC", why: "smartcard readers and PIV or PKCS#11 cards"}
+  - {item: "Belgian eID middleware (eid-mw, Fedict, LGPL-3.0)", why: "required in the image (not the home) wherever a tenant uses eID for remote proofing or recovery: the card is used before any home is open", required_when: eid}
+  - {item: wpa_supplicant with pkcs11-provider, why: "802.1X EAP-TLS with the key on the PIV applet under OpenSSL 3; pinned, smoke-tested per image"}
+  - {item: NetworkManager, why: "Wi-Fi, Ethernet, captive portal detection"}
+  - {item: NetBird client, why: "people overlay"}
+  - {item: OPA, why: "local decisions from the cached bundle"}
+  - {item: RAUC, why: "A/B image updates"}
+  - {item: "Firefox ESR with enterprise policies (platform/placement.yaml, browser)", why: "browser and VDI routes; platform origins only"}
+
+hardware:
+  compatibility: "a tested hardware list per image release (hardware-in-the-loop on reference laptops); unknown hardware boots but is flagged in posture"
+  fallback: "every stick ships with a known-good USB Ethernet adapter, so a missing Wi-Fi driver never blocks work"
+  unsupported: "laptops whose firmware cannot boot a third-party signed image (Secure Boot without MOK enrolment or USB boot locked) use a terminal issued by the tenant, or the browser route for users only; officer acts never use the browser route (ADR-0138 D1)"
+
+invariants:
+  - "without the user's FIDO2 key or smartcard and PIN the stick reveals nothing personal: a found stick is a blank installer"
+  - "no stage before 'network' needs the network; no stage after 'network' trusts anything not revalidated online"
+  - "policy and identity cached on the stick are signed and carry their age; beyond the label's maximum the stick only bootstraps the network"
+  - "a stick below the tenant's image_version_min cannot sign in"

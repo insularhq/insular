@@ -1,0 +1,51 @@
+# Compensations for exposed components with a heavy advisory record (tools/contracts.py: priority = exposure x
+# posture). Every entry pins the version in platform/stack.lock.yaml and is bound by the patch SLA in
+# catalog/contracts.yaml; the rest reduces what an attacker can reach. Hand-maintained: re-measuring the advisory
+# posture never overwrites this file.
+components:
+  Warpgate:
+    - "reachable only inside the WireGuard overlay, never from the internet; passkey or OIDC sign-in through Keycloak"
+    - "per-operation target accounts issued by OpenBao, never stored in Warpgate"
+    - "sessions recorded into the audit store; the management network accepts connections only from the bastion"
+    - "version pinned; patch SLA (critical 72 hours); Teleport or plain SSH certificates from OpenBao as the exit"
+  Synapse:   # ADR-0114: the Matrix homeserver, community edition
+    - "admin API (/_synapse/admin) never routed to tenants: reachable only through the operator path (Warpgate or WireGuard)"
+    - "sign-in only through Keycloak (OIDC); local passwords and open registration off"
+    - "federation off by default; where a tenant federates, an allow-list of servers per tenant"
+    - "URL previews off (no server-side fetches on a user's behalf); media upload size and rate limits per tenant"
+    - "behind Envoy Gateway with Coraza and the OWASP Core Rule Set; one homeserver per tenant"
+    - "version pinned; patch SLA (critical 72 hours); Tuwunel is the registered alternate (Matrix APIs are shared)"
+  Keycloak:
+    - "admin console and admin API on a separate hostname, reachable only through the operator path (Warpgate or WireGuard), never through tenant routes"
+    - "passkey-only flows: no password, reset or registration endpoints exposed (ADR-0056)"
+    - "behind Envoy Gateway with Coraza and the OWASP Core Rule Set; one realm per tenant"
+    - "version pinned; patch SLA (critical 72 hours)"
+    - "Keycloak events to the log store; brute-force detection on"
+  Envoy Gateway:
+    - "control plane never exposed; only the data plane listens"
+    - "overload manager, connection and HTTP/2 and HTTP/3 stream limits per cell"
+    - "Cilium policy around every gateway cell; one cell per label and site"
+    - "version pinned; patch SLA (critical 72 hours)"
+  Envoy:
+    - "runs only as the Envoy Gateway data plane (same pinning and patch SLA)"
+    - "minimal listener and filter set generated from CALM; no admin interface exposed"
+    - "Cilium policy around every gateway cell"
+  Coraza:
+    - "rules only from the signed bundle; paranoia level set per route"
+    - "OWASP CRS regression tests (go-ftw) in CI before a rule or engine update ships"
+    - "a failed load blocks the route, never bypasses the firewall"
+    - "version pinned; patch SLA (critical 72 hours)"
+  Cilium:
+    - "agent, operator and Hubble relay never exposed; Hubble relay internal only"
+    - "network policies generated from CALM and tested (cyclonus, own policy tests)"
+    - "version pinned; patch SLA (critical 72 hours); kernel hardening on SUSE Micro"
+  NetBird:
+    - "management on its own gateway cell with WAF and rate limits; admin API only through the operator path"
+    - "relays carry end-to-end encrypted WireGuard traffic only"
+    - "the tunnel grants login surfaces only, never data (ADR-0056)"
+    - "version pinned; patch SLA (critical 72 hours)"
+  Nextcloud:
+    - "optional module for Internal data only (ADR-0068)"
+    - "behind Envoy Gateway with Coraza; app store disabled, apps from an allow-list"
+    - "brute-force protection on; sign-in only through Keycloak"
+    - "version pinned; patch SLA (critical 72 hours)"

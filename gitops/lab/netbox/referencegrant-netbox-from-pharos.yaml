@@ -1,0 +1,7 @@
+# NetBox's route lives in the pane's namespace, behind the pane's sign-in and PDP gate (ADR-0171 point 2)
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata: {name: netbox-from-pharos, namespace: vdh-netbox}
+spec:
+  from: [{group: gateway.networking.k8s.io, kind: HTTPRoute, namespace: vdh-pharos}]
+  to: [{group: "", kind: Service, name: netbox}]

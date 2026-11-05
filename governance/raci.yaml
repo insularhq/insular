@@ -1,0 +1,28 @@
+# Responsibility split (RACI) between VDHome as infrastructure provider and the client. Shared-responsibility model:
+# VDHome runs and monitors the platform but is blind to content (separation.yaml); the client owns its data, its
+# users and its legal duties as controller. R = responsible, A = accountable, C = consulted, I = informed.
+# Exactly one A per activity (tested).
+parties: [vdhome, client, client-dpo, hosting-provider, authority]
+
+activities:
+  platform-security-monitoring:   {vdhome: A/R, client: I}
+  tenant-content-monitoring:      {client: A/R, vdhome: "-"}      # VDHome cannot see content
+  detection-rules-platform:       {vdhome: A/R, client: C}
+  incident-triage-platform:       {vdhome: A/R, client: I}
+  incident-triage-tenant-content: {client: A/R, vdhome: C}
+  containment-platform:           {vdhome: A/R, client: I}
+  containment-tenant:             {client: A, vdhome: R}          # VDHome executes kill switches on client request or per pre-agreed playbook
+  notify-client-of-breach:        {vdhome: A/R, client: I}        # processor duty: without undue delay (GDPR art. 33(2))
+  notify-supervisory-authority:   {client: A/R, client-dpo: C, vdhome: C}   # controller duty (art. 33), 72 hours
+  notify-data-subjects:           {client: A/R, client-dpo: C, vdhome: C}   # art. 34 when high risk
+  nis2-reporting:                 {client: A/R, vdhome: C}        # only if the client is an essential/important entity
+  dpia:                           {client: A/R, client-dpo: C, vdhome: C}   # VDHome supplies the platform part (template, measures)
+  records-of-processing-processor: {vdhome: A/R}                  # art. 30(2)
+  sub-processor-management:       {vdhome: A/R, client: I, hosting-provider: C}
+  user-lifecycle:                 {client: A/R, vdhome: "-"}
+  key-custody-tenant:             {client: A/R, vdhome: "-"}
+  root-of-trust-platform:         {vdhome: A/R, client: I}
+  patching-platform:              {vdhome: A/R, client: I}
+  physical-and-hypervisor:        {hosting-provider: R, vdhome: A}
+  post-incident-review:           {vdhome: A/R, client: C}
+  evidence-and-audit-export:      {vdhome: A/R, client: I}

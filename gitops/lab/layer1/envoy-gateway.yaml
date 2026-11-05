@@ -1,0 +1,14 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata: {name: envoy-gateway, namespace: envoy-gateway-system, annotations: {vdh.component: "Envoy Gateway", vdh.app-version: "v1.9.2"}}
+spec:
+  interval: 30m
+  timeout: 10m
+  chartRef: {kind: OCIRepository, name: chart-gateway-helm, namespace: flux-system}   # chart gateway-helm v1.9.2, locked and signed
+  # a transient failure (a hook Job on a loaded node) is retried, never left Stalled for a person
+  install: {crds: CreateReplace, remediation: {retries: 3}}
+  upgrade: {crds: CreateReplace, remediation: {retries: 3}}
+  postRenderers:   # the chart's images pinned by digest
+    - kustomize:
+        images:
+          - {name: docker.io/envoyproxy/gateway, digest: "sha256:9d67017c442a70e6ae9f1a358e6c80eb653c67c2e40823d9a991e0daf37ba926"}

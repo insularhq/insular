@@ -1,0 +1,38 @@
+# Code is the documentation: nothing runs unless it is declared, and documentation is generated from the declarations.
+# GitOps topology: central forge for VDHome, a forge per client instance and per edge site, all plain git so any
+# copy can be the source after a split.
+doctrine:
+  - "a service without a CALM node, pack controls and a runbook does not deploy (admission and CI gate)"
+  - "a manual change is drift: detected, alerted, reverted or turned into a merge request"
+  - "runbooks, SSP, RACI, notification letters and diagrams are generated from the model; hand-written text only explains why"
+  - "every generated document carries the commit it came from; a stale document fails the build"
+
+forges:
+  central:
+    tool: "a hosted forge, or Forgejo self-hosted on the VDHome core for independence from a SaaS (ADR-0063)"
+    holds: [model, packs, rule packs, images, release signing, VDHome's own issues]
+  client-instance:
+    tool: "Forgejo (GPL-3.0-or-later; fork of Gitea since 2022; developed under Codeberg e.V., Berlin)"
+    why: "light, self-hosted, Actions-compatible CI, packages and container registry, EU home, community governed"
+    over: "Gitea: same features, but stewarded by a for-profit company since 2022 (ADR-0186)"
+    upstream: contribute
+    decided_by: ADR-0186
+    holds: [the client's overlays (tighten only), client issues and feedback, mirrors of signed releases]
+  edge-site:
+    tool: "Forgejo mirror or a bare git mirror"
+    upstream: contribute
+    decided_by: ADR-0186
+    holds: [signed release and policy mirrors for DDIL; local issues queued for upstream]
+
+flow:
+  down: "signed tags and bundles from central, pulled by instances and sites (pull, never push into a tenant)"
+  up: "evidence and signed lights via the assurance plane; client feedback as issues mirrored upward with consent"
+  split_brain: "an instance keeps running from its last signed tag; reconciliation follows the DDIL order"
+
+feedback:
+  channels:
+    - "Forgejo issues on the client's instance (templates: bug, request, security finding)"
+    - "GLPI tickets (mail gateway) for those who prefer mail; Zammad is retired (one ITSM tool)"
+    - "quarterly review with the client"
+  security_findings: "private issues or security.txt contact; coordinated disclosure"
+  federation: "ForgeFed (NLnet-funded) is not yet mature enough to rely on; mirror issues instead"

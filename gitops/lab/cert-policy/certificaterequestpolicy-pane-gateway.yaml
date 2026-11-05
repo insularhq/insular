@@ -1,0 +1,14 @@
+# The pane's CA signs only the gateway's names under the ring's domain, for at most a week
+apiVersion: policy.cert-manager.io/v1alpha1
+kind: CertificateRequestPolicy
+metadata: {name: pane-gateway}
+spec:
+  allowed:
+    dnsNames: {values: ["pharos.${ring_domain:=lab.vdh.test}", "netbox.${ring_domain:=lab.vdh.test}", "id.${ring_domain:=lab.vdh.test}", "cloud.${ring_domain:=lab.vdh.test}", "matrix.${ring_domain:=lab.vdh.test}", "chat.${ring_domain:=lab.vdh.test}", "git.${ring_domain:=lab.vdh.test}"], required: true}
+    usages: ["digital signature", "key encipherment", "server auth"]
+  constraints:
+    maxDuration: 168h
+    privateKey: {algorithm: ECDSA, minSize: 256}
+  selector:
+    issuerRef: {name: lab-ca, kind: Issuer, group: cert-manager.io}
+    namespace: {matchNames: [vdh-pharos]}

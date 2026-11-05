@@ -1,0 +1,107 @@
+# Identity federation (ADR-0078): where federation happens, layer by layer, and the duties that come with it.
+# Authentication federates broker to broker, attributes and signals federate at the PIP,
+# decisions and enforcement stay local; reviewed against NIST SP 800-63C, SP 800-162, SP 800-207, RFC 8693,
+# OpenID SSF and the eIDAS 2.0 ARF (nothing refuted; 11 amendments adopted below). Checked by tools/infra_trust.py.
+
+layers:
+  idp:    {federates: false, does: "masters people for one tenant; replicates them to that tenant's own site brokers by SCIM (tenant-internal replication, never cross-tenant account provisioning)"}
+  broker: {federates: true, what: authentication, does: "a federation proxy (NIST 63C): issuer of every assertion it makes; takes trust-framework decisions only (is this issuer admitted, what is its ceiling), never access decisions"}
+  pip:    {federates: true, what: "attributes and signals", does: "imports foreign attributes and signals tagged per attribute with source and trust anchor, capped by the anchor's ceiling; unknown anchor or missing assurance is denied"}
+  pdp:    {federates: false, does: "decides locally with the domain's own policy and supersession; the resource-owning domain's PDP is always authoritative; a site that can be cut off holds its own PDP, policy and attribute cache"}
+  pep:    {federates: false, does: "enforces locally; never configured by another domain"}
+
+topologies:
+  in-tenant:   "parent and child sites of one tenant: SCIM replication of people, the child broker trusts the parent's trust anchor"
+  parent-child: "across tenants with a parent (VDHome core, a coalition lead): broker to broker under the parent's trust anchor"
+  peer:        "brokers of peers federate under a shared trust anchor or bilateral trust marks; exchange chains at most two hops deep"
+
+trust_framework:
+  standard: "OpenID Federation 1.0: trust anchors per parent or coalition, entity statements, trust marks for assurance class"
+  offline: "trust chains are cached with a bounded expiry and keep working while the WAN is down; an emergency revocation list can arrive by any channel, including removable media"
+  fallback: "signed metadata bundles from the parent, verified like policy bundles"
+
+assurance_mapping:   # foreign assurance -> local trust ceiling (policies/model.yaml trust bands); min() along every hop
+  eidas-high: high
+  eidas-substantial: medium
+  eidas-low: low
+  nist-ial3-aal3-fal3: high
+  nist-ial2-aal2-fal2: medium
+  self-asserted: low
+  unknown: deny
+
+amendments:   # from the review of this model; where each is enforced
+  A01: {rule: "a broker is a federation proxy: issuer of its assertions; FAL is the minimum over the path; the original issuer and anchor ride along as a signed provenance claim", where: broker}
+  A02: {rule: "the broker takes trust-framework decisions only, never access decisions; ceilings come from a locally held, signed anchor-to-ceiling table", where: broker}
+  A03: {rule: "trust between brokers comes from the trust framework (OpenID Federation anchors and trust marks), never from the brokers themselves", where: trust_framework}
+  A04: {rule: "anchors are tagged per attribute, not per token; unknown anchor or missing assurance is denied", where: pip}
+  A05: {rule: "pairwise subject identifiers per receiving broker; no stable cross-tenant subject", where: broker}
+  A06: {rule: "token exchange is audience-restricted, scope-reduced and short-lived; foreign acr, amr and roles are never copied without the mapping table; exchange depth is capped at two; every exchange is logged", where: broker}
+  A07: {rule: "a WAN-down profile per resource class: staleness budgets, a SCIM deprovisioning bound, SSF reconciliation on reconnect, fail-closed for high-impact actions and cached allow only for low-impact ones", where: pdp}
+  A08: {rule: "SSF and CAEP events are advisory input to the local PDP, with a per-peer event-type allow-list and rate limits; a foreign event never changes local state without local policy", where: pip}
+  A09: {rule: "decision logs shared with peers follow a signed, minimal schema; the PDP itself is never shared", where: pdp}
+  A10: {rule: "an EUDI wallet verifier slot at the broker and PEP edge: PID and attestations verified locally, offline presentation supported", where: broker}
+  A11: {rule: "parent-child inside one tenant is replication; cross-tenant is federation; the two are never mixed in one hop", where: idp}
+  A12: {rule: "a temporary Isle (ADR-0116, ADR-0117) relays, caches, aggregates, serves locally and passes on revocations for the PoPs of its ring, and never creates trust for them (RI-19); it is elected among current ring members only, holds a short lease and yields to any Isle (RI-20)", where: pdp}
+  A13: {rule: "a NetBird relay runs on every Isle and Islet; a Skiff whose Islet is down reaches the overlay through any of them and is served by another site of its ring under its own lease, never with a new grant and never outside its ring (RI-21, ADR-0118)", where: pep}
+
+partner_trust:   # ADR-0149: a partner's security posture earns trust by evidence; checked and computed by tools/infra_trust.py
+  risks: [RI-26]
+  contract: "the same for every partner, whoever runs it: outcomes and the evidence that shows them; never the partner's policy text or risk register"
+  # ADR-0149 amendment 2026-10-14 (FTEF decision 0001): six classes over six axes, not one ladder of five rungs.
+  # FTEF 0.1 (ftef-spec/spec, section 5.3) is the authoritative definition of the axes; ceilings here are our policy
+  # and MUST NOT exceed the FTEF maximum for the class (tools/infra_trust.py CLASS_MAX).
+  axes: {source: [first-party, second-party, third-party, verifier], assessor: [none, accredited, mutually-recognised],
+         time_basis: [point-in-time, period, continuous, at-access], binding: [unsigned, signed, signed-transparent, hardware-rooted],
+         scope: [full, partial, none], liability: [none, contractual, legal]}
+  classes:   # ceiling = best band the class can give; fresh_days = how long one piece of evidence stays fresh
+    - {id: self-declared,             ceiling: low,    fresh_days: 365, examples: "Sirtfi, CSA STAR level 1, a declaration of conformity, most trust marks"}
+    - {id: self-measured,             ceiling: medium, fresh_days: 1,   examples: "the partner's own signed continuous indicators (OSCAL assessment results, FedRAMP 20x-style)"}
+    - {id: observed,                  ceiling: low,    fresh_days: 7,   examples: "our own probes and outside-in measurement at the seam"}
+    - {id: assessed-by-relying-party, ceiling: medium, fresh_days: 365, examples: "our own audit or test under contractual audit rights"}
+    - {id: independently-assessed,    ceiling: medium, fresh_days: 365, examples: "ISO 27001, CSA STAR level 2, IDSA certification, Gaia-X labels, by a recognised assessor"}
+    - {id: attested,                  ceiling: high,   fresh_days: 1,   examples: "RATS appraisal of the partner's enforcing component (EAT, AR4SI), hardware-rooted"}
+  band: "min(ceiling of the best fresh class, ceiling of the partner's trust anchor, cap of its ladder state); a stale item counts one band lower; no evidence is none"
+  equivalence: "never inferred by comparing policy texts: either both satisfy a named profile at a level (TISAX, IEC 62443 profiles, eIDAS levels), or an explicit mapping signed by the party that owns it (ADatP-4774 alternative label, NIST SP 800-47 per exchange); bounded by a ceiling and a validity"
+  exchange: "a level with its scope per area or zone (target, achieved, capability, IEC 62443), an outlook and a watch flag; the evidence stays with the issuer and we decide locally (NIST SP 800-37 reciprocity)"
+  status_carrier: "a signed status with history read at the moment of use within a ttl: OpenID Federation trust mark status, IETF Token Status List (VALID, SUSPENDED, INVALID), ETSI TS 119 612 style history"
+  duty_to_report: "the partner reports posture changes and incidents within the contract's time; not reporting is itself a trigger (Mozilla root store practice)"
+  ladder:   # ADR-0149 amendments: moves down on events, at once; moves up on evidence and a decision, one state at a time
+    member:     {cap: high,  freshness: 1.0, triggers: "joined with evidence"}
+    joining:    {cap: none,  freshness: 1.0, up_to: member, up_when: "admission: evidence complete, decided by a named person", triggers: "contract signed, or re-admission after withdrawal"}
+    watch:      {cap: high,  freshness: 0.5, up_to: member, up_when: "two fresh presentations on time and the outlook no longer negative", triggers: "a negative outlook, a minor finding, a late report: evidence must be re-presented twice as often (Paris MoU tighter interval)"}
+    restricted: {cap: low,   freshness: 0.5, limits: true, up_to: watch, up_when: "the remediation milestones met and evidenced", triggers: "a confirmed finding with a remediation plan and milestones; the acceptance limits apply whatever the band"}
+    suspended:  {cap: none,  freshness: 0.5, reversible: true, up_to: watch, up_when: "fresh evidence on the rung it lost", triggers: "a downgrade event (SSF, CAEP, trust mark status SUSPENDED), an unreported incident, a missed milestone"}
+    withdrawn:  {cap: none,  freshness: 0.0, reversible: false, up_to: joining, up_when: "joining again with full evidence", triggers: "trust mark withdrawn, repeated failure, a whole domain whose oversight failed"}
+  directions:   # trust and risk move both ways (ADR-0078)
+    down: "automatic and immediate: a downgrade event, stale evidence or a world-state rise lowers the band, moves the partner down the ladder and voids acceptances"
+    up: "earned: fresher or better evidence lifts the band at once within the state's cap (computed, like a host's band); a move up the ladder is an increase action (governance/autonomy.yaml: human), one state at a time, recorded and loud like every policy change"
+    world_state: "re-evaluated both ways (platform/adaptive-policy.yaml world_state_change): a rise shortens how long evidence stays fresh and voids acceptances decided at a lower level; a fall restores freshness at once; an acceptance voided by a rise stays void and is decided again"
+  world_state_freshness: {normal: 1.0, elevated: 0.5, high: 0.33, severe: 0.2}   # multiplies fresh_days; the levels of platform/adaptive-policy.yaml
+  lifecycle: [member, watch, restricted, suspended, joining, withdrawn, exited]   # most trusted first (FTEF 0.1, 5.6; decision 0002): admission joining -> member is a decided move up; NATO FMN-style joining, membership and exit
+  acceptance:   # trusting a partner above its evidence is a risk acceptance (governance/governed-actions.yaml accept-risk)
+    fields: [by, role, decided, until, band, reason, residual, record, world_state]
+    max_days: 90
+    max_band: medium
+    loud: partner-trust-accepted   # alert class in platform/observability.yaml
+    void_on: [until, downgrade-event, world-state-rise]   # a downgrade event moves the partner to suspended or worse
+    limits: [no-restricted-data, no-transit, no-automatic-actions-on-its-events, half-lease-validity]
+    release_conditions: [release-on-attestation]   # FTEF 6.5: data or keys released only on attestation at the moment of access (was the class attested-release)
+  common_mode: "partners that share our policy source or our release count as one for quorum, two-person and independence checks"
+  recourse: [incident-contact, response-time, posture-change-notice, exit]
+  partners:   # fictional examples (vdh-prefixed) that exercise the checker; real partners are tenant data
+    vdhPartnerLab: {anchor: signature, evidence: {attested: "2026-10-14", independently-assessed: "2026-03-01"}, shares: [policy-source]}
+    vdhSupplierX:  {anchor: signature, evidence: {self-declared: "2026-06-01"}, shares: [],
+                    acceptance: {by: "tenant risk owner (fictional)", role: risk_owner, decided: "2026-10-14", until: "2027-01-12", band: medium, reason: "a supplier portal needed for a named project; an audit report promised by 2026-12-31", residual: {L: 3, I: 3}, record: ADR-0149, world_state: normal}}
+
+machine_identity: "workloads federate through SPIFFE federation (bundle endpoints) under the same rules: per-domain trust anchors, no shared signing keys, ceilings per foreign trust domain"
+harbor:   # ADR-0151: what a partner may send through a ring's Harbor, by class, from its live FTEF state and band
+  report_valid_minutes: 3   # an older evaluator report counts as unreported: management only
+  classes:
+    management: {states: [member, watch, restricted, suspended], min_band: none, unreported: true,
+                 carries: "the partner's state events, agreed log excerpts, evidence: what re-evaluates it"}
+    telephony:  {states: [member, watch, restricted, suspended], min_band: none, unreported: false,
+                 carries: "Matrix: people coordinate an incident"}
+    data-plane: {states: [member, watch], min_band: medium, unreported: false,
+                 carries: "documents and services"}
+  ladder: {down: "automatic on the partner's own events (FTEF downTriggers)",
+           up: "a recorded decision, one ladder step, on evidence issued after the fall and before the decision"}

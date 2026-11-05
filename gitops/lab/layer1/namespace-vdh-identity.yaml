@@ -1,0 +1,6 @@
+# created in layer 1, before any child Kustomization, so segmentation's policies and the
+# workloads always find their namespace; never pruned, so moving it here cannot delete it on a running ring.
+# Pharos (ADR-0115): Keycloak, the model's identity broker, on the lab.
+apiVersion: v1
+kind: Namespace
+metadata: {name: vdh-identity, annotations: {kustomize.toolkit.fluxcd.io/prune: disabled}, labels: {vdh.component: identity}}

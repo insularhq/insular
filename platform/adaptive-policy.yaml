@@ -1,0 +1,136 @@
+# Adaptive policy: fresh signals about the subject, its device, its place, the time and the world become a risk band;
+# each request path states the worst band it tolerates. The focal point (OPA) still decides; the band is one more
+# timestamped context signal (tools/adaptive.py). Unknown is never green. Every refusal fails loudly: the person sees
+# what happened, why (a reason code), what to do and whom to contact, unless the reason must stay discreet.
+# Prior art: NIST SP 800-207 trust algorithm (contextual, score-based), OpenID Shared Signals and CAEP (continuous
+# access events between systems), RFC 9457 problem details for machine-readable refusals.
+
+signals:   # name: source, maximum age in minutes, whether a missing value counts as risk
+  role:            {source: "Keycloak roles and labels", max_age: 60}
+  persona_status:  {source: "sealed identity register: normal, under-review, suspended (set by the security officer)", max_age: 15}
+  device_posture:  {source: "image measurement, osquery via the evaluator, Keylime on managed devices", max_age: 30}
+  network:         {source: "802.1X with the tenant NAC, NetBird network-range check", max_age: 10}
+  location:        {source: "country of the public IP (NetBird geo check) and the tenant's allowed countries", max_age: 10}
+  time_of_day:     {source: "the subject's role time window in the tenant's time zone", max_age: 1}
+  ip_reputation:   {source: "reputation of the public IP (optional feed, e.g. CrowdSec CTI, FR)", max_age: 60, optional: true}
+  environment:     {source: "site risk band from the reconnect pipeline (tools/rejoin.py) and edge DDIL state", max_age: 30}
+  world_state:     {source: "threat level set by the security officer, informed by CCB/CERT.be advisories and MISP (CIRCL, LU) feeds", max_age: 1440}
+  behaviour:       {source: "anomalies from the evaluator (impossible travel, unusual volume, failed step-ups)", max_age: 30}
+
+weights:   # added to the score; hard rules below override the score
+  device_posture: {ok: 0, outdated: 2, failed: 5}
+  network: {enterprise: 0, known: 1, unknown: 2}
+  location: {allowed: 0, unusual: 2, blocked: 6}
+  time_of_day: {inside: 0, outside: 2}
+  ip_reputation: {clean: 0, suspicious: 2, malicious: 6}
+  environment: {green: 0, amber: 2, red: 5}
+  behaviour: {none: 0, anomaly: 3}
+  world_state: {normal: 0, elevated: 1, high: 2, severe: 4}
+  missing_signal: 2   # a required signal that is missing or stale
+
+bands:   # score upper bounds; above amber is red
+  green: 1
+  amber: 4
+
+hard_rules:   # checked first; deny overrides. sticky: a stale deny keeps its band until a fresh contrary value replaces it
+  - {when: "persona_status == suspended", band: black, reason: PERSONA_SUSPENDED, sticky: true}
+  - {when: "persona_status == under-review", band: red, reason: PERSONA_UNDER_REVIEW, sticky: true}
+  - {when: "device_posture == failed", band: red, reason: DEVICE_POSTURE_FAILED, sticky: true}
+  - {when: "location == blocked", band: red, reason: LOCATION_BLOCKED, sticky: true}
+  - {when: "ip_reputation == malicious", band: red, reason: IP_MALICIOUS, sticky: true}
+
+path_tolerance:   # the worst band a request path accepts; amber may require step-up
+  "Sensitive write":   {max: green}
+  "Sensitive read":    {max: amber, amber_requires: step-up}
+  "Internal":          {max: amber}
+  "remote browser":    {max: amber}
+  "status and help":   {max: red}   # always reachable unless black, so the person is told why
+
+band_effects:
+  green: "normal access per label"
+  amber: "step-up by CIBA where the path asks; Sensitive read-only; remote browser allowed"
+  red: "everything denied except the status and help service; NetBird moves the peer to the quarantine group, which reaches only that service"
+  black: "credentials revoked (passkeys, NetBird peer, 802.1X certificate, user record); the stick shows the state screen offline from its cached revocation list"
+
+workload_profiles:   # dynamic profile of a remote browser (Neko) session
+  open: "egress only to the signed allow-list through every perimeter (platform/egress.yaml); ingress only from its owner through the gateway"
+  isolated: "no internal and no external traffic: a quarantine label makes Cilium deny all ingress and egress except the control channel; the session shows a state page"
+  isolate_when: [owner band red or black, image not attested, perimeter drift detected, egress incident open, world_state severe]
+
+fail_loudly:
+  surfaces:
+    - "stick state screen before and after sign-in (cached reasons work offline)"
+    - "gateway interstitial page (HTML) and RFC 9457 problem details (APIs) with the reason code and a reference id"
+    - "NetBird quarantine group: reaches only the status and help service"
+    - "a personal 'my access' view in the decision inbox: current band, reasons, what to do"
+    - "Warning: 299 header while a rollout is in warn mode (platform/enforcement-rollout.yaml)"
+  every_message_has: [what happened, reason code, what to do, whom to contact, reference id, time]
+  languages: [en, nl, fr]
+  disclosure:
+    full: "the reason is shown as it is"
+    discreet: "a neutral text ('access temporarily suspended, contact your security officer') is shown; the real reason is logged and visible to the security officer only"
+    default_discreet: [PERSONA_UNDER_REVIEW, PERSONA_SUSPENDED, IP_MALICIOUS]
+    override: "the security officer sets disclosure per case (for example full for a routine review, discreet during an investigation)"
+
+reasons:   # code: user-facing text (en), what to do
+  NOT_ENTERPRISE_NETWORK: {text: "You are not connected to the enterprise network.", todo: "Connect to an enterprise network or use the remote browser."}
+  PERSONA_UNDER_REVIEW: {text: "Your access is under review.", todo: "Contact your security officer."}
+  PERSONA_SUSPENDED: {text: "Your access is suspended.", todo: "Contact your security officer."}
+  DEVICE_POSTURE_FAILED: {text: "This device did not pass its security check.", todo: "Restart from the stick or contact support with the reference."}
+  DEVICE_OUTDATED: {text: "This device needs an update.", todo: "Connect and let the update finish."}
+  LOCATION_BLOCKED: {text: "Access is not allowed from this country.", todo: "Contact your security officer if you are travelling for work."}
+  OUTSIDE_HOURS: {text: "Access is outside your working hours.", todo: "Ask your risk owner for an exception."}
+  IP_MALICIOUS: {text: "This network is not trusted.", todo: "Use another network."}
+  SITE_AT_RISK: {text: "Your site is reconnecting and under review.", todo: "Wait for the site to be cleared."}
+  THREAT_LEVEL_HIGH: {text: "The threat level is raised: some actions need extra confirmation.", todo: "Confirm with your key when asked."}
+  SIGNAL_MISSING: {text: "We could not verify your situation.", todo: "Reconnect; if it persists, contact support with the reference."}
+  BEHAVIOUR_ANOMALY: {text: "Unusual activity was detected.", todo: "Confirm with your key when asked."}
+
+# --- dynamic trust and risk from real-time sensors -------------------------------------------------------------------
+# Risk (above) is how bad the situation looks; trust is how much the evidence about the subject is worth. Decisions
+# need both: a path names the minimum trust and the worst risk band it accepts.
+
+sensors:   # who measures what, and how it reaches the decision point
+  osquery:   {measures: device_posture, attested: false, path: "OpenTelemetry Collector to the evaluator"}
+  keylime:   {measures: device_posture, attested: true, path: "verifier webhook to the evaluator"}
+  image:     {measures: device_posture, attested: true, path: "TPM-measured stick or host image, quoted at sign-in"}
+  netbird:   {measures: network, attested: false, path: "posture checks at the management service"}
+  nac:       {measures: network, attested: true, path: "802.1X success at the tenant's RADIUS (ADR-0054)"}
+  falco:     {measures: behaviour, attested: false, path: "events through the collector"}
+  hubble:    {measures: behaviour, attested: false, path: "flows through the collector; unknown seams raise anomalies"}
+  keycloak:  {measures: role, attested: true, path: "token claims and events"}
+  register:  {measures: persona_status, attested: true, path: "sealed identity register, signed change by the security officer"}
+  officer:   {measures: world_state, attested: true, path: "signed world-state record from the security officer"}
+  egress:    {measures: environment, attested: true, path: "perimeter drift and incidents (tools/egress.py)"}
+  rejoin:    {measures: environment, attested: true, path: "site risk class from the reconnect pipeline"}
+
+signal_bus:
+  transport: "NATS subjects per tenant (events.caep.<tenant>.<subject>), signed by the emitting sensor"
+  format: "OpenID Shared Signals and CAEP event shapes (session revoked, credential change, device compliance change, assurance level change, token claims change)"
+  store: "the evaluator keeps the latest value and timestamp per signal per subject; OPA reads it as fresh, timestamped context"
+
+trust:
+  levels: [none, low, medium, high]
+  evidence_points: {attested: 2, signed_sensor: 1, fresh: 1, strong_identity: 1}   # per signal; averaged over the required signals
+  thresholds: {high: 4, medium: 3, low: 1}
+  rules:
+    - "a self-reported signal never yields more than medium trust"
+    - "stale evidence yields at most low trust, whatever the source"
+    - "identity assurance below a passkey (acr) caps trust at low"
+
+path_trust:   # minimum trust per request path
+  "Sensitive write": high
+  "Sensitive read": medium
+  "Internal": low
+  "remote browser": low
+  "status and help": none
+
+continuous:   # events re-evaluate open sessions at once instead of waiting for token expiry
+  device_compliance_change: [re-evaluate, notify]
+  session_revoked: [revoke-session, notify]
+  credential_change: [revoke-session, notify]
+  assurance_level_change: [re-evaluate, step-up]
+  persona_status_change: [re-evaluate, quarantine-if-red, notify-discreet]
+  world_state_change: [re-evaluate-all, notify]
+  egress_incident: [isolate-remote-browsers, notify-security-officer]
+  unknown_seam_observed: [raise-anomaly, notify-security-officer]

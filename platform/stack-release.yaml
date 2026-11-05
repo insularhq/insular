@@ -1,0 +1,45 @@
+# Developing, testing, consolidating and releasing the whole stack as one product.
+repositories:
+  platform: "this repository: model, bundles, policies, generated documents and every stack-level test (one repository for the stack, so a change and its proof travel together)"
+  own_software: "the AI egress gate, the evaluator, the decision inbox, renderfact: each its own repository and CI, publishing signed artefacts that the stack lock pins"
+  client_overlays: "on the client's own forge: overlays that only tighten, pulled with the signed release"
+
+stack_lock:   # one file pins every runtime component of a stack release
+  file: platform/stack.lock.yaml
+  per_component: [version, digest, licence, eol]
+  rules:
+    - "every runtime component of the largest size is pinned by digest (sha256)"
+    - "the licence in the lock matches the bill of materials"
+    - "no component's end of life falls inside the release's support window (data from endoflife.date, MIT)"
+    - "Renovate proposes lock updates as merge requests; each one runs the full pyramid for the components it touches"
+
+developer_workflow:
+  - "a Dev Container with the toolchain pinned; k3d runs a disposable K3s cluster locally (S profile) with fictional fixtures; no production secret ever on a developer machine"
+  - "work starts from a work order; the gate and the Stop hook keep it in scope"
+  - "signed commits with FIDO2 keys; merge requests with the gate, the change class and a recorded decision for normal and major changes; a reviewer who is not the author; two persons for major changes"
+  - "every interface change ships with its contract tests; a component swap must pass the capability's interface tests"
+
+test_pyramid:   # stage: when it runs, where, and what it proves
+  - {stage: model,       when: every-commit,      where: CI,                     proves: "intent, floors, labels, dependencies, sizes (pytest and the gate)"}
+  - {stage: policy,      when: every-commit,      where: CI,                     proves: "OPA policy tests (opa test) and parity with the reference model tools/authz.py on generated cases"}
+  - {stage: contract,    when: every-merge-request, where: "ephemeral S cluster",  proves: "OpenAPI and AsyncAPI contracts (Schemathesis, MIT), CloudEvents schemas, the claims contract"}
+  - {stage: integration, when: every-merge-request, where: "ephemeral S cluster (k3d)", proves: "the signed bundle deploys; Chainsaw (Apache-2.0) tests per capability interface"}
+  - {stage: security,    when: every-merge-request, where: "ephemeral S cluster",  proves: "Trivy images and SBOM diff, licence check, secret scan, OWASP ZAP (Apache-2.0) baseline against the gateway"}
+  - {stage: scenario,    when: nightly,           where: "ephemeral M cluster",  proves: "the 20 simulation parties as automated journeys on fictional fixtures"}
+  - {stage: chaos-ddil,  when: nightly,           where: "ephemeral M cluster",  proves: "Chaos Mesh (CNCF, Apache-2.0): partitions, an island past its grace, clock skew, killed replicas, a returning site with break-glass"}
+  - {stage: upgrade,     when: release-candidate, where: "ephemeral S, M and L",  proves: "N-1 to N upgrade with data migration and rollback N to the named fallback N-1 per size (ADR-0129), and the size upgrades S to M and M to L without refactoring"}
+  - {stage: recovery,    when: release-candidate, where: "isolated clean room",   proves: "clean-recovery drills; the ResOps recoverability gate"}
+  - {stage: performance, when: release-candidate, where: "ephemeral M cluster",  proves: "capacity per size against its stated limits"}
+
+required_for:   # which stages a release of each kind must pass
+  patch: [model, policy, contract, integration, security, upgrade, recovery]
+  minor: [model, policy, contract, integration, security, scenario, chaos-ddil, upgrade, recovery]
+  major: [model, policy, contract, integration, security, scenario, chaos-ddil, upgrade, recovery, performance]
+
+versioning:
+  scheme: "semantic versioning of the stack (MAJOR.MINOR.PATCH); the change class sets the bump: standard -> patch, normal -> minor, major -> major"
+  train: "a minor release every month; security patches out of band within the tier's patch days"
+  support: "each minor release supported until the next two have shipped; every sixth release is long-term, supported 12 months (the CRA support period statement)"
+  deprecation: "a component retired from the stack is announced one minor release ahead; its capability's interface stays"
+
+own_tooling_in_ci: [k3d, Chainsaw, Chaos Mesh, OWASP ZAP, Schemathesis]

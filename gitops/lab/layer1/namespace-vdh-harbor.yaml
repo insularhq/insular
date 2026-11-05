@@ -1,0 +1,5 @@
+# created in layer 1, before any child Kustomization, so segmentation's policies and the
+# workloads always find their namespace; never pruned, so moving it here cannot delete it on a running ring.
+apiVersion: v1
+kind: Namespace
+metadata: {name: vdh-harbor, annotations: {kustomize.toolkit.fluxcd.io/prune: disabled}, labels: {vdh.io/role: harbor}}

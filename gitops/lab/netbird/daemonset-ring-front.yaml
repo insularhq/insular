@@ -1,0 +1,35 @@
+# ADR-0122 amended: the ring front, the one published door of a ring for endpoints. Envoy on the nodes' host
+# network, IPv4 and IPv6 on 443, routing by TLS server name to the two NetBird servers (TLS passes through; the
+# servers keep their own certificates). It needs nothing from the cloud but an address: no load balancer, no
+# provider API. The node's host baseline admits endpoints by an expiring set (a lease), made inside the ring.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: ring-front
+  namespace: vdh-front
+  labels: {app: ring-front}
+  annotations: {vdh.component: "Envoy", vdh.app-version: "v1.36"}
+spec:
+  selector: {matchLabels: {app: ring-front}}
+  template:
+    # the front reads its configuration only at start; this hash of configmap-ring-front.yaml rolls it on change
+    metadata: {labels: {app: ring-front}, annotations: {vdh.config-sha256: "d7de2bb27acd6993"}}
+    spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      # edge nodes only (production: two or more, the address floats between them through the provider adapter)
+      nodeSelector: {vdh.role/edge: "true"}
+      automountServiceAccountToken: false
+      containers:
+        - name: envoy
+          image: docker.io/envoyproxy/envoy@sha256:eb2c01c13125d1629637cb4e4cce7207009fb7cc2c8027f9742758549d15b6f4
+          # host network: no hot restart (its abstract socket is shared with every other host-network Envoy)
+          args: ["-c", "/etc/envoy/envoy.yaml", "--log-level", "warn", "--disable-hot-restart"]
+          env: [{name: ENVOY_UID, value: "0"}]   # the image's entrypoint would switch user, which needs SETUID; root with one capability instead
+          # the image runs as envoy (101); on the host network 443 needs the capability in effect, so root with only it
+          securityContext: {runAsUser: 0, runAsNonRoot: false, allowPrivilegeEscalation: false, capabilities: {drop: [ALL], add: [NET_BIND_SERVICE]}}
+          readinessProbe: {tcpSocket: {port: 443}, periodSeconds: 5}
+          resources: {requests: {cpu: 20m, memory: 32Mi}, limits: {memory: 128Mi}}
+          volumeMounts: [{name: envoy, mountPath: /etc/envoy, readOnly: true}]
+      volumes:
+        - {name: envoy, configMap: {name: ring-front}}

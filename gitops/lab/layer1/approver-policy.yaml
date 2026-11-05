@@ -1,0 +1,22 @@
+# cert-manager approver-policy (ADR-0172 point 1): cert-manager's own approval is switched off, so a certificate request
+# is issued only when a CertificateRequestPolicy for its issuer allows it (gitops/lab/cert-policy). The webhook binds
+# every address (an empty host), so it answers on the IPv6-only ring (the chart's default 0.0.0.0 would not).
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata: {name: cert-manager-approver-policy, namespace: cert-manager, annotations: {vdh.component: "cert-manager approver-policy", vdh.app-version: "v0.28.0"}}
+spec:
+  interval: 30m
+  timeout: 10m
+  dependsOn: [{name: cert-manager}]
+  chartRef: {kind: OCIRepository, name: chart-cert-manager-approver-policy, namespace: flux-system}   # chart v0.28.0, locked and signed
+  install: {crds: CreateReplace, remediation: {retries: 3}}
+  upgrade: {crds: CreateReplace, remediation: {retries: 3}}
+  values:
+    replicaCount: 1
+    app:
+      webhook: {host: ""}   # "::" renders unquoted into the args and breaks them; empty binds every address, IPv6 included
+      approveSignerNames: ["issuers.cert-manager.io/*", "clusterissuers.cert-manager.io/*"]
+  postRenderers:   # the image pinned by digest
+    - kustomize:
+        images:
+          - {name: quay.io/jetstack/cert-manager-approver-policy, digest: "sha256:1a955b0a5c41d319fd56b5f85aaff6f2eaba01d70f3b1adf001eac4d7b1d49e5"}

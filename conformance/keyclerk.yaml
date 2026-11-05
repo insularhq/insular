@@ -1,0 +1,265 @@
+# What this model requires of the KeyClerk engine (ADR-0178): Insular's checks and balances, each bound to tests in
+# this repository that run against the pinned engine (frameworks/external-pins.yaml). The engine's own tests do not
+# count for these: a new engine version is adopted only when these still pass. An obligation is removed only with a
+# decision record.
+name: keyclerk
+pin: frameworks/external-pins.yaml#keyclerk
+obligations:
+- id: KO-1
+  source: ADR-0173 section 2
+  statement: a grant never outlives its end, and a revocation always wins
+  tests:
+  - test_effective_status_never_outlives_the_end_and_revocation_wins
+  - test_revoked_grants_are_never_active_and_ship_as_revoked
+- id: KO-2
+  source: ADR-0173 section 2
+  statement: an activation never exceeds its role's lifetime and always has a covering eligibility
+  tests:
+  - test_activation_longer_than_its_role_allows_is_refused
+  - test_activation_without_a_covering_eligibility_is_refused
+- id: KO-3
+  source: ADR-0173 section 4
+  statement: requester and grantee never approve; special roles are never grant records
+  tests:
+  - test_requester_and_grantee_never_approve
+  - test_special_and_baseline_roles_are_never_grant_records
+- id: KO-4
+  source: ADR-0173 section 1
+  statement: planes never cross
+  tests:
+  - test_planes_never_cross
+- id: KO-5
+  source: ADR-0173 section 18 EG-9, EG-14
+  statement: revocations only grow; a revoked id never returns
+  tests:
+  - test_records_round_trip_and_history_guard
+  - test_a_grant_id_is_never_reused
+- id: KO-6
+  source: ADR-0173 section 18
+  statement: clock skew only narrows
+  tests:
+  - test_skew_only_narrows
+- id: KO-7
+  source: ADR-0173 section 4
+  statement: a suspension is lifted only by two people other than the suspender
+  tests:
+  - test_suspension_needs_two_people_to_lift
+- id: KO-8
+  source: ADR-0173 section 10
+  statement: the reconciler is the only writer of managed groups; undeclared memberships are removed and reported
+  tests:
+  - test_the_plan_adds_active_grants_removes_ended_and_flags_undeclared
+- id: KO-9
+  source: ADR-0173 section 18
+  statement: reductions go first; a stale leader never writes; approvals are rechecked at apply time
+  tests:
+  - test_reductions_go_first_and_only_widenings_wait
+  - test_a_stale_leader_can_never_write
+  - test_an_approval_is_rechecked_at_apply_time
+- id: KO-10
+  source: ADR-0173 section 14
+  statement: a lease never outlives its category or its proof; grants under a lease end with it
+  tests:
+  - test_a_lease_never_outlives_its_category_or_the_proof_it_depends_on
+  - test_a_grant_under_a_lease_ends_with_it
+- id: KO-11
+  source: ADR-0173 section 14
+  statement: sponsors are tenant people and never the resource owner; partners only from connected organisations
+  tests:
+  - test_sponsors_are_tenant_people_and_never_the_resource_owner
+  - test_a_partner_comes_only_from_a_connected_organisation
+- id: KO-12
+  source: ADR-0173 section 23
+  statement: a delegation never exceeds its parent
+  tests:
+  - test_a_delegation_never_exceeds_its_parent
+- id: KO-13
+  source: ADR-0173 section 23 DG-6
+  statement: a revoke for cause voids everything made since the compromise
+  tests:
+  - test_revoke_for_cause_voids_everything_made_since_the_compromise_whatever_delegation_it_used
+- id: KO-14
+  source: ADR-0173 section 23 DG-1, DG-2
+  statement: a group's class is fixed and carried down through includes
+  tests:
+  - test_a_group_carrying_more_than_its_fixed_class_fails_and_its_members_are_rechecked
+  - test_an_include_carries_the_includers_risk_down
+- id: KO-15
+  source: ADR-0173 section 23 DG-5
+  statement: second keys come from outside the chain
+  tests:
+  - test_second_keys_come_from_outside_the_chain_and_never_from_the_person
+- id: KO-16
+  source: ADR-0173 section 23 DG-21
+  statement: externals and agents are never deputies or members
+  tests:
+  - test_externals_and_agents_are_never_deputies_or_members
+- id: KO-17
+  source: ADR-0173 section 23
+  statement: separation of duties holds through includes
+  tests:
+  - test_sod_behind_an_include_is_found
+- id: KO-18
+  source: ADR-0173 section 23 risk_port
+  statement: a member below the trust floor is dormant, not silently dropped
+  tests:
+  - test_a_member_below_the_floor_is_dormant_not_dropped_from_the_record
+  - test_the_floor_follows_the_effective_class
+- id: KO-19
+  source: ADR-0173 section 24 SL-1
+  statement: a feed raises one step at most, never past high, and never activates
+  tests:
+  - test_a_feed_raises_one_step_at_most_never_past_high_and_a_reused_nonce_counts_for_nothing
+- id: KO-20
+  source: ADR-0173 section 24 SL-13
+  statement: lowering a level needs a second person who did not raise it
+  tests:
+  - test_lowering_needs_a_second_person_who_did_not_raise_and_waits_for_the_dwell
+- id: KO-21
+  source: ADR-0173 section 24 SL-9
+  statement: an exercise never changes production
+  tests:
+  - test_an_exercise_never_changes_production_and_a_dry_run_shows_its_effect
+- id: KO-22
+  source: ADR-0175
+  statement: the weakest way in decides strength; shared dependencies count once
+  tests:
+  - test_shared_dependencies_count_once
+  - test_a_vpn_that_skips_the_privileged_workstation_is_found
+- id: KO-23
+  source: ADR-0175 AP-4
+  statement: every way in to Restricted crosses a two-person checkpoint
+  tests:
+  - test_restricted_needs_a_two_person_checkpoint_on_every_way_in
+- id: KO-24
+  source: ADR-0175 SL-6
+  statement: every space keeps a free way out
+  tests:
+  - test_a_space_without_a_free_way_out_and_missing_fields_are_findings
+- id: KO-25
+  source: ADR-0175 KY-1, KY-2
+  statement: 'dual control holds: quorum shares apart, two-person checkpoints need two people'
+  tests:
+  - test_backups_of_two_shares_in_one_store_break_dual_control
+  - test_one_person_never_crosses_a_two_person_checkpoint_and_routes_name_the_second_person
+- id: KO-26
+  source: ADR-0175 decision 8
+  statement: pools are at least twice the need; a Restricted ladder ends closed
+  tests:
+  - test_a_pool_smaller_than_twice_the_need_is_a_finding
+  - test_a_two_person_checkpoint_on_the_way_to_restricted_declares_a_ladder_that_ends_closed
+  - test_the_rego_ladder_agrees_with_the_reference
+- id: KO-27
+  source: ADR-0173 section 18 connectors
+  statement: connectors never touch what they did not create, and log the person out on removal
+  tests:
+  - test_keycloak_through_scim_passes_the_contract_and_logs_out_on_removal
+  - test_a_scim_target_refuses_collisions_and_reports_missing_people
+- id: KO-28
+  source: ADR-0173 section 22
+  statement: events are appended once and the past is never rewritten
+  tests:
+  - test_events_are_appended_once
+  - test_state_at_a_moment_never_rewrites_the_past
+- id: KO-29
+  source: ADR-0176
+  statement: the engine is the pinned one, configured from the registers
+  tests:
+  - test_the_committed_configuration_is_the_rendering_of_the_registers
+  - test_another_engine_version_is_refused
+- id: KO-30
+  source: ADR-0178
+  statement: absent trust input is the strictest value; group memberships stay dormant without it
+  tests:
+  - test_without_trust_input_group_memberships_stay_dormant
+- id: KO-31
+  source: ADR-0179
+  statement: through the desk, a deputy in an elevated group still needs a key from outside the chain; never one's own, never the root's
+  tests:
+  - test_through_the_desk_a_deputy_in_an_elevated_group_needs_a_key_from_outside_the_chain
+- id: KO-32
+  source: ADR-0179
+  statement: through the desk, nobody acts beyond the delegation they hold and delegations only narrow
+  tests:
+  - test_through_the_desk_nobody_acts_beyond_the_delegation_they_hold
+- id: KO-33
+  source: ADR-0179
+  statement: the desk's revisions are signed, logged in a hash chain and keep the history the reconciler guards
+  tests:
+  - test_desk_revisions_keep_history_and_are_signed
+- id: KO-34
+  source: ADR-0179
+  statement: every desk revision carries a signed serial that never goes back, so an older revision cannot replay
+  tests:
+  - test_desk_revisions_carry_a_signed_serial_that_never_goes_back
+- id: KO-35
+  source: ADR-0179
+  statement: one person cannot flood the desk; throttled attempts do not grow the change log
+  tests:
+  - test_one_person_cannot_flood_the_desk
+- id: KO-36
+  source: ADR-0179
+  statement: changes waiting at once never share a record id, and the engine refuses records where two share one
+  tests:
+  - test_changes_waiting_at_once_never_share_an_id_on_this_deployments_records
+- id: KO-37
+  source: ADR-0179
+  statement: after a crash the desk repairs its store only towards a revision its own signed log vouches for
+  tests:
+  - test_the_desk_repairs_a_crash_only_towards_a_revision_it_signed
+- id: KO-38
+  source: ADR-0179
+  statement: reads are need-to-know in the desk itself, so every front end shows a plain member only what concerns them
+  tests:
+  - test_on_this_deployment_a_plain_member_reads_only_what_concerns_them
+- id: KO-39
+  source: ADR-0180
+  statement: in a deployment with the broker every approval is the approver's own signature, made by the broker after a fresh sign-in; one written with the desk's key alone is found
+  tests:
+  - test_on_this_deployment_an_approval_is_the_approvers_own_signature
+- id: KO-40
+  source: ADR-0181
+  statement: Keycloak workflows never manage KeyClerk's groups, and every delete or disable is guarded by a condition the broker re-checks before the delayed step
+  tests:
+  - test_workflows_never_manage_groups_and_every_destructive_step_is_guarded
+- id: KO-41
+  source: ADR-0181
+  statement: the writer holds group membership only, approvals need the passkey level, and third-party front ends use DPoP-bound tokens
+  tests:
+  - test_the_writer_holds_group_membership_only_and_approvals_need_a_passkey_level
+- id: KO-42
+  source: ADR-0182
+  statement: a second key needs standing (the officer, a named approver, a manager through another chain), the root never counts, and enforcing standing there changes nothing
+  tests:
+  - test_a_second_key_needs_standing_and_enforcing_it_changes_nothing_here
+- id: KO-43
+  source: ADR-0182
+  statement: the persona graph shows only what the view policy allows, and names every identity source
+  tests:
+  - test_the_persona_graph_shows_only_what_the_view_policy_allows
+- id: KO-44
+  source: ADR-0182
+  statement: the delegation tree shows a deputy what they hold, what they handed on and the chain above, never a sibling's branch; a viewer and the root see all of it
+  tests:
+  - test_the_delegation_tree_shows_a_deputy_their_branch_and_the_chain_above_only
+- id: KO-45
+  source: ADR-0182
+  statement: a visit admits only what the visits policy allows (the driver on the QR with the vehicle, an unregistered passenger escorted with a visitor badge and never into a Restricted zone), and an unconfirmed guest is reminded and then suspended, each step only while its reason holds
+  tests:
+  - test_a_visit_admits_what_the_policy_allows_and_suspends_an_unconfirmed_guest
+- id: KO-46
+  source: ADR-0182
+  statement: a guest's QR code names no person, a phone scan answers only yes or no and until when (online), and a guard's QR entry counts only with the current code
+  tests:
+  - test_the_phone_scan_says_only_yes_or_no_and_a_guard_needs_the_current_code
+- id: KO-47
+  source: ADR-0182
+  statement: a person's daily account never joins a privileged group (their admin persona may), workloads and agents have an owner, an agent has a director and reaches no further than it
+  tests:
+  - test_personas_workloads_and_agents_keep_their_place
+
+- id: KO-48
+  source: ADR-0182
+  statement: privileged power on vdh-demo is held only through admin personas, the root included, with the persona rule enforced; the daily-account memberships they replaced are retired, never rewritten
+  tests:
+  - test_vdh_demo_holds_privileged_power_only_through_admin_personas

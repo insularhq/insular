@@ -1,0 +1,26 @@
+id: tenant-vdh-demo
+kind: tenant
+title: "Tenant vdh-demo: stricter where its contract asks, one accepted exception (ADR-0100 example, fictional)"
+# Tightening needs nothing but the rule. Loosening raises risk: it names a minimum trust (it applies only to
+# requesters at that trust; everyone else keeps the baseline) and a risk acceptance with an end date.
+rules:
+  - {id: DEMO-MIN-GROUP-25, owner: security_officer, status: active, review_by: "2027-04-08", topic: data-min-group-size, effect: require, parameter: 25, scope: {tenant: [vdh-demo]}, valid_from: "2026-10-01", mitigates: [RK-13], anchor: configuration, standards: [enisa-pseudonymisation], tests: [test_every_policy_rule_decides_as_written, test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten, test_data_limits_are_policy_packs_that_tenants_tighten_or_except_with_accepted_risk]}
+  - {id: DEMO-RESTRICTED-LEASE-30, owner: security_officer, status: active, review_by: "2027-04-08", topic: data-lease-subscription-days, effect: limit, parameter: 30, scope: {tenant: [vdh-demo], label: [Restricted]}, valid_from: "2026-10-01", mitigates: [RK-08], anchor: configuration, standards: ["iso-27001:A.5.18"], tests: [test_every_policy_rule_decides_as_written, test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten, test_data_limits_are_policy_packs_that_tenants_tighten_or_except_with_accepted_risk]}
+  - id: DEMO-SENSITIVE-TO-PARTNERS
+    tests: [test_every_policy_rule_decides_as_written, test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten, test_data_limits_are_policy_packs_that_tenants_tighten_or_except_with_accepted_risk]
+    owner: security_officer
+    status: active
+    review_by: "2027-04-08"
+    topic: data-max-ring
+    effect: limit
+    parameter: federation
+    scope: {tenant: [vdh-demo], label: [Sensitive]}
+    valid_from: "2026-10-01"
+    valid_until: "2027-03-31"
+    mitigates: []
+    anchor: identity-assurance
+    raises_risk: true
+    min_trust: high
+    residual: {L: 2, I: 3}
+    acceptance: {by: "tenant risk owner (fictional)", role: risk_owner, until: "2027-03-31", rationale: "a named partner programme needs Sensitive data under a dataspace contract; only high-trust requesters may release it", residual: {L: 2, I: 3}}
+    standards: ["iso-27001:A.5.14", w3c-odrl]

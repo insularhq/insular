@@ -1,0 +1,107 @@
+# Governance scaffold, intake (ADR-0133): the questions an organisation answers to get its golden path. Each option
+# raises an axis tier (high-water mark: the highest answer wins, nothing lowers a tier), provides a capacity, or adds an
+# overlay. Four axes: security, availability, support, education. Support and education answers never lower the
+# security or availability tier: they show what the organisation can provide, and a shortfall is closed or
+# accepted as a deviation with its risk (ADR-0003, ADR-0004). Evaluated by OPA (vdh.governance, governance.rego).
+# Prior art: a private lab record (FIPS 199 high-water mark, NIST SP 800-53B baselines
+# and tailoring, CIS Implementation Groups, ISO 22301 BIA, NIST SP 800-34, NICE SP 800-181).
+intake:
+  questions:
+    Q01:
+      ask: "How many people can hold platform duties (operate, approve, hold keys)?"
+      axes: [support, security]
+      options:
+        - {value: one, provides: {persons: 1}}
+        - {value: two-to-four, provides: {persons: 2}}
+        - {value: five-to-ten, provides: {persons: 5}}
+        - {value: more-than-ten, provides: {persons: 11}}
+    Q02:
+      ask: "Which regulation applies to what this platform runs?"
+      axes: [security, availability]
+      options:
+        - {value: none, raises: {security: 1, availability: 1}}
+        - {value: gdpr, raises: {security: 2, availability: 1}}
+        - {value: nis2-important, raises: {security: 2, availability: 2}, overlays: [nis2]}
+        - {value: nis2-essential, raises: {security: 3, availability: 3}, overlays: [nis2]}
+        - {value: sector-critical, raises: {security: 4, availability: 3}, overlays: [sector]}
+    Q03:
+      ask: "What is the most sensitive data the platform holds?"
+      axes: [security]
+      options:
+        - {value: public, raises: {security: 1}}
+        - {value: internal, raises: {security: 1}}
+        - {value: personal, raises: {security: 2}}
+        - {value: sensitive-or-regulated, raises: {security: 3}}
+        - {value: classified, raises: {security: 4}, overlays: [classified]}
+    Q04:
+      ask: "If records, releases or signatures were wrong or forged, what would it cause?"
+      axes: [security]
+      options:
+        - {value: inconvenience, raises: {security: 1}}
+        - {value: financial-loss, raises: {security: 2}}
+        - {value: harm-to-people-or-legal-breach, raises: {security: 3}}
+        - {value: safety-or-state-harm, raises: {security: 4}}
+    Q05:
+      ask: "How long can the service be down before the harm is unacceptable?"
+      axes: [availability]
+      options:
+        - {value: a-week, raises: {availability: 1}}
+        - {value: a-day, raises: {availability: 2}}
+        - {value: hours, raises: {availability: 3}}
+        - {value: minutes, raises: {availability: 4}}
+    Q06:
+      ask: "How much recent data may be lost in a disaster?"
+      axes: [availability]
+      options:
+        - {value: a-day, raises: {availability: 1}}
+        - {value: an-hour, raises: {availability: 2}}
+        - {value: minutes, raises: {availability: 3}}
+        - {value: none, raises: {availability: 4}}
+    Q07:
+      ask: "How connected are the rings, after their bootstrap?"
+      axes: [security, availability, support]
+      options:
+        # connected, and designed to run alone when cut off (DDIL): the default shape of a ring
+        - {value: connected-ddil-survivable, overlays: [ddil]}
+        # several sites peer with each other but reach neither the internet nor the Chartroom; media by courier
+        - {value: federated-disconnected, raises: {security: 2}, overlays: [disconnected, federated]}
+        # one site alone: an Isle (size S is one node, not highly available; an Islet always has a parent Isle), its own
+        # authority, media by courier, backups offsite by carried media
+        - {value: isolated, raises: {security: 2}, overlays: [disconnected, isolated]}
+    Q08:
+      ask: "Who may hold root authority (offline root keys, recovery shares)?"
+      axes: [security]
+      options:
+        - {value: one-person, provides: {custodians: 1, custodian_orgs: 1}}
+        - {value: trusted-few-in-one-organisation, provides: {custodians: 3, custodian_orgs: 1}}
+        - {value: separate-organisations, provides: {custodians: 3, custodian_orgs: 2}}
+    Q09:
+      ask: "What support coverage can be given?"
+      axes: [support, availability]
+      options:
+        - {value: best-effort, provides: {coverage: 0}}
+        - {value: business-hours, provides: {coverage: 1}}
+        - {value: extended-with-on-call, provides: {coverage: 2}}
+        - {value: around-the-clock, provides: {coverage: 3}}
+        - {value: provider-contract, provides: {coverage: 3}, overlays: [provider-operated]}
+    Q10:
+      ask: "Who reaches the services the platform runs?"
+      axes: [security]
+      options:
+        - {value: internal-only, raises: {security: 1}}
+        - {value: partners, raises: {security: 2}}
+        - {value: public, raises: {security: 3}}
+    Q11:
+      ask: "Does a parent organisation dictate rules (a mandate policy pack)?"
+      axes: [security, availability, support, education]
+      options:
+        - {value: none}
+        - {value: parent-mandate, overlays: [mandate]}
+    Q12:
+      ask: "How experienced is the team with this stack?"
+      axes: [education, support]
+      options:
+        - {value: certified, provides: {experience: 2}}
+        - {value: experienced, provides: {experience: 1}}
+        - {value: new-to-the-stack, provides: {experience: 0}}
+  coverage_names: {0: best-effort, 1: business-hours, 2: extended-with-on-call, 3: around-the-clock}

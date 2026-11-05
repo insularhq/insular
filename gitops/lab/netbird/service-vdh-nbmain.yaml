@@ -1,0 +1,10 @@
+# ADR-0122 and ADR-0134: NetBird the main network: people's devices as user peers signed in through Keycloak, and the app entry. Server config with its keys is a Secret made inside the ring
+# (by the lab tooling); TLS from the ring CA (ClusterIssuer ring-ca); trust for Keycloak's TLS through the
+# same CA bundle as OpenCloud.
+apiVersion: v1
+kind: Service
+metadata: {name: netbird, namespace: vdh-nbmain}
+spec:
+  ipFamilies: [IPv6]
+  selector: {app: netbird}
+  ports: [{name: https, port: 443}, {name: stun, port: 3478, protocol: UDP}]

@@ -1,0 +1,129 @@
+# Time-gated trust (ADR-0093): every identity acts through a token, and every trust, risk and policy assertion has a
+# clock. Each identity kind holds a bound, scoped, expiring token with enforced hygiene. Each assertion that grants,
+# accepts, exempts or trusts declares how long it holds, the evidence that may reconfirm it, and what its expiry does.
+# Expiry only ever tightens. Any assertion can also be ended at once by a trigger (revoke, quarantine, re-attest,
+# step-up, expire-now).
+# Checked by tools/time_gating.py.
+
+principle: "nothing is trusted because it was trusted: trust is a lease, renewed only by fresh evidence, shortened by a higher risk band, and ended early by a trigger"
+
+evidence_kinds:   # what may reconfirm an assertion; max_trust is capped by the trust anchor the evidence rests on (policies/model.yaml)
+  sensed:    {meaning: "observed by a sensor or telemetry (posture, flows, behaviour)", anchor: self-report, attested_anchor: hardware-attestation}
+  collected: {meaning: "pulled as an artefact (attestation quote, scan, test run, signed report)", anchor: configuration, attested_anchor: signature}
+  automated: {meaning: "computed by an engine from other evidence (evaluator, gate, drift check)", anchor: configuration, attested_anchor: signature}
+  decided:   {meaning: "a person's signed decision with its rationale and the evidence it cites", anchor: human-approval, attested_anchor: human-approval}
+reconfirmation:
+  rule: "a reconfirmation is a new record that cites new evidence (a digest different from the last one); re-signing the same evidence does not renew"
+  early_window: 0.2        # renewal opens when 20% of the validity is left; an alarm fires at that point if no renewal is under way
+  jitter: 0.1              # validities are spread by up to 10% so leases do not all expire together (no expiry storms)
+
+token_contract:   # every token, whatever the identity kind
+  required: [issuer, subject, audience, scope, not_before, not_after, binding, revocation_channel, evidence_basis]
+  forbidden:
+    - "a token without not_after"
+    - "a wildcard audience or scope"
+    - "an unbound bearer token for Sensitive or Restricted data"
+    - "a token valid in more than one tenant"
+    - "a refresh chain that outlives the absolute session maximum (platform/icam.yaml session_max_min)"
+    - "a delegated token with more scope than its delegator (scope is the intersection along the actor chain)"
+  clock_skew_s: 60          # validators accept at most this skew; time itself is a trust anchor (two NTP pools, RTC, drift alarm)
+  bindings: [dpop, mtls, tpm]
+
+identity_tokens:   # one entry per subject kind in platform/identity.yaml
+  person:
+    token: "access token (JWT, RFC 9068) from the broker, DPoP-bound; SSH certificate after FIDO2 login"
+    max_ttl: "15m"
+    binding: dpop
+    scope: "one audience per token; fine-grained by RAR (RFC 9396)"
+    reconfirm: [decided, sensed]        # passkey re-authentication (acr ttl) and device posture
+    revocation_channel: "CAEP session-revoked and credential-change over Shared Signals; refresh family revoked"
+  workload:
+    token: "X.509 SVID from SPIRE"
+    max_ttl: "1h"
+    binding: mtls
+    scope: "its SPIFFE ID; authorisation per seam at the PEP"
+    reconfirm: [collected, automated]   # node attestation and image signature at every renewal
+    revocation_channel: "SPIRE entry deleted; the short lifetime bounds the rest"
+  device:
+    token: "device certificate plus an attestation token"
+    max_ttl: "30d"
+    attestation_ttl: "1h"
+    binding: tpm
+    scope: "its inventory id; network admission and posture claims"
+    reconfirm: [collected, sensed]
+    revocation_channel: "certificate revoked (OCSP and CRL), NetBird peer removed, 802.1X certificate revoked"
+  infrastructure:
+    token: "host certificate plus an attestation token"
+    max_ttl: "24h"
+    attestation_ttl: "1h"
+    binding: tpm
+    scope: "its host and site id"
+    reconfirm: [collected, automated]
+    revocation_channel: "Keylime marks it failed; the host certificate is revoked; the node is cordoned"
+  agent:
+    token: "delegated token (RFC 8693) with the full actor chain, presented with the agent's SVID"
+    max_ttl: "15m"
+    binding: mtls
+    scope: "the intersection of the delegator's scope and the agent's tool grants"
+    reconfirm: [automated, decided]
+    revocation_channel: "the delegation is revoked with the delegator's session; the grant expires on its own"
+
+assertions:   # every kind of assertion that grants, accepts, exempts or trusts; where it lives, its clock, what renews it
+  - {kind: attribute, where: "platform/identity.yaml#/attributes/*", clock: ttl_hours, evidence: [sensed, collected, decided], on_expiry: absent-lowest-trust}
+  - {kind: trust-anchor, where: "policies/model.yaml#/trust_anchors/*", clock: freshness, evidence: [collected, sensed, decided], on_expiry: absent-lowest-trust}
+  - {kind: policy-rule, where: "policies/packs/*.yaml#/rules/*", clock: review_by, evidence: [decided, automated], on_expiry: stays-in-force-review-overdue}
+  - {kind: risk, where: "a private register", clock: review_by, evidence: [collected, automated, decided], on_expiry: residual-as-inherent}
+  - {kind: risk-acceptance, where: "policies/packs/*.yaml#/rules/*/acceptance", clock: until, evidence: [decided], on_expiry: void}
+  - {kind: exemption, where: "platform/enforcement-rollout.yaml#/rollouts/*/exemptions/*", clock: until, evidence: [decided], on_expiry: void}
+  - {kind: accepted-spof, where: "platform/dependencies.yaml#/accepted_spof/*", clock: review_by, evidence: [decided], on_expiry: review-overdue-raise-risk}
+  - {kind: change-approval, where: "policies/master-protection.yaml#/approvals", clock: expiry, evidence: [decided], on_expiry: void}
+  - {kind: release-approval, where: "platform/release-gateway.yaml#/approvals", clock: expiry, evidence: [decided], on_expiry: void}
+  - {kind: data-lease, where: "platform/data-platform.yaml#/leases/*", clock: until, evidence: [decided, automated], on_expiry: void}
+  - {kind: site-membership, where: "policies/data-logistics.yaml#/memberships/*", clock: member_until, evidence: [collected, decided], on_expiry: void}
+  - {kind: data-ownership, where: "platform/data-platform.yaml#/products/*", clock: owner_until, evidence: [decided], on_expiry: steward-acts}
+
+on_expiry_effects:   # every effect tightens or holds; none extends or loosens
+  absent-lowest-trust: "the assertion counts as absent; policy sees the lowest trust for it and asks for fresh evidence"
+  void: "the acceptance, exemption or approval no longer applies; the control enforces and the change cannot apply"
+  residual-as-inherent: "the risk is scored at its inherent level until reviewed, which may raise the band of its scope"
+  stays-in-force-review-overdue: "a rule keeps enforcing (expiry never loosens) and its owner gets a review-overdue finding"
+  steward-acts: "the domain steward acts for the lapsed owner: existing leases run to their dates, no new grants, an orphan alarm is raised"
+  review-overdue-raise-risk: "the accepted weakness is shown as unaccepted and its risks are scored one step higher until reviewed"
+
+band_validity:   # the risk band shortens every validity: effective = declared x factor (0 means reconfirm before each use)
+  green: 1.0
+  amber: 0.5
+  red: 0.25
+  black: 0.0
+
+triggers:   # explicit, immediate ends of a lease; each is a decision record with one taker (platform/change-contract.yaml)
+  revoke:
+    ends: "every token and session of the subject at every relying party; refresh families; delegations made by the subject"
+    channels: ["CAEP / Shared Signals", "OCSP and CRL", "SPIRE entry delete", "NetBird peer removal", "OpenBao lease revoke"]
+    ladder_action: revoke-session
+    propagation_slo_s: 60
+  quarantine:
+    ends: "all access except the status and help service and the control channel; tokens stay valid only for that audience"
+    channels: ["NetBird quarantine group", "Cilium quarantine label", "broker step-up demand"]
+    ladder_action: quarantine-host
+    propagation_slo_s: 60
+  re-attest:
+    ends: "the attestation lease now; the subject keeps nothing that rests on hardware-attestation until a fresh quote passes"
+    channels: ["Keylime verifier request", "posture service"]
+    ladder_action: raise-observation
+    propagation_slo_s: 300
+  step-up:
+    ends: "the acr lease now; the next request needs a fresh passkey assertion"
+    channels: ["CAEP assurance-level-change", "broker step-up demand"]
+    ladder_action: tighten-permission
+    propagation_slo_s: 60
+  expire-now:
+    ends: "one assertion (acceptance, exemption, approval, attribute) by setting its clock to now; the on_expiry effect follows"
+    channels: ["change record of kind expire-now"]
+    ladder_action: propose-change
+    propagation_slo_s: 300
+trigger_rules:
+  - "a trigger is idempotent and logged as a decision with its taker, reason and evidence"
+  - "there is no un-revoke: a revoked subject gets a new credential through enrolment, which is a new lease with fresh evidence"
+  - "triggers are local-first: a site revokes and quarantines without the WAN; the parent's triggers reach the site on reconnect, and parent-issued tokens are never refreshed while the site is cut off (site-local issuance with the band's shortened validity)"
+  - "who may trigger: the security officer, the detection ladder within its decided autonomy, the subject's owner, and the subject itself for its own credentials (self-revoke)"

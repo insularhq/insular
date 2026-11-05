@@ -1,0 +1,81 @@
+# Synapse for the demo tenant (ADR-0114, catalog/compensations.yaml Synapse): sign-in only through the ring's Keycloak
+# as a confidential client with PKCE (its secret declared in the register, ADR-0156), no local passwords, no registration, federation off
+# (an empty allow-list; federation to a partner goes through the Harbor's telephony class, ADR-0151), no URL previews,
+# no key servers, no telemetry. render.py writes the final file once per start with the database password from the
+# operator's secret and two random service secrets kept on the data volume; the signing key is made there once.
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: synapse, namespace: vdh-tenant-demo}
+data:
+  homeserver.yaml: |
+    server_name: "matrix.${ring_domain:=lab.vdh.test}"
+    public_baseurl: "https://matrix.${ring_domain:=lab.vdh.test}/"
+    pid_file: /data/homeserver.pid
+    listeners:
+      - {port: 8008, tls: false, type: http, x_forwarded: true, bind_addresses: ["::"], resources: [{names: [client, federation], compress: false}]}
+      - {port: 9000, type: metrics, bind_addresses: ["::"]}   # Pharos scrapes it; never routed
+    database:
+      name: psycopg2
+      args: {user: synapse, password: "__DB_PASSWORD__", dbname: synapse, host: synapse-db-rw, port: 5432, cp_min: 2, cp_max: 5}
+    log_config: /config/log.yaml
+    media_store_path: /data/media
+    signing_key_path: /data/signing.key
+    macaroon_secret_key: "__MACAROON__"
+    form_secret: "__FORM__"
+    report_stats: false
+    enable_metrics: true
+    enable_registration: false
+    password_config: {enabled: false}
+    url_preview_enabled: false
+    serve_server_wellknown: true
+    federation_domain_whitelist: []   # replaced by render.py from /federation/allow (written at admission)
+    federation_custom_ca_list: [/lab-ca/ca.crt]   # partners are reached through this ring's Harbor, which presents this ring's CA
+    ip_range_whitelist: []   # replaced by render.py with the Harbor's way out (/federation/egress-ip), a cluster address
+    trusted_key_servers: []
+    suppress_key_server_warning: true
+    max_upload_size: 50M
+    oidc_providers:
+      - idp_id: keycloak
+        idp_name: "the ring's sign-in"
+        issuer: "https://id.${ring_domain:=lab.vdh.test}/realms/vdh"
+        client_id: synapse
+        client_secret: "__OIDC_SECRET__"   # from Secret synapse-oidc (made by the lab tooling)
+        client_auth_method: client_secret_basic
+        pkce_method: always
+        scopes: [openid, profile]
+        allow_existing_users: false
+        user_mapping_provider:
+          config: {localpart_template: "{{ user.preferred_username }}", display_name_template: "{{ user.name }}"}
+  log.yaml: |
+    version: 1
+    formatters: {precise: {format: "%(asctime)s %(name)s %(levelname)s %(request)s %(message)s"}}
+    handlers: {console: {class: logging.StreamHandler, formatter: precise}}
+    loggers: {synapse.storage.SQL: {level: WARNING}}
+    root: {level: INFO, handlers: [console]}
+    disable_existing_loggers: false
+  render.py: |
+    import json, os, pathlib, secrets, subprocess, sys
+    data = pathlib.Path("/data"); (data / "media").mkdir(exist_ok=True)
+    s = data / "service-secrets"
+    if not s.exists():
+        s.write_text(secrets.token_urlsafe(48) + "\n" + secrets.token_urlsafe(48) + "\n"); s.chmod(0o600)
+    mac, form = s.read_text().split()
+    cfg = pathlib.Path("/config/homeserver.yaml").read_text()
+    cfg = cfg.replace("__DB_PASSWORD__", os.environ["DB_PASSWORD"]).replace("__MACAROON__", mac).replace("__FORM__", form).replace("__OIDC_SECRET__", os.environ.get("OIDC_SECRET", ""))
+    # federation data (the lab tooling): the partners' homeservers and the Harbor's way out; none, no federation
+    fed = pathlib.Path("/federation")
+    allow = (fed / "allow").read_text().split() if (fed / "allow").exists() else []
+    eip = (fed / "egress-ip").read_text().split() if (fed / "egress-ip").exists() else []
+    cfg = cfg.replace("federation_domain_whitelist: []", "federation_domain_whitelist: " + json.dumps(allow))
+    cfg = cfg.replace("ip_range_whitelist: []", "ip_range_whitelist: " + json.dumps([e + "/128" if ":" in e else e + "/32" for e in eip]))
+    # the alert bot: an application service limited to @alerts and #alerts, its registration a Secret
+    # made at bring-up (the lab tooling); without it Synapse starts as before
+    # the bots' application-service registrations, when present
+    regs = [f"/appservice/{n}" for n in ("alerts.yaml",) if pathlib.Path(f"/appservice/{n}").exists()]
+    if regs:
+        cfg += "\napp_service_config_files: " + json.dumps(regs) + "\n"
+    out = data / "homeserver.yaml"; out.write_text(cfg); out.chmod(0o600)
+    if not (data / "signing.key").exists():
+        subprocess.run([sys.executable, "-m", "synapse.app.homeserver", "-c", str(out), "--generate-keys"], check=True)
+    pathlib.Path("/trust/bundle.pem").write_text(pathlib.Path("/etc/ssl/certs/ca-certificates.crt").read_text()
+                                                 + pathlib.Path("/lab-ca/ca.crt").read_text())

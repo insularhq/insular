@@ -1,0 +1,8 @@
+# created in layer 1, before any child Kustomization, so segmentation's policies and the
+# workloads always find their namespace; never pruned, so moving it here cannot delete it on a running ring.
+# ADR-0122 and ADR-0134: NetBird the main network: people's devices as user peers signed in through Keycloak, and the app entry. Server config with its keys is a Secret made inside the ring
+# (by the lab tooling); TLS from the ring CA (ClusterIssuer ring-ca); trust for Keycloak's TLS through the
+# same CA bundle as OpenCloud.
+apiVersion: v1
+kind: Namespace
+metadata: {name: vdh-nbmain, annotations: {kustomize.toolkit.fluxcd.io/prune: disabled}, labels: {vdh.component: netbird, vdh.network: main}}

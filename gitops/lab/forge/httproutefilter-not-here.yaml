@@ -1,0 +1,5 @@
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: HTTPRouteFilter
+metadata: {name: not-here, namespace: vdh-forge}
+spec:
+  directResponse: {contentType: text/plain, statusCode: 404, body: {type: Inline, inline: "not found"}}

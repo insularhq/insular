@@ -1,0 +1,14 @@
+# Matrix federation through the Harbor (ADR-0114, ADR-0151): a partner's homeserver reaches this ring's Synapse only
+# here, only at the federation, key and server-discovery paths, and the Harbor's policy classes it as telephony.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata: {name: harbor-matrix, namespace: vdh-harbor}
+spec:
+  parentRefs: [{name: harbor-gw, sectionName: matrix}]
+  hostnames: ["matrix.${ring_domain:=lab.vdh.test}"]
+  rules:
+    - matches:
+        - path: {type: PathPrefix, value: /_matrix/federation}
+        - path: {type: PathPrefix, value: /_matrix/key}
+        - path: {type: Exact, value: /.well-known/matrix/server}
+      backendRefs: [{name: synapse, namespace: vdh-tenant-demo, port: 8008}]

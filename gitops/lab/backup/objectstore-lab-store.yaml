@@ -1,0 +1,14 @@
+apiVersion: barmancloud.cnpg.io/v1
+kind: ObjectStore
+# Where CloudNativePG clusters in vdh-test archive WAL and base backups (ADR-0113). The credentials Secret garage-s3 is
+# created on the lab by the drill script from a Garage key scoped to this one bucket; it is never in git.
+metadata: {name: lab-store, namespace: vdh-test}
+spec:
+  configuration:
+    destinationPath: s3://pg-backups/
+    endpointURL: http://garage.vdh-backup.svc.cluster.local:3900
+    s3Credentials:
+      accessKeyId: {name: garage-s3, key: ACCESS_KEY_ID}
+      secretAccessKey: {name: garage-s3, key: ACCESS_SECRET_KEY}
+      region: {name: garage-s3, key: REGION}
+  retentionPolicy: "7d"

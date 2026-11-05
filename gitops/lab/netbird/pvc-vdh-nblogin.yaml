@@ -1,0 +1,7 @@
+# ADR-0122 and ADR-0134: NetBird the login network: devices' machine peers and the login entry in front of Keycloak, nothing else. Server config with its keys is a Secret made inside the ring
+# (by the lab tooling); TLS from the ring CA (ClusterIssuer ring-ca); trust for Keycloak's TLS through the
+# same CA bundle as OpenCloud.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: {name: netbird-data, namespace: vdh-nblogin}
+spec: {accessModes: [ReadWriteOnce], resources: {requests: {storage: 1Gi}}}

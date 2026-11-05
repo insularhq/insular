@@ -1,0 +1,29 @@
+name: Bug report
+description: A check, generator, policy or document in the model behaves wrong
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Not for security weaknesses.** Report those privately: see SECURITY.md. Everything here is public at once: use fictional data only.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, what you got.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+      description: Minimal steps. Remove host names, addresses, keys and personal data from anything you paste.
+      render: text
+    validations:
+      required: true

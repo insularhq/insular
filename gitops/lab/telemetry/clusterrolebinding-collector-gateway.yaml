@@ -1,0 +1,5 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: {name: vdh-telemetry-collector-gateway}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: vdh-telemetry-collector-gateway}
+subjects: [{kind: ServiceAccount, name: collector-gateway, namespace: vdh-telemetry}]

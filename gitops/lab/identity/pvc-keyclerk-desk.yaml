@@ -1,0 +1,5 @@
+# the desk's signed records (the engine's file store at 0.26.3)
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: {name: keyclerk-desk, namespace: vdh-identity}
+spec: {accessModes: [ReadWriteOnce], resources: {requests: {storage: 1Gi}}}

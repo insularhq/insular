@@ -1,0 +1,14 @@
+# Who may ask the Isle's DNS (ADR-0172): the namespace itself, the cluster resolver (CoreDNS forwards here once the
+# lab's CoreDNS is changed on the host) and the pane's probe
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: default-deny-ingress, namespace: vdh-dns}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    - from: [{podSelector: {}}]
+    - from: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kube-system}}, podSelector: {matchLabels: {k8s-app: kube-dns}}}]
+      ports: [{port: 5353, protocol: UDP}, {port: 5353, protocol: TCP}]
+    - from: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: vdh-pharos}}, podSelector: {matchLabels: {app: blackbox}}}]
+      ports: [{port: 5353, protocol: UDP}, {port: 5353, protocol: TCP}]

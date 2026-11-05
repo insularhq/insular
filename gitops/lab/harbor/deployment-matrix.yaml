@@ -1,0 +1,20 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: matrix, namespace: vdh-harbor, annotations: {vdh.component: "tuwunel", vdh.app-version: "1.9.3"}}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: matrix}}
+  template:
+    metadata: {labels: {app: matrix}}
+    spec:
+      securityContext: {runAsNonRoot: true, runAsUser: 10002, fsGroup: 10002, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: tuwunel
+          image: ghcr.io/matrix-construct/tuwunel:v1.9.3@sha256:678b7f5350e06a41614444497c587da9dddf66767e4068a27480402f3c1367d0
+          env: [{name: TUWUNEL_CONFIG, value: /etc/tuwunel/tuwunel.toml}]
+          ports: [{containerPort: 8008}]
+          readinessProbe: {httpGet: {path: /_matrix/client/versions, port: 8008}}
+          securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+          resources: {requests: {cpu: 20m, memory: 64Mi}, limits: {memory: 512Mi}}
+          volumeMounts: [{name: config, mountPath: /etc/tuwunel, readOnly: true}, {name: secret, mountPath: /etc/tuwunel-secret, readOnly: true}, {name: db, mountPath: /var/lib/tuwunel}]
+      volumes: [{name: config, configMap: {name: tuwunel-config}}, {name: secret, secret: {secretName: matrix-reg}}, {name: db, emptyDir: {}}]

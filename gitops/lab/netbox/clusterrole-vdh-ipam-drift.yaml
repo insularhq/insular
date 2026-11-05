@@ -1,0 +1,6 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata: {name: vdh-ipam-drift}
+rules:
+  - {apiGroups: [""], resources: [nodes, services], verbs: [get, list]}
+  - {apiGroups: [cilium.io], resources: [ciliumloadbalancerippools, ciliumnodes], verbs: [get, list]}

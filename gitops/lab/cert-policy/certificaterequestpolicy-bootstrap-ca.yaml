@@ -1,0 +1,15 @@
+# The self-signed issuer signs only the pane's bootstrap CA (lab-ca in vdh-pharos), a CA for at most 30 days
+apiVersion: policy.cert-manager.io/v1alpha1
+kind: CertificateRequestPolicy
+metadata: {name: bootstrap-ca}
+spec:
+  allowed:
+    commonName: {value: "vdh lab CA ${ring_domain:=lab.vdh.test}", required: true}   # this ring's own CA name
+    isCA: true
+    usages: ["cert sign", "crl sign", "digital signature", "key encipherment"]
+  constraints:
+    maxDuration: 720h
+    privateKey: {algorithm: ECDSA, minSize: 256}
+  selector:
+    issuerRef: {name: lab-selfsigned, kind: ClusterIssuer, group: cert-manager.io}
+    namespace: {matchNames: [vdh-pharos]}

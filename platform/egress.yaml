@@ -1,0 +1,45 @@
+# Egress for the remote browser (Neko): pixels by default for every stick user, to destinations on a signed allow-list
+# only, through several independent perimeters that each block ingress and egress (tools/egress.py). A destination is
+# reachable only if every perimeter lets it through. An allow-list change needs at least two approvers and is applied
+# by at least two independent automation pipelines, each verifying the approvals itself, so neither one person nor one
+# compromised pipeline can open egress (ADR-0063). The ai-egress set under perimeter_sets applies
+# the same rules to AI egress: only the AI egress gate's pods reach model hosts (ADR-0164).
+
+min_approvers: 2
+approver_roles: [risk_owner, security_officer]
+min_pipelines: 2
+
+perimeters:
+  l7:  {enforces: "Cilium FQDN and HTTP policy on the remote-browser pods (egress), CiliumNetworkPolicy ingress from the gateway only", pipeline: flux-network, signed_by: "network pipeline key"}
+  dns: {enforces: "a dedicated CoreDNS instance (bundled with K3s) for the remote-browser namespace answers only allow-listed names, everything else NXDOMAIN", pipeline: dns-zone, signed_by: "DNS pipeline key"}
+  l3:  {enforces: "Cilium egress gateway node with an nftables allow-set fed from the resolved allow-list, default drop both ways", pipeline: host-firewall, signed_by: "host firewall pipeline key (Aerleon and Ansible)"}
+
+ingress:
+  from: "stick and thin clients only through NetBird and the gateway; WebRTC media over the VPN, never a public TURN server (verify Neko over NetBird)"
+  isolation: "own egress segment and namespace per tenant; a disposable browser per session, destroyed at logout; no uploads to the platform, downloads off"
+
+allow_list:
+  entries: "destination (FQDN, optional path prefix), tenant, purpose, requested_by, approvals, expiry; signed change records in git"
+  review: "expired entries drop out automatically; the tenant risk owner reviews the list quarterly"
+
+perimeter_sets:   # further sets on the same rules: two approvers, two independent pipelines, a destination reachable only through every perimeter
+  ai-egress:   # ADR-0164 point 3: without a provider AI egress is denied, enforced on the wire
+    decision: ADR-0164
+    min_approvers: 2
+    approver_roles: [risk_owner, security_officer]
+    min_pipelines: 2
+    perimeters:
+      l7:  {enforces: "Cilium HTTP policy by host and path prefix (/v1/chat/completions, /v1/models) on the AI egress gate's pods (egress); CiliumNetworkPolicy ingress to the gate from the inference gateway's identity only", pipeline: flux-network, signed_by: "network pipeline key"}
+      dns: {enforces: "the gate's namespace resolves only the model hosts on the signed list, everything else NXDOMAIN; DNS over HTTPS and DNS over TLS are blocked (known resolver hosts denied at layer 7, 853/tcp dropped)", pipeline: dns-zone, signed_by: "DNS pipeline key"}
+      l3:  {enforces: "Cilium egress gateway node with an nftables allow-set of the model hosts' addresses, default drop both ways", pipeline: host-firewall, signed_by: "host firewall pipeline key (Aerleon and Ansible)"}
+    reach:
+      gate: "the AI egress gate's pods reach the model hosts on the signed list: local models only in this phase"
+      inference-gateway: none
+      workloads: none
+    doh: blocked
+    allow_list:
+      entries: "model host (FQDN), path prefix, tenant, destination class (local in this phase), requested_by, approvals, expiry; signed change records in git"
+      additions: "every addition is a loosening under the change contract (ADR-0087)"
+    external: "no external model host is on the list until an ADR of the AI egress gate adds a consented external class and the contract scores external forward yes; external AI routes never overflow to another site's gate"
+
+drift: "perimeters are compared every few minutes: a destination open on any perimeter but not on the signed list is an incident; one missing from a perimeter is unreachable and alerts the pipeline owner"

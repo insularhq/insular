@@ -1,0 +1,468 @@
+# Contracts: what a capability must offer so that any implementation can be swapped for another. A contract names the
+# OSI layer, the specifications with versions, the required features, the conformance suite that proves an
+# implementation, how data leaves, and the patch commitment. Each implementation and alternate carries a feature matrix
+# and a readiness: ready (passes conformance with lab evidence), candidate (all required features on paper), partial
+# (some missing), none. Nothing is 'ready' without a lab evidence record. Feature claims: maintainer knowledge
+# plus research passes; verify against the implementation before an exit is relied on.
+# Advisory posture per component: catalog/security-posture.yaml. Checked by tools/contracts.py.
+
+patch_sla:   # the provider's commitment per severity, from upstream fix to deployed (all sizes)
+  critical: 72h
+  high: 7d
+  medium: 30d
+  low: next-release
+
+contracts:
+  orchestration:
+    layer: L7
+    stack_layer: substrate/orchestration-and-runtime
+    provides: [orchestration-api]
+    consumes: [orchestration-api]
+    specs: ["Kubernetes API (CNCF certified conformance)", "Gateway API v1", "CSI", "CNI", "OCI runtime and image specs"]
+    required: [k8s-conformance, embedded-etcd-ha, single-binary-edge, airgap-install, selinux-policy, cis-hardening-profile]
+    conformance: "CNCF Kubernetes conformance (Sonobuoy / Hydrophone)"
+    exit: "redeploy the same signed bundles on another conformant distribution"
+    implementations:
+      K3s:   {role: primary, readiness: candidate, features: {k8s-conformance: yes, embedded-etcd-ha: yes, single-binary-edge: yes, airgap-install: yes, selinux-policy: yes, cis-hardening-profile: yes}, note: "SELinux with Cilium proved on Leap Micro 6.2 (ADR-0074); a CNCF conformance run is still to do"}
+      RKE2:  {role: alternate, readiness: partial, features: {k8s-conformance: yes, embedded-etcd-ha: yes, single-binary-edge: partial, airgap-install: yes, selinux-policy: yes, cis-hardening-profile: yes}}
+      Talos: {role: alternate, readiness: partial, features: {k8s-conformance: yes, embedded-etcd-ha: yes, single-binary-edge: no, airgap-install: yes, selinux-policy: no, cis-hardening-profile: yes}, note: "replaces the host OS too (ADR-0050)"}
+  sandboxing:
+    layer: L7
+    stack_layer: substrate/orchestration-and-runtime
+    provides: [orchestration-api]
+    consumes: []
+    specs: ["Kubernetes RuntimeClass", "OCI runtime spec"]
+    required: [runtimeclass, syscall-isolation]
+    optional: [no-nested-virt-needed, gpu-passthrough]
+    conformance: "Kubernetes node e2e tests with the RuntimeClass selected"
+    exit: "switch the RuntimeClass per label"
+    implementations:
+      gVisor: {role: primary, readiness: candidate, features: {runtimeclass: yes, syscall-isolation: yes, no-nested-virt-needed: yes, gpu-passthrough: partial}}
+      Kata Containers: {role: alternate, readiness: candidate, features: {runtimeclass: yes, syscall-isolation: yes, no-nested-virt-needed: no, gpu-passthrough: yes}, note: "microVM floor for Restricted (L); needs nested virtualisation or bare metal"}
+  ingress-and-api:
+    layer: L7
+    stack_layer: network/edge-and-exchange
+    provides: [web-access]
+    consumes: [authn-federation, authz-decision, content-inspection, service-mtls]
+    specs: ["Kubernetes Gateway API v1 (HTTPRoute, GRPCRoute, TLSRoute)", "ACME RFC 8555", "Envoy ext_authz", "HTTP/2, HTTP/3"]
+    required: [gateway-api-v1, oidc-code-flow, jwt-validation, ext-authz-grpc, wasm-or-waf-extension, rate-limit, mtls-upstream, header-identity-handoff, label-cells, authz-obligation-headers, authz-request-body-limited, decision-logs-with-label, per-label-tls-profile]
+    not_in_contract: "heavy DLP and payload transformation: content inspection of data crossing a label lives in the release gateway, the AI egress gate's leak gate and the egress perimeters; the gateway never decrypts data-centric protection (ZTDF, end-to-end encryption) (ADR-0073)"
+    conformance: "Gateway API conformance suite (core and extended): official reports in kubernetes-sigs/gateway-api"
+    exit: "routes are generated from CALM; regenerate for another Gateway API implementation"
+    implementations:
+      Envoy Gateway: {role: primary, readiness: candidate, features: {gateway-api-v1: yes, oidc-code-flow: yes, jwt-validation: yes, ext-authz-grpc: yes, wasm-or-waf-extension: yes, rate-limit: yes, mtls-upstream: yes, header-identity-handoff: yes, label-cells: yes, authz-obligation-headers: yes, authz-request-body-limited: yes, decision-logs-with-label: yes, per-label-tls-profile: yes}, note: "never merge OIDC and JWT on one route"}
+      kgateway: {role: alternate, readiness: candidate, features: {gateway-api-v1: yes, oidc-code-flow: yes, jwt-validation: yes, ext-authz-grpc: yes, wasm-or-waf-extension: yes, rate-limit: yes, mtls-upstream: yes, header-identity-handoff: yes, label-cells: yes, authz-obligation-headers: yes, authz-request-body-limited: yes, decision-logs-with-label: yes, per-label-tls-profile: yes}, note: "CNCF, Envoy data plane, Gateway API conformance reports v1.3 to v1.6; shares Envoy's vulnerabilities (no data-plane diversity)"}
+  identity-broker:
+    layer: L7
+    stack_layer: identity-and-trust/human-identity
+    provides: [authn-federation, orchestration-api]
+    consumes: [authn-federation, sql-data]
+    specs: ["OpenID Connect Core 1.0", "OAuth 2.0 (RFC 6749) with PKCE (RFC 7636)", "DPoP (RFC 9449)", "Token Exchange (RFC 8693)", "CIBA Core 1.0", "SAML 2.0", "SCIM 2.0 (RFC 7643/7644)", "WebAuthn Level 2"]
+    required: [oidc-op, saml-broker, scim-provisioning, passkey-attestation-aaguid, token-exchange, ciba, dpop, realm-per-tenant, passkey-only-flows]
+    conformance: "OpenID Foundation conformance suite (OP profiles); WebAuthn registration tests with real keys"
+    exit: "issuer URL, discovery and claims kept; users via SCIM; overlapping JWKS during the move"
+    implementations:
+      Keycloak: {role: primary, readiness: partial, features: {oidc-op: yes, saml-broker: yes, scim-provisioning: partial, passkey-attestation-aaguid: yes, token-exchange: yes, ciba: partial, dpop: yes, realm-per-tenant: yes, passkey-only-flows: yes}, note: "CIBA is a preview feature; SCIM through an extension"}
+      ZITADEL: {role: alternate, readiness: partial, features: {oidc-op: yes, saml-broker: yes, scim-provisioning: yes, passkey-attestation-aaguid: partial, token-exchange: yes, ciba: no, dpop: partial, realm-per-tenant: yes, passkey-only-flows: yes}}
+  secrets-and-pki:
+    layer: L7
+    stack_layer: identity-and-trust/secrets-and-pki
+    provides: [pki, secrets]
+    consumes: []
+    specs: ["Vault-compatible HTTP API", "ACME RFC 8555", "PKCS#11", "SSH certificates (OpenSSH)", "Kubernetes auth (TokenReview)"]
+    required: [kv-secrets, dynamic-db-credentials, pki-ecdsa-intermediates, acme-server, ssh-ca, k8s-auth, oidc-auth, control-groups, raft-ha, pkcs11-seal, transit]
+    conformance: "own API contract tests (tools and tests against the Vault API surface we use)"
+    exit: "secrets exported and re-imported; intermediates re-issued from the offline roots"
+    implementations:
+      OpenBao: {role: primary, readiness: candidate, features: {kv-secrets: yes, dynamic-db-credentials: yes, pki-ecdsa-intermediates: yes, acme-server: yes, ssh-ca: yes, k8s-auth: yes, oidc-auth: yes, control-groups: yes, raft-ha: yes, pkcs11-seal: yes, transit: yes}, note: "control groups since 2.7.0; seals as plugins"}
+      step-ca: {role: alternate, readiness: partial, features: {kv-secrets: no, dynamic-db-credentials: no, pki-ecdsa-intermediates: yes, acme-server: yes, ssh-ca: yes, k8s-auth: partial, oidc-auth: yes, control-groups: no, raft-ha: no, pkcs11-seal: yes, transit: no}, note: "PKI-only exit; used only where the primary cannot serve"}
+  database:
+    layer: L7
+    stack_layer: platform-services/data-services
+    provides: [sql-data]
+    consumes: []
+    specs: ["PostgreSQL wire protocol v3", "SQL", "logical replication", "WAL archiving to S3"]
+    required: [pg-17-or-later, streaming-ha, pitr-to-s3, rls, tls, operator-managed-failover, volume-snapshots]
+    conformance: "PostgreSQL regression suite for the server; operator e2e tests in the lab"
+    exit: "dumps and logical replication to any PostgreSQL"
+    implementations:
+      CloudNativePG: {role: primary, readiness: candidate, features: {pg-17-or-later: yes, streaming-ha: yes, pitr-to-s3: yes, rls: yes, tls: yes, operator-managed-failover: yes, volume-snapshots: yes}}
+      Zalando postgres-operator: {role: alternate, readiness: partial, features: {pg-17-or-later: yes, streaming-ha: yes, pitr-to-s3: yes, rls: yes, tls: yes, operator-managed-failover: yes, volume-snapshots: partial}, note: "Zalando SE (DE), Patroni-based"}
+  policy-decision:
+    layer: L7
+    stack_layer: identity-and-trust/authorization
+    provides: [authz-decision, security-signals]
+    consumes: [authz-decision]
+    specs: ["AuthZEN Authorization API (OpenID)", "OPA bundle API", "decision logs"]
+    required: [authzen-request-shape, signed-bundles, offline-bundle-cache, decision-logs, ext-authz-envoy, data-from-signals]
+    conformance: "tools/authz.py reference model: the same decisions for the same inputs"
+    exit: "AuthZEN request shape stays; policies re-expressed, pinned by tests"
+    implementations:
+      OPA: {role: primary, readiness: partial, features: {authzen-request-shape: partial, signed-bundles: yes, offline-bundle-cache: yes, decision-logs: yes, ext-authz-envoy: yes, data-from-signals: yes}}
+      Cerbos: {role: alternate, readiness: partial, features: {authzen-request-shape: yes, signed-bundles: partial, offline-bundle-cache: yes, decision-logs: yes, ext-authz-envoy: partial, data-from-signals: partial}}
+  reconciliation:
+    layer: L7
+    stack_layer: platform-services/delivery-and-gitops
+    actor: true
+    provides: []
+    consumes: [artefact-supply, orchestration-api]
+    specs: ["OpenGitOps principles", "OCI artifacts", "cosign signatures (Sigstore)"]
+    required: [oci-sources, cosign-verify, multi-tenancy, drift-correction, pull-only, offline-mirror]
+    conformance: "own e2e: a signed bundle reconciles, an unsigned one is refused"
+    exit: "point another controller at the same signed bundles"
+    implementations:
+      Flux: {role: primary, readiness: candidate, features: {oci-sources: yes, cosign-verify: yes, multi-tenancy: yes, drift-correction: yes, pull-only: yes, offline-mirror: yes}}
+      Argo CD: {role: alternate, readiness: partial, features: {oci-sources: yes, cosign-verify: partial, multi-tenancy: yes, drift-correction: yes, pull-only: yes, offline-mirror: yes}, note: "worse advisory record over 24 months (catalog/security-posture.yaml)"}
+  telemetry:
+    layer: L7
+    stack_layer: platform-services/observability
+    provides: [telemetry]
+    consumes: [telemetry]
+    specs: ["OTLP 1.x (gRPC, HTTP)", "Prometheus remote write"]
+    required: [otlp-in-out, persistent-queue, filelog-receiver, k8s-metadata, mtls]
+    conformance: "OpenTelemetry protocol compatibility; own pipeline tests"
+    exit: "any OTLP collector"
+    implementations:
+      OpenTelemetry Collector: {role: primary, readiness: candidate, features: {otlp-in-out: yes, persistent-queue: yes, filelog-receiver: yes, k8s-metadata: yes, mtls: yes}}
+      Fluent Bit: {role: alternate, readiness: candidate, features: {otlp-in-out: yes, persistent-queue: yes, filelog-receiver: yes, k8s-metadata: yes, mtls: yes}, note: "CNCF; low maintainer count in recent commits"}
+  metrics-and-logs:
+    layer: L7
+    stack_layer: platform-services/observability
+    provides: [telemetry]
+    consumes: []
+    specs: ["PromQL", "Prometheus remote write", "OTLP logs", "LogsQL or LogQL"]
+    required: [promql, remote-write-in, otlp-logs-in, retention-policies, snapshot-backup, multi-tenant-labels]
+    conformance: "PromQL compliance tests (Prometheus compliance suite)"
+    exit: "remote write to another store; history exported"
+    implementations:
+      VictoriaMetrics: {role: primary, readiness: partial, features: {promql: yes, remote-write-in: yes, otlp-logs-in: no, retention-policies: yes, snapshot-backup: yes, multi-tenant-labels: yes}}
+      VictoriaLogs: {role: primary, readiness: partial, features: {promql: no, remote-write-in: no, otlp-logs-in: yes, retention-policies: yes, snapshot-backup: yes, multi-tenant-labels: yes}}
+      Prometheus: {role: alternate, set: prometheus-loki, readiness: partial, features: {promql: yes, remote-write-in: yes, otlp-logs-in: no, retention-policies: yes, snapshot-backup: yes, multi-tenant-labels: partial}}
+      ClickHouse: {role: alternate, set: clickhouse-events, readiness: partial, features: {promql: no, remote-write-in: no, otlp-logs-in: yes, retention-policies: yes, snapshot-backup: yes, multi-tenant-labels: yes}, note: "events (flows, security events, access and decision logs) in OCSF shape, ADR-0152; bake-off against VictoriaLogs"}
+      Loki: {role: alternate, set: prometheus-loki, readiness: partial, features: {promql: no, remote-write-in: no, otlp-logs-in: yes, retention-policies: yes, snapshot-backup: partial, multi-tenant-labels: yes}}
+  dashboards:
+    layer: L7
+    stack_layer: platform-services/observability
+    provides: [service-mtls]
+    consumes: [authn-federation, events]
+    specs: ["PromQL and LogsQL data sources", "dashboards as code"]
+    required: [dashboards-as-code, oidc, alerting, data-source-promql]
+    conformance: "generated dashboards render from the model"
+    exit: "dashboards generated from the model for another tool"
+    implementations:
+      Grafana: {role: primary, readiness: candidate, features: {dashboards-as-code: yes, oidc: yes, alerting: yes, data-source-promql: yes}}
+      Perses: {role: alternate, readiness: partial, features: {dashboards-as-code: yes, oidc: yes, alerting: no, data-source-promql: yes}}
+  event-backbone:
+    layer: L7
+    stack_layer: platform-services/messaging
+    provides: [events]
+    consumes: []
+    specs: ["CloudEvents 1.0", "AsyncAPI 3", "NATS protocol and JetStream"]
+    required: [cloudevents, persistent-streams, leaf-nodes-ddil, accounts-multitenancy, mtls]
+    conformance: "own e2e: publish during a cut, replay after reconnect"
+    exit: "a bridge mirrors subjects into the new backbone during the move"
+    implementations:
+      NATS: {role: primary, readiness: candidate, features: {cloudevents: yes, persistent-streams: yes, leaf-nodes-ddil: yes, accounts-multitenancy: yes, mtls: yes}}
+      Apache Kafka: {role: alternate, readiness: partial, features: {cloudevents: yes, persistent-streams: yes, leaf-nodes-ddil: no, accounts-multitenancy: partial, mtls: yes}}
+  vault-workspace:
+    layer: L7
+    stack_layer: workloads/collaboration
+    provides: [service-mtls]
+    consumes: [authn-federation]
+    specs: ["client-side end-to-end encryption", "OpenDocument and OOXML export", "OIDC (SSO plugin)"]
+    required: [e2ee, office-docs, whiteboard, diagrams, pdf-view, forms, export-open-formats]
+    conformance: "own e2e: the server never holds plaintext (forced personal passphrase)"
+    exit: "users export documents in open formats"
+    implementations:
+      CryptPad: {role: primary, readiness: candidate, features: {e2ee: yes, office-docs: yes, whiteboard: yes, diagrams: yes, pdf-view: yes, forms: yes, export-open-formats: yes}}
+      Nextcloud: {role: alternate, readiness: partial, features: {e2ee: partial, office-docs: yes, whiteboard: yes, diagrams: partial, pdf-view: yes, forms: yes, export-open-formats: yes}, note: "end-to-end encryption is limited; only for Internal (ADR-0068)"}
+  itsm:
+    layer: L7
+    stack_layer: business/service-management
+    provides: [service-mtls]
+    consumes: [authn-federation]
+    specs: ["REST API", "OIDC", "mail gateway"]
+    required: [tickets, changes-approvals, cmdb-view, oidc, rest-api, mail-gateway]
+    conformance: "own e2e: queue replay from the edge creates the same tickets"
+    exit: "tickets exported; git inventory stays the source of truth"
+    implementations:
+      GLPI: {role: primary, readiness: candidate, features: {tickets: yes, changes-approvals: yes, cmdb-view: yes, oidc: yes, rest-api: yes, mail-gateway: yes}, note: "heavy advisory record: behind the gateway and WAF only, patch SLA enforced"}
+      iTop: {role: alternate, readiness: partial, features: {tickets: yes, changes-approvals: yes, cmdb-view: yes, oidc: partial, rest-api: yes, mail-gateway: yes}, note: "Keycloak only through SAML"}
+  status:
+    layer: L7
+    stack_layer: platform-services/observability
+    actor: true
+    provides: []
+    consumes: [web-access]
+    specs: ["HTTP checks as code"]
+    required: [checks-as-code, external-placement, alert-webhooks]
+    conformance: "own: checks generated from the model"
+    exit: "checks regenerated for another checker"
+    implementations:
+      Gatus: {role: primary, readiness: candidate, features: {checks-as-code: yes, external-placement: yes, alert-webhooks: yes}}
+      Prometheus Blackbox Exporter: {role: alternate, readiness: partial, features: {checks-as-code: yes, external-placement: yes, alert-webhooks: partial}}
+  alerting:
+    layer: L7
+    stack_layer: platform-services/observability
+    provides: [events]
+    consumes: []
+    specs: ["HTTP push", "SMS", "SIP"]
+    required: [push, self-hosted, acl, offline-channel]
+    conformance: "communication plan daily test (platform/communication.yaml)"
+    exit: "channels are adapters behind the communication plan"
+    implementations:
+      ntfy: {role: primary, readiness: partial, features: {push: yes, self-hosted: yes, acl: yes, offline-channel: no}}
+      Gammu: {role: primary, readiness: partial, features: {push: no, self-hosted: yes, acl: no, offline-channel: yes}}
+      Gotify: {role: alternate, readiness: partial, features: {push: yes, self-hosted: yes, acl: partial, offline-channel: no}}
+  overlay-vpn:
+    layer: L3
+    stack_layer: network/overlay-and-access
+    provides: [overlay-access]
+    consumes: [authn-federation]
+    specs: ["WireGuard", "OIDC device login", "posture checks"]
+    required: [wireguard, oidc, posture-checks, setup-keys, acl-groups, self-hosted-management, relay]
+    conformance: "own e2e: posture failure moves a peer to quarantine"
+    exit: "WireGuard underneath; policies regenerated"
+    implementations:
+      NetBird: {role: primary, readiness: candidate, features: {wireguard: yes, oidc: yes, posture-checks: yes, setup-keys: yes, acl-groups: yes, self-hosted-management: yes, relay: yes}}
+      Headscale: {role: alternate, readiness: partial, features: {wireguard: yes, oidc: yes, posture-checks: no, setup-keys: yes, acl-groups: yes, self-hosted-management: yes, relay: partial}, note: "needs the Tailscale client"}
+  network-policy:
+    layer: L3
+    stack_layer: network/segmentation
+    provides: [orchestration-api]
+    consumes: []
+    specs: ["Kubernetes NetworkPolicy", "eBPF datapath", "BGP"]
+    required: [networkpolicy, l7-http-policy, fqdn-egress, lb-ipam-bgp, flow-observability, encryption-wireguard]
+    conformance: "Kubernetes network policy e2e; cyclonus"
+    exit: "standard NetworkPolicy plus generated extensions"
+    implementations:
+      Cilium: {role: primary, readiness: candidate, features: {networkpolicy: yes, l7-http-policy: yes, fqdn-egress: yes, lb-ipam-bgp: yes, flow-observability: yes, encryption-wireguard: yes}}
+      Calico: {role: alternate, readiness: partial, features: {networkpolicy: yes, l7-http-policy: partial, fqdn-egress: partial, lb-ipam-bgp: yes, flow-observability: partial, encryption-wireguard: yes}}
+  runtime-detection:
+    layer: L7
+    stack_layer: security-and-compliance/detection-and-response
+    actor: true
+    provides: []
+    consumes: [telemetry]
+    specs: ["Sigma rules", "OCSF events", "eBPF"]
+    required: [ebpf-modern-probe, k8s-context, rules-as-code, otlp-or-json-out]
+    conformance: "own: planted behaviours are detected"
+    exit: "detections are Sigma; events are OCSF"
+    implementations:
+      Falco: {role: primary, readiness: candidate, features: {ebpf-modern-probe: yes, k8s-context: yes, rules-as-code: yes, otlp-or-json-out: yes}}
+      Tetragon: {role: alternate, readiness: candidate, features: {ebpf-modern-probe: yes, k8s-context: yes, rules-as-code: yes, otlp-or-json-out: yes}, note: "can also enforce in the kernel"}
+  updates:
+    layer: L7
+    stack_layer: platform-services/delivery-and-gitops
+    provides: [host-update]
+    consumes: [host-update]
+    specs: ["signed A/B bundles", "hawkBit DDI API"]
+    required: [ab-slots, signed-bundles, rollback, staged-campaigns, offline-bundles]
+    conformance: "own: a broken update rolls back on the reference laptops"
+    exit: "bundles are signed images; another updater can install them"
+    implementations:
+      RAUC: {role: primary, readiness: partial, features: {ab-slots: yes, signed-bundles: yes, rollback: yes, staged-campaigns: no, offline-bundles: yes}}
+      hawkBit: {role: primary, readiness: partial, features: {ab-slots: no, signed-bundles: yes, rollback: no, staged-campaigns: yes, offline-bundles: no}}
+      Mender: {role: alternate, readiness: candidate, features: {ab-slots: yes, signed-bundles: yes, rollback: yes, staged-campaigns: yes, offline-bundles: yes}, note: "Northern.tech (NO); open-source core, some features commercial"}
+  backup:
+    layer: L7
+    stack_layer: platform-services/storage-and-backup
+    actor: true
+    provides: []
+    consumes: [backup-repository]
+    specs: ["restic repository format", "S3 API", "append-only REST"]
+    required: [encrypted-dedup, append-only-target, s3-target, restore-without-server, verify]
+    conformance: "monthly restore drills (governance/recovery.yaml)"
+    exit: "documented repository format; rustic reads restic repositories"
+    implementations:
+      restic: {role: primary, readiness: candidate, features: {encrypted-dedup: yes, append-only-target: yes, s3-target: yes, restore-without-server: yes, verify: yes}}
+      rustic: {role: alternate, readiness: candidate, features: {encrypted-dedup: yes, append-only-target: yes, s3-target: yes, restore-without-server: yes, verify: yes}, note: "restic-compatible repository: exit without migrating backups"}
+      Kopia: {role: alternate, readiness: partial, features: {encrypted-dedup: yes, append-only-target: partial, s3-target: yes, restore-without-server: yes, verify: yes}}
+  host-os:
+    layer: L1
+    stack_layer: substrate/host-os
+    actor: true
+    provides: []
+    consumes: [host-update, name-and-time]
+    specs: ["transactional updates", "Ignition or Combustion", "SELinux", "TPM 2.0 measured boot"]
+    required: [transactional-rollback, selinux-enforcing, first-boot-as-code, tpm-measured-boot, k3s-supported]
+    conformance: "own: a spike on K3s with Cilium and SELinux enforcing"
+    exit: "hosts rebuilt from code on another OS"
+    implementations:
+      SUSE Micro: {role: primary, readiness: ready, evidence: "a private lab record", features: {transactional-rollback: yes, selinux-enforcing: yes, first-boot-as-code: yes, tpm-measured-boot: yes, k3s-supported: yes}, note: "the spike passed (ADR-0074)"}
+      Flatcar: {role: alternate, readiness: partial, features: {transactional-rollback: yes, selinux-enforcing: partial, first-boot-as-code: yes, tpm-measured-boot: partial, k3s-supported: partial}}
+  host-updates:
+    layer: L7
+    stack_layer: substrate/host-os
+    actor: true
+    provides: []
+    consumes: [orchestration-api]
+    specs: ["Kubernetes upgrade plans"]
+    required: [plans-from-git, node-by-node, drain-and-reboot, os-and-k3s]
+    conformance: "own: an OS and K3s upgrade rolls through the lab cluster"
+    exit: "plans are manifests"
+    implementations:
+      system-upgrade-controller: {role: primary, readiness: candidate, features: {plans-from-git: yes, node-by-node: yes, drain-and-reboot: yes, os-and-k3s: yes}}
+      Kured: {role: alternate, readiness: partial, features: {plans-from-git: partial, node-by-node: yes, drain-and-reboot: yes, os-and-k3s: no}}
+  portal:
+    layer: L7
+    stack_layer: business/portal
+    provides: [service-mtls]
+    consumes: []
+    specs: ["estate graph read model", "OIDC"]
+    required: [catalog-from-model, oidc, plugins-embed, read-only-default]
+    conformance: "own: the pane renders the estate graph without actions"
+    exit: "the estate graph is the asset; any front end renders it"
+    implementations:
+      Backstage: {role: primary, readiness: partial, features: {catalog-from-model: yes, oidc: yes, plugins-embed: yes, read-only-default: partial}, note: "busy advisory record: keep plugins minimal"}
+      Grafana: {role: alternate, readiness: partial, features: {catalog-from-model: partial, oidc: yes, plugins-embed: partial, read-only-default: yes}}
+  device-enrolment:
+    layer: L7
+    stack_layer: identity-and-trust/device-identity
+    provides: [web-access]
+    consumes: []
+    specs: ["own enrolment API (OpenAPI to be published)", "WebAuthn", "NetBird setup-key API"]
+    required: [code-and-sas, webauthn-approval, user-record-signing, audit-chain]
+    conformance: "tools/stick_enrol.py and the endpoint simulation"
+    exit: "own code over open standards"
+    implementations:
+      enrolment-service: {role: primary, readiness: candidate, features: {code-and-sas: yes, webauthn-approval: yes, user-record-signing: yes, audit-chain: yes}, note: "modelled and simulated; not yet built"}
+  access-governance:
+    layer: L7
+    stack_layer: identity-and-trust/human-identity
+    provides: [web-access]
+    consumes: [orchestration-api, authz-decision]
+    specs: ["OIDC", "Keycloak admin REST API", "RFC 8785 canonical JSON", "Ed25519 signatures", "OPA Rego"]
+    required: [requests, approvals, leases, certification, signed-change-log, edge-bundles]
+    conformance: "the engine's own suites and its edge conformance set, run by the model gate at the pinned tag (conformance/keyclerk.yaml, conformance/keyclerk-edge.yaml)"
+    exit: "grants stay Keycloak roles and groups and the rules stay Rego in the Isle's bundle; the signed change log verifies without KeyClerk; midPoint is the named peer"
+    implementations:
+      KeyClerk: {role: primary, readiness: candidate, features: {requests: yes, approvals: yes, leases: yes, certification: yes, signed-change-log: yes, edge-bundles: yes}, note: "pinned in frameworks/external-pins.yaml; to be placed on a ring first"}
+  edge-access:
+    layer: L7
+    stack_layer: identity-and-trust/privileged-access
+    actor: true
+    provides: []
+    consumes: [overlay-access]
+    specs: ["HTTPS", "Ed25519 signatures", "Warpgate admin API"]
+    required: [verified-bundles, ends-cut-off, governed-roles-only, reports]
+    conformance: "KeyClerk's edge conformance set (conformance/keyclerk-edge.yaml, KE-1 to KE-5), which the agent's Go port runs in its own CI"
+    exit: "the bundle format and its verifier are KeyClerk's published contract; another agent that passes the same set replaces it"
+    implementations:
+      ReliKey agent: {role: primary, readiness: candidate, features: {verified-bundles: yes, ends-cut-off: yes, governed-roles-only: yes, reports: yes}, note: "Go, static, one binary; drives Warpgate on the same host"}
+  privileged-access:
+    layer: L7
+    stack_layer: identity-and-trust/privileged-access
+    provides: [overlay-access]
+    consumes: [overlay-access]
+    specs: ["SSH", "RDP", "Kubernetes API", "PostgreSQL wire", "OIDC"]
+    required: [ssh, rdp, kubernetes, postgres, oidc, session-recording, approvals, ha-cluster]
+    conformance: "own: a recorded, approved session to each target type"
+    exit: "targets keep standard protocols; WireGuard plus the OpenBao SSH CA remains"
+    implementations:
+      Warpgate: {role: primary, readiness: candidate, features: {ssh: yes, rdp: yes, kubernetes: yes, postgres: yes, oidc: yes, session-recording: yes, approvals: yes, ha-cluster: yes}, note: "RDP new since 0.28; no SSH certificates to targets"}
+      WireGuard plus OpenBao SSH CA: {role: alternate, readiness: partial, features: {ssh: yes, rdp: no, kubernetes: yes, postgres: partial, oidc: yes, session-recording: no, approvals: partial, ha-cluster: yes}}
+  web-application-firewall:
+    layer: L7
+    stack_layer: network/edge-and-exchange
+    provides: [content-inspection]
+    consumes: [artefact-supply]
+    specs: ["ModSecurity-compatible rules (SecLang)", "OWASP Core Rule Set 4"]
+    required: [crs-4, paranoia-levels, anomaly-scoring, envoy-integration, audit-log]
+    conformance: "OWASP CRS regression test suite (go-ftw)"
+    exit: "the rule set runs in any ModSecurity-compatible engine"
+    implementations:
+      Coraza: {role: primary, readiness: candidate, features: {crs-4: yes, paranoia-levels: yes, anomaly-scoring: yes, envoy-integration: yes, audit-log: yes}}
+      ModSecurity: {role: alternate, readiness: partial, features: {crs-4: yes, paranoia-levels: yes, anomaly-scoring: yes, envoy-integration: no, audit-log: yes}, note: "OWASP project; no native Envoy integration"}
+  remote-browser:
+    layer: L7
+    stack_layer: workloads/isolated-access
+    provides: [realtime-media]
+    consumes: [web-access]
+    specs: ["WebRTC", "OIDC or header identity from the gateway"]
+    required: [webrtc-stream, per-session-disposable, clipboard-control, download-control, gateway-auth]
+    conformance: "own: a session is destroyed at logout; downloads blocked"
+    exit: "a browser kiosk container behind Guacamole"
+    implementations:
+      Neko: {role: primary, readiness: partial, features: {webrtc-stream: yes, per-session-disposable: yes, clipboard-control: partial, download-control: partial, gateway-auth: yes}, note: "clipboard and download controls still to verify; per-session rooms via neko-rooms"}
+      Apache Guacamole: {role: alternate, readiness: partial, features: {webrtc-stream: no, per-session-disposable: partial, clipboard-control: yes, download-control: yes, gateway-auth: yes}}
+  decision-inbox:
+    layer: L7
+    stack_layer: business/governance
+    provides: [authn-federation]
+    consumes: [artefact-supply]
+    specs: ["own decision-card API (OpenAPI to be published)", "CIBA authentication channel (Keycloak)", "Ed25519 signed records"]
+    required: [decision-cards, signed-approvals, ciba-channel, plain-language]
+    conformance: "governance tests (approvals, nonces, expiry)"
+    exit: "the records are the interface"
+    implementations:
+      decision-inbox: {role: primary, readiness: partial, features: {decision-cards: yes, signed-approvals: yes, ciba-channel: partial, plain-language: yes}, note: "CIBA channel still to be built"}
+      GLPI: {role: alternate, readiness: partial, features: {decision-cards: partial, signed-approvals: no, ciba-channel: no, plain-language: partial}}
+  ai-egress-gate:   # ADR-0164: without a provider AI egress is denied; order on the path: workload, inference gateway, gate, model
+    layer: L7
+    stack_layer: security-and-compliance/content-safety
+    provides: [ai-inference]
+    consumes: [ai-inference, authz-decision, secrets, events]
+    detectors: "may sit behind content-inspection; the gate's detectors are its own; not a consumed class, since the contract has no optional consumption"
+    specs: ["OpenAI chat-completions API (de facto, a subset, pinned per release)", "Envoy ext_proc when in the Envoy path", "CloudEvents 1.0 where the Isle carries events that way"]
+    required: [pseudonymise-reversible, leak-gate-blocking, egress-journal, consent-per-request, human-only-reidentify, fail-closed, openai-chat-subset, contract-events, signed-heartbeat]
+    optional: [external-forward]
+    refusals: [tools, functions, response-formats, several-choices, embeddings, files, batch]   # the openai-chat-subset feature: each refused, each tested
+    not_in_contract: "authorisation and quotas (the inference gateway; ADR-0073: no payload transformation there, this gate transforms at a label boundary); re-identification by a service or an agent; any external route until an ADR adds a consented external class"
+    conformance: "promptfoo's PII review plugins through the gate against an echo upstream, asserting that no original reached it; an own suite for reversibility, the journal, human-only re-identification, consent revocation and fail-closed, on a corpus frozen before the change and generated independently of it"
+    exit: "another provider of the contract; clients repoint one base URL"
+    radar: {LiteLLM with its Presidio guardrail: "masking and the OpenAI API only; not an alternate, so the computed lock-in stays high"}
+    implementations:
+      ai-egress-gate: {role: primary, readiness: partial, features: {pseudonymise-reversible: yes, leak-gate-blocking: yes, egress-journal: yes, consent-per-request: partial, human-only-reidentify: yes, fail-closed: yes, openai-chat-subset: yes, contract-events: partial, signed-heartbeat: no, external-forward: no}, note: "its floor (the component's own ADR-0004) forwards only to destinations of class local, so external forward is no until an ADR adds a consented external class; the gateway binds one consent lease per process (consent-per-request partial); its event port is designed, not yet received by an Isle; no heartbeat yet"}
+
+  out-of-band-management:
+    layer: L7
+    stack_layer: substrate/hardware-and-firmware
+    provides: [oob-management]
+    consumes: []
+    specs: ["DMTF Redfish (DSP0266) with the event, telemetry and update services", "DMTF SPDM (DSP0274) for component attestation", "IPMI disabled"]
+    required: [redfish-api, event-service, telemetry-service, signed-firmware-update, ipmi-disable, per-operation-accounts, spdm-attestation]
+    conformance: "DMTF Redfish Service Validator and Protocol Validator against every hardware model in the estate"
+    exit: "Redfish is a standard; desired firmware and BIOS settings live in git and are applied by pipeline-oob"
+    implementations:
+      vendor BMC firmware: {role: primary, readiness: partial, features: {redfish-api: yes, event-service: yes, telemetry-service: partial, signed-firmware-update: yes, ipmi-disable: yes, per-operation-accounts: partial, spdm-attestation: partial}, note: "iDRAC, iLO, XCC or Supermicro per estate register; features differ per model and firmware"}
+      OpenBMC: {role: alternate, readiness: partial, features: {redfish-api: yes, event-service: yes, telemetry-service: yes, signed-firmware-update: yes, ipmi-disable: yes, per-operation-accounts: yes, spdm-attestation: partial}, note: "open firmware where the hardware supports it"}
+  bare-metal-provisioning:
+    layer: L7
+    stack_layer: substrate/hardware-and-firmware
+    actor: true
+    provides: []
+    consumes: [artefact-supply, oob-management]
+    specs: ["BareMetalHost CRDs", "Redfish virtual media or PXE", "signed host images (OCI)"]
+    required: [redfish-virtual-media, signed-images, inspection, firmware-settings, cleaning-on-release]
+    conformance: "provision, inspect, reprovision and clean a lab host from git"
+    exit: "host images are signed OCI artefacts; any Redfish-capable provisioner boots them"
+    implementations:
+      Metal3: {role: primary, readiness: partial, features: {redfish-virtual-media: yes, signed-images: partial, inspection: yes, firmware-settings: yes, cleaning-on-release: yes}, note: "CNCF; Ironic underneath"}
+      Tinkerbell: {role: alternate, readiness: partial, features: {redfish-virtual-media: partial, signed-images: partial, inspection: yes, firmware-settings: partial, cleaning-on-release: partial}, note: "CNCF; workflow-based"}
+backlog:   # capabilities still without a contract (optional or L-only) -> the stack sub-layer the contract will sit on; the test keeps this exact
+  workload-identity: identity-and-trust/workload-identity
+  physical-access: identity-and-trust/authorization   # the PACS connector contract and the OSDP controller; a catalog contract follows the first vendor connector
+  workflows: platform-services/delivery-and-gitops
+  integration: platform-services/messaging
+  object-storage: platform-services/data-services
+  data-catalog: data-and-ai/data-platform
+  dataspace: data-and-ai/data-exchange
+  chat: workloads/collaboration
+  forge: platform-services/delivery-and-gitops
+  attestation: identity-and-trust/attestation
+  vdi: workloads/isolated-access
+  release-gateway: security-and-compliance/content-safety
+  sealed-artefacts: security-and-compliance/assurance-and-audit
+  inference: data-and-ai/ai-serving
+  model-registry: data-and-ai/ai-serving
+  preservation: security-and-compliance/assurance-and-audit
+  hypervisor: substrate/orchestration-and-runtime
+  site-dns: network/name-and-time
+  authoritative-dns: network/name-and-time
+  desktop-session-sso: identity-and-trust/human-identity
+  office-suite: workloads/collaboration
+  file-sharing: workloads/collaboration
+  dcim-ipam: network/fabric-and-addressing
+  task-queue-cache: platform-services/data-services
+  address-drift: network/fabric-and-addressing

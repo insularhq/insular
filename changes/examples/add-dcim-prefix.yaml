@@ -1,0 +1,17 @@
+# Example change record (ADR-0084, ADR-0087): a site allocation inside the site prefix; matches standard change
+# STD-DCIM-PREFIX, so it is pre-authorised but still planned, journaled and verified.
+id: 0192ff3b-1d2e-7f3a-8b4c-5d6e7f8a9b0c
+intent: {why: "reserve a /64 for the second gateway cell at edge-1 so the LB pool has room for the IEG pair", goal: G-2, decision: "", requested_by: "person:op-7f3a"}
+target: {master: site DCIM/IPAM, entities: ["netbox:edge-1#/ipam/prefixes"], scope: site, site: edge-1, tenant: ""}
+change:
+  kind: dynamic
+  document: "netbox:edge-1"
+  base_revision: "netbox:edge-1@4412"
+  patch:
+    - {op: add, path: /ipam/prefixes/-, value: {prefix: "fd00:0:0:201::/64", role: lb_pool, site: edge-1}}
+state: planned
+events:
+  - {state: draft, at: "2026-10-10T03:41:00Z", by: "person:op-7f3a"}
+  - {state: planned, at: "2026-10-10T03:41:30Z", by: "spiffe://vdh.example/adapter-netbox"}
+approvals: []
+decisions: []

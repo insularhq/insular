@@ -1,0 +1,48 @@
+# Sources of truth inside the running stack (ADR-0077): for every class of infrastructure fact, which system is
+# authoritative, at which scope, who writes it, how it flows, what a site does alone during a WAN failure, and how it
+# reconciles afterwards. Decision: git declares; a DCIM/IPAM per site is authoritative for the
+# site's physical and dynamic facts; every site masters its own facts and syncs up to its parent, so a site can run
+# alone. Checked by tools/sources_of_truth.py.
+#
+# Rules:
+#   - exactly one master per fact class and scope; nothing is mastered in two places
+#   - declared state (intent, architecture, plans) is mastered in git and reaches systems only through generators and
+#     reconciliation; systems never write back into git except through a reviewed change
+#   - a fact mastered at a site is never written by the parent; the parent proposes through a git change the site applies
+#   - observed state (discovery) is never authoritative: it is compared with the master, and a difference is a finding
+#   - views (GLPI CMDB, Backstage, the SPOG) are built from masters and never edited as truth
+
+scopes: [fleet, parent, site]
+reconcile_kinds:
+  generated: "built from git by a generator or reconciler; a manual edit is overwritten and reported as drift"
+  append-only: "records only accumulate (events, tickets, logs, audit); a site's records merge upward without conflict"
+  site-mastered: "the site owns the fact; the parent holds a read replica that catches up after the WAN returns"
+  replicated: "mastered upstream (parent or tenant) and pushed to sites as a read replica (SCIM, mirrors); a site never edits it"
+  issued: "a site issuer creates the fact under authority delegated from the parent (certificates, SVIDs, leases); the parent can revoke"
+
+facts:
+  intent-and-policy:    {master: git, scope: fleet, written_by: "reviewed changes with a decision record", flows_to: "signed OPA bundles, packs, generated configs", wan_down: "sites keep the last signed bundles; their age raises the risk band", reconcile: generated}
+  architecture:         {master: "git (CALM)", scope: fleet, written_by: "reviewed changes", flows_to: "firewall rules, seams, interrogation, SPOG", wan_down: "nothing to write locally", reconcile: generated}
+  address-plan:         {master: "git (platform/addressing.yaml)", scope: fleet, written_by: "reviewed changes", flows_to: "per-site prefixes and slots in the site DCIM/IPAM", wan_down: "the site works inside its allocated prefix", reconcile: generated}
+  site-allocations:     {master: "site DCIM/IPAM", scope: site, written_by: "site operators and the provisioning automation, inside the site prefix", flows_to: "K3s and Cilium configs, DNS records, the parent replica", wan_down: "the site allocates locally inside its prefix", reconcile: site-mastered}
+  places:               {master: "site DCIM/IPAM for physical places (NetBox Region, Site, nested Location); the tenant's organisation source for org units and occupancy", scope: site, written_by: "site operators for physical places, the tenant's facilities owner for occupancy (ADR-0174, platform/places.yaml)", flows_to: "the place records of the access engine, situation levels, door schedules, placement", wan_down: "the site keeps its own places; levels hold their last known value", reconcile: site-mastered}
+  physical-assets:      {master: "site DCIM/IPAM", scope: site, written_by: "site operators (racks, power feeds, cabling, device serials)", flows_to: "the git estate register as a periodic signed export, GLPI CMDB view", wan_down: "the site records changes locally", reconcile: site-mastered}
+  inter-site-links:     {master: "site DCIM/IPAM (link inventory: ends, carrier, transport)", scope: site, written_by: "the site network team; MACsec state read from the edge routers by the configuration check, or attested by the link owner until it exists (ADR-0146)", flows_to: "RI-25 on the RTOP, rollout RO-004, the parent replica", wan_down: "the site records changes locally; the last attestation ages and raises the risk band", reconcile: site-mastered}
+  firmware-and-bios:    {master: "git (desired firmware versions and BIOS settings per hardware model)", scope: fleet, written_by: "reviewed changes", flows_to: "BMCs through Redfish by pipeline-oob", wan_down: "the site keeps the last approved settings; no changes until reconnect", reconcile: generated}
+  estate-register:      {master: "git (inventory/estate.yaml)", scope: fleet, written_by: "reviewed changes and the signed DCIM exports", flows_to: "RTOP, interrogation, custody and concentration risk", wan_down: "nothing to write locally", reconcile: generated}
+  people:               {master: "the tenant's identity provider or HR feed", scope: parent, written_by: "the tenant's joiner-mover-leaver process", flows_to: "Keycloak per site by SCIM", wan_down: "the site authenticates synced people; no new people until the WAN returns", reconcile: replicated}
+  credentials-and-passkeys: {master: "site Keycloak", scope: site, written_by: "the person at enrolment, under four eyes where required", flows_to: "nowhere: credentials stay where they were registered", wan_down: "local registration continues", reconcile: site-mastered}
+  devices:              {master: "site enrolment service", scope: site, written_by: "enrolment ceremonies", flows_to: "NetBird peers, hawkBit targets, posture, the parent replica", wan_down: "local enrolment continues with the site's own officers", reconcile: site-mastered}
+  workload-identity:    {master: "site SPIRE (its own trust domain)", scope: site, written_by: "SPIRE registration generated from git", flows_to: "SVIDs; federated bundles to peers", wan_down: "the site keeps issuing", reconcile: issued}
+  secrets:              {master: "site OpenBao", scope: site, written_by: "provisioning from git and sealed artefacts; dynamic secrets by OpenBao", flows_to: "workloads", wan_down: "the site serves its own secrets", reconcile: issued}
+  certificates:         {master: "site intermediate CA", scope: site, written_by: "ACME and cert-manager under the parent root", flows_to: "workloads, gateways", wan_down: "the site keeps issuing", reconcile: issued}
+  dns-records:          {master: "git zone files for declared names; site DNS for dynamic records", scope: site, written_by: "generators and RFC 2136 updates from site automation", flows_to: "site resolvers; the parent for delegated zones", wan_down: "the site answers its own zones", reconcile: generated}
+  tickets:              {master: "tenant GLPI", scope: parent, written_by: "people and automation", flows_to: "decision records in git for approvals", wan_down: "edge sites queue tickets and change records in their local JetStream domain", reconcile: append-only}
+  change-records:       {master: "git (one repository per master's change journal)", scope: fleet, written_by: "adapters and pipelines, from the change contract", flows_to: "the pane, the audit chain, evidence bundles", wan_down: "a cut-off site journals locally and merges on reconnect through the isolation-window review", reconcile: append-only, note: "GLPI shows them; it never masters them (ADR-0087)"}
+  telemetry-and-audit:  {master: "the site that produced it", scope: site, written_by: "collectors and the audit chain", flows_to: "the parent through persistent queues", wan_down: "stored locally, forwarded later", reconcile: append-only}
+  observed-state:       {master: none, scope: site, written_by: "discovery (Hubble flows, Kubernetes and provider APIs, NetBird peers, hawkBit targets)", flows_to: "comparison with the masters above", wan_down: "local comparison continues", reconcile: generated, note: "never authoritative; a difference from a master is a finding"}
+
+dcim_ipam:   # the site DCIM/IPAM capability (contract backlog: dcim-ipam)
+  candidates: {NetBox: "Apache-2.0, NetBox Labs (US); the de facto DCIM/IPAM with a large plugin ecosystem", Nautobot: "Apache-2.0, Network to Code (US); a NetBox fork with a stronger job and GraphQL model"}
+  requirements: ["runs per site and keeps working alone", "REST and GraphQL APIs for generators", "signed periodic export to the git estate register", "a read replica at the parent", "IPv6 prefixes and per-site allocations inside the address register's site prefix"]
+  sovereignty: "both are non-EU single-company stewards under Apache-2.0: accepted with the exit that the data is exported to git and the schema is mapped in inventory/schema.yaml"

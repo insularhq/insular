@@ -1,0 +1,27 @@
+# NetBox's keys, created once in the ring when absent (ADR-0171 point 2); every ten minutes so a new ring has them early
+apiVersion: batch/v1
+kind: CronJob
+metadata: {name: netbox-keys, namespace: vdh-netbox, annotations: {vdh.component: "NetBox"}}
+spec:
+  schedule: "*/10 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        metadata: {labels: {app: netbox-keys}}
+        spec:
+          serviceAccountName: netbox-keys
+          restartPolicy: Never
+          securityContext: {runAsNonRoot: true, runAsUser: 10001, runAsGroup: 10001, seccompProfile: {type: RuntimeDefault}}
+          containers:
+            - name: keys
+              image: docker.io/library/python:3.13-alpine@sha256:2d9aefe2fef018a7eb2c13064c89c71929800fd2e5dccdbf52ea5da5bb8d929a
+              command: ["python3", "-u", "/app/keys.py"]
+              securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}, readOnlyRootFilesystem: true}
+              resources: {requests: {cpu: 5m, memory: 16Mi}, limits: {memory: 64Mi}}
+              volumeMounts: [{name: code, mountPath: /app, readOnly: true}]
+          volumes:
+            - {name: code, configMap: {name: netbox-code}}

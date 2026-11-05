@@ -1,0 +1,41 @@
+<!-- The ring's event store (ADR-0152). ClickHouse's default configuration sends crash reports to crash.clickhouse.com:
+     off here, and the network policy denies egress anyway. The MySQL-compatible port serves Pharos's Grafana. -->
+<clickhouse>
+    <send_crash_reports>
+        <enabled>false</enabled>
+        <send_logical_errors>false</send_logical_errors>
+    </send_crash_reports>
+    <listen_host>::</listen_host>
+    <mysql_port>9004</mysql_port>
+    <logger>
+        <level>warning</level>
+        <console>1</console>
+    </logger>
+    <!-- a small ring: modest caches, the server's own logs kept a week -->
+    <mark_cache_size>268435456</mark_cache_size>
+    <!-- the event store's own backups go to the ring's Garage through this collection; its key comes from
+         the optional Secret telemetry-backup (made by the lab tooling), so no credential is ever in a query's text -->
+    <!-- every S3 request to the ring's Garage is signed for Garage's region, whatever the operation: the collection's
+         own region did not reach every request of a BACKUP -->
+    <s3>
+        <ring_garage>
+            <endpoint>http://garage.vdh-backup.svc.cluster.local:3900/</endpoint>
+            <region>garage</region>
+        </ring_garage>
+    </s3>
+    <named_collections>
+        <garage_backup>
+            <url>http://garage.vdh-backup.svc.cluster.local:3900/state-telemetry/</url>
+            <!-- Garage answers only its own region: unsigned for it, ClickHouse signs for us-east-1, Garage refuses with
+                 400 and the BACKUP retries without end -->
+            <region>garage</region>
+            <access_key_id from_env="GARAGE_BACKUP_KEY"/>
+            <secret_access_key from_env="GARAGE_BACKUP_SECRET"/>
+        </garage_backup>
+    </named_collections>
+    <query_log replace="1">
+        <database>system</database>
+        <table>query_log</table>
+        <engine>ENGINE = MergeTree PARTITION BY event_date ORDER BY event_time TTL event_date + INTERVAL 7 DAY</engine>
+    </query_log>
+</clickhouse>

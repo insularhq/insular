@@ -1,0 +1,40 @@
+# Communication as code: who must know what, when, through which channels, and proof that it works every day.
+# Triggers come from the evidence (outages, predicted losses, planned maintenance); audiences come from the identity
+# model (who depends on the affected capability); channels are ranked by independence from the platform, because the
+# platform that fails cannot be trusted to announce its own failure.
+channels:
+  matrix:     {independent_of_platform: false, needs_internet: true,  tool: "Matrix bot on a separate homeserver (M+)"}
+  mail:       {independent_of_platform: true,  needs_internet: true,  tool: "external mail relay"}
+  push:       {independent_of_platform: true,  needs_internet: true,  tool: "ntfy on the off-instance management side (Apache-2.0)"}
+  sms-gsm:    {independent_of_platform: true,  needs_internet: false, tool: "GSM modem on site with Gammu (GPL-2.0), works when the network is down"}
+  sms-provider: {independent_of_platform: true, needs_internet: true, tool: "EU SMS provider (paid service, not software)"}
+  voice:      {independent_of_platform: true,  needs_internet: false, tool: "automated call via Asterisk (GPL-2.0) over a GSM gateway or SIP trunk (L)"}
+  status-page: {independent_of_platform: true, needs_internet: true,  tool: "Gatus on separate hosting (config as code; preferred over Uptime Kuma, whose config lives in its database)"}
+
+criticality:   # per person or role, from the registered identity attribute 'stakeholder_level'
+  mission-critical: {min_channels: 3, min_independent: 2, min_offline: 1, delegate_required: true, maintenance_notice_hours: 72, ack_minutes: 10}
+  key-user:         {min_channels: 2, min_independent: 1, min_offline: 0, delegate_required: true, maintenance_notice_hours: 48, ack_minutes: 30}
+  user:             {min_channels: 1, min_independent: 0, min_offline: 0, delegate_required: false, maintenance_notice_hours: 24, ack_minutes: null}
+
+triggers:
+  outage-detected:      {source: "green light / Gatus / heartbeat", timing: "immediately"}
+  access-lost:          {source: "a person's sessions fail or their site is islanded", timing: "immediately, to the person if reachable, else to the delegate and site contact"}
+  predicted-loss:       {source: "certificate or credential expiry, budget exhaustion, capacity trend", timing: "ahead, by lead time"}
+  planned-maintenance:  {source: "change record (GLPI) with affected capabilities", timing: "maintenance_notice_hours ahead, a reminder one hour ahead, and at start and end"}
+
+escalation:   # each step waits for an acknowledgement before the next; every step is a run record
+  - {step: 1, to: person, channels: "all of the person's channels, most independent first"}
+  - {step: 2, to: delegate, channels: "all channels of the named delegate (security officer, assistant)"}
+  - {step: 3, to: site-contact, channels: "voice and SMS to the site's duty contact: the hands and eyes on site"}
+  - {step: 4, to: service-owner, channels: "voice"}
+
+messages:
+  rule: "plain language with the same lint as decision cards: what is affected, since when, what to do now, when the next update comes"
+  sops: "each trigger has a generated standard operating procedure (runbook) executed through the execution path"
+
+continuous_test:   # a test that runs every day is evidence, not a snapshot
+  daily_silent: "every channel path is exercised to a test endpoint (test handset, test mailbox, test room) with delivery receipts; no user is disturbed"
+  daily_reachability: "every mission-critical person's numbers and addresses are validated by delivery status without ringing (carrier receipt or silent push)"
+  weekly_acknowledged: "delegates and site contacts receive a real test in an agreed window and acknowledge it"
+  evidence: "results feed a control in the green light; a missing or failed test turns it AMBER, then RED"
+  max_age_hours: {daily_silent: 26, weekly_acknowledged: 170}

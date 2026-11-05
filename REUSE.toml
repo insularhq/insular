@@ -1,0 +1,21 @@
+version = 1
+SPDX-PackageName = "Insular"
+SPDX-PackageSupplier = "VDHome"
+
+[[annotations]]
+path = "**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 VDHome and the Insular contributors"
+SPDX-License-Identifier = "EUPL-1.2"
+
+[[annotations]]
+path = ["calm/meta-1.2/**", "frameworks/k8s-api/**"]
+precedence = "override"
+SPDX-FileCopyrightText = "their upstream authors"
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "CODE_OF_CONDUCT.md"
+precedence = "override"
+SPDX-FileCopyrightText = "Contributor Covenant contributors"
+SPDX-License-Identifier = "CC-BY-4.0"

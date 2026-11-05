@@ -1,0 +1,13 @@
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: netbird, namespace: flux-system}
+spec:
+  interval: 10m
+  dependsOn: [{name: segmentation}, {name: identity}]
+  sourceRef: {kind: OCIRepository, name: lab-gitops}
+  path: ./netbird
+  prune: true
+  wait: false   # the servers wait for their config Secrets, made inside the ring by the script
+  timeout: 10m
+  postBuild:   # the ring's own domain (the ring front's Harbor names); without the ConfigMap the lab default applies
+    substituteFrom: [{kind: ConfigMap, name: ring-settings, optional: true}]

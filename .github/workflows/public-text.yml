@@ -1,0 +1,73 @@
+# Everything posted here is public at once. This checks pull request text and added lines, commit messages, issues,
+# discussions and comments with ci/public_text_check.py, and labels a hit for a maintainer. It runs the base branch's
+# check on text and git objects only: proposed code is fetched as data and never run. Patterns that would publish
+# themselves come from the INSULAR_PRIVATE_PATTERNS secret, used only for the maintainers' own text: for anyone else the
+# public run would tell them whether a guess matched.
+name: Public text
+on:  # zizmor: ignore[dangerous-triggers] the base branch's check runs; the pull request is fetched as data only
+  pull_request_target:
+    types: [opened, edited, synchronize, reopened]
+  issues:
+    types: [opened, edited]
+  issue_comment:
+    types: [created, edited]
+  pull_request_review:
+    types: [submitted, edited]
+  pull_request_review_comment:
+    types: [created, edited]
+  discussion:
+    types: [created, edited]
+  discussion_comment:
+    types: [created, edited]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: public-text-${{ github.event.pull_request.number || github.event.issue.number || github.event.discussion.number || github.run_id }}
+
+jobs:
+  check:
+    name: Public text check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Check the text
+        env:
+          # Event text arrives through the environment, never interpolated into the script.
+          TITLE: ${{ github.event.pull_request.title || github.event.issue.title || github.event.discussion.title }}
+          BODY: ${{ github.event.comment.body || github.event.review.body || github.event.pull_request.body || github.event.issue.body || github.event.discussion.body }}
+          INSULAR_PRIVATE_PATTERNS: ${{ contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association || github.event.review.author_association || github.event.pull_request.author_association || github.event.issue.author_association || github.event.discussion.author_association) && secrets.INSULAR_PRIVATE_PATTERNS || '' }}
+        run: |
+          printf '%s\n%s\n' "$TITLE" "$BODY" > "$RUNNER_TEMP/text.md"
+          python ci/public_text_check.py --text "$RUNNER_TEMP/text.md"
+      - name: Check the diff and commit messages
+        if: github.event_name == 'pull_request_target'
+        env:
+          PR: ${{ github.event.pull_request.number }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+          INSULAR_PRIVATE_PATTERNS: ${{ contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association || github.event.review.author_association || github.event.pull_request.author_association || github.event.issue.author_association || github.event.discussion.author_association) && secrets.INSULAR_PRIVATE_PATTERNS || '' }}
+        run: |
+          git fetch --no-tags origin "refs/pull/$PR/head"
+          python ci/public_text_check.py --range "$BASE..$HEAD"
+      - name: Label for a maintainer
+        if: failure() && (github.event.pull_request.number || github.event.issue.number)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+        run: |
+          gh label create held-for-text-review --color B60205 \
+            --description "The public text check found something a maintainer must read" -R "$GITHUB_REPOSITORY" || true
+          gh issue edit "$NUMBER" --add-label held-for-text-review -R "$GITHUB_REPOSITORY"

@@ -1,0 +1,118 @@
+id: baseline
+kind: baseline
+title: "Platform baseline policy"
+rules:
+  - id: MACSEC-INTER-SITE
+    title: "MACsec on every inter-site link, WireGuard kept inside it"
+    tests: [test_every_policy_rule_decides_as_written, test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten, test_a_ciso_decision_flows_into_rule_rollout_impact_and_risk]
+    owner: security_officer
+    status: active
+    review_by: "2027-06-30"
+    topic: inter-site-link-encryption
+    effect: require
+    parameter: "IEEE 802.1AE MACsec with MKA, GCM-AES-XPN-256"
+    scope: {}
+    valid_from: "2027-04-02"
+    decision: {by: security_officer, date: "2026-10-14", record: ADR-0146}
+    mitigates: [RI-25]
+    anchor: configuration
+    residual: {L: 1, I: 4}
+    affects:
+      - {kind: register, id: "platform/sdn.yaml#site_links", what: "site edge routers terminate MACsec on an Ethernet service per link; WireGuard stays inside"}
+      - {kind: seam, id: L02, what: "SPIRE federation between sites rides a protected link"}
+      - {kind: seam, id: L08, what: "gateway to gateway of another site rides a protected link"}
+      - {kind: capability, id: overlay-vpn, what: "NetBird paths that cross a site boundary ride a protected link"}
+  - id: TLS-2026
+    tests: [test_every_policy_rule_decides_as_written, test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten]
+    owner: security_officer
+    status: active
+    review_by: "2027-04-08"
+    topic: tls-min-version
+    effect: require
+    parameter: "1.3"
+    scope: {}
+    valid_from: "2026-01-01"
+    supersedes: [{rule: TLS-2024}]
+    mitigates: [RK-30]
+    anchor: configuration
+    residual: {L: 1, I: 3}
+  - id: TLS-2024
+    tests: [test_every_policy_rule_decides_as_written, test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten]
+    owner: security_officer
+    status: superseded
+    review_by: "2027-04-08"
+    topic: tls-min-version
+    effect: require
+    parameter: "1.2"
+    scope: {}
+    valid_from: "2024-01-01"
+    mitigates: [RK-30]
+    anchor: configuration
+    residual: {L: 2, I: 3}
+  - id: SESSION-LIFETIME
+    tests: [test_every_policy_rule_decides_as_written, test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten]
+    owner: security_officer
+    status: active
+    review_by: "2027-04-08"
+    topic: session-lifetime
+    effect: limit
+    by_trust: {high: "8h", medium: "1h", low: "15m", none: "0"}
+    by_band: {amber: "1h", red: "15m", black: "0"}   # ADR-0092: the session shortens as the risk band rises
+    scope: {}
+    valid_from: "2026-10-01"
+    mitigates: [RK-32]
+    anchor: identity-assurance
+    residual: {L: 1, I: 3}
+  - id: PASSKEY-ONLY
+    tests: [test_every_policy_rule_decides_as_written, test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten]
+    owner: security_officer
+    status: active
+    review_by: "2027-04-08"
+    topic: sign-in
+    effect: require
+    parameter: "attested hardware passkey"
+    scope: {}
+    valid_from: "2026-10-07"
+    mitigates: [RK-03, RK-33]
+    anchor: identity-assurance
+    residual: {L: 1, I: 3}
+  - id: NO-USB-STORAGE
+    tests: [test_every_policy_rule_decides_as_written, test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten]
+    owner: security_officer
+    status: active
+    review_by: "2027-04-08"
+    topic: removable-storage
+    effect: forbid
+    scope: {}
+    valid_from: "2026-10-01"
+    mitigates: [RK-04]
+    anchor: configuration
+    residual: {L: 1, I: 3}
+  # --- infrastructure and federation (ADR-0078): each rule mitigates one RI risk of a private register ---
+  - {id: HOST-ATTESTATION, owner: security_officer, status: active, review_by: "2027-04-08", topic: host-attestation, effect: require, parameter: "a Keylime-verified TPM quote no older than 60 minutes before a Sensitive or Restricted workload is placed on the host", scope: {}, valid_from: "2026-10-10", mitigates: [RI-01], anchor: hardware-attestation, residual: {L: 1, I: 4}, tests: [test_every_policy_rule_decides_as_written, test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten]}
+  - {id: HOST-BASELINE, owner: security_officer, status: active, review_by: "2027-04-08", topic: host-baseline, effect: require, parameter: "default-drop inbound in both families, key-only SSH and SELinux enforcing before the host joins; drift is an incident", scope: {}, valid_from: "2026-10-10", mitigates: [RI-02], anchor: configuration, residual: {L: 1, I: 3}, tests: [test_every_policy_rule_decides_as_written, test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten]}
+  - {id: ALERT-ROUTE, owner: platform_operator, status: active, review_by: "2027-04-15", topic: alert-route, effect: require, parameter: "every ring evaluates its alert rules from git and an evaluator in another failure domain pulls them and pages a person; a ring that is not heard pages as silent", scope: {}, valid_from: "2026-10-17", mitigates: [RI-27], anchor: configuration, residual: {L: 2, I: 4}, decision: {by: owner, date: "2026-10-12", record: ADR-0136}, tests: [test_every_policy_rule_decides_as_written, test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten, test_the_ring_alerts_by_rules_from_git_each_in_a_class_and_without_counts]}
+  - {id: BUNDLE-STALENESS, owner: security_officer, status: active, review_by: "2027-04-08", topic: bundle-staleness, effect: limit, by_band: {amber: "12h", red: "4h", black: "0"}, by_trust: {high: "24h", medium: "12h", low: "4h", none: "0"}, scope: {}, valid_from: "2026-10-10", mitigates: [RI-03], anchor: signature, residual: {L: 2, I: 2}, tests: [test_every_policy_rule_decides_as_written, test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten]}
+  - {id: DRIFT-RESOLUTION, owner: security_officer, status: active, review_by: "2027-04-08", topic: drift-resolution, effect: limit, parameter: "an open difference between a master and observed state is resolved or accepted within 24 hours", scope: {}, valid_from: "2026-10-10", mitigates: [RI-04], anchor: configuration, residual: {L: 2, I: 2}, tests: [test_every_policy_rule_decides_as_written, test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten]}
+  - {id: CUSTODY-CLEARANCE, owner: security_officer, status: active, review_by: "2027-04-08", topic: custody-clearance, effect: forbid, parameter: "placing data on a facility whose clearance or custody is to-establish or below the data's label", scope: {}, valid_from: "2026-10-10", mitigates: [RI-05], anchor: human-approval, residual: {L: 2, I: 3}, tests: [test_every_policy_rule_decides_as_written, test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten]}
+  - {id: PATCH-SLA, owner: security_officer, status: active, review_by: "2027-04-08", topic: patch-sla, effect: limit, parameter: "critical 72h, high 7d, medium 30d from upstream fix to deployed; past it the component's trust drops one band and exposure is reduced or compensated", scope: {}, valid_from: "2026-10-10", mitigates: [RI-06], anchor: configuration, residual: {L: 2, I: 3}, tests: [test_every_policy_rule_decides_as_written, test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten]}
+  - {id: FED-NO-COPY, owner: security_officer, status: active, review_by: "2027-04-08", topic: federation-claim-copy, effect: forbid, parameter: "copying a foreign acr, amr or role into a locally issued token without the signed mapping table", scope: {}, valid_from: "2026-10-10", mitigates: [RI-07], anchor: signature, residual: {L: 1, I: 3}, tests: [test_every_policy_rule_decides_as_written, test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten]}
+  - {id: FED-EXCHANGE-DEPTH, owner: security_officer, status: active, review_by: "2027-04-08", topic: federation-exchange-depth, effect: limit, parameter: "two token-exchange hops, pairwise subjects per receiving broker, every exchange logged", scope: {}, valid_from: "2026-10-10", mitigates: [RI-08], anchor: signature, residual: {L: 1, I: 4}, tests: [test_every_policy_rule_decides_as_written, test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten]}
+  - {id: FED-CHAIN-EXPIRY, owner: security_officer, status: active, review_by: "2027-04-08", topic: federation-chain-expiry, effect: limit, by_trust: {high: "24h", medium: "72h", low: "7d", none: "0"}, scope: {}, valid_from: "2026-10-10", mitigates: [RI-09], anchor: signature, residual: {L: 2, I: 2}, tests: [test_every_policy_rule_decides_as_written, test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten]}
+  - {id: FED-PARTNER-EVIDENCE, owner: security_officer, status: active, review_by: "2027-04-14", topic: federation-partner-evidence, effect: limit, parameter: "a partner's band is earned by fresh evidence (policies/federation.yaml partner_trust); trust above it only by a decided risk acceptance of at most 90 days and at most medium, with its limits", scope: {}, valid_from: "2026-10-14", decision: {by: owner, date: "2026-10-14", record: ADR-0149}, mitigates: [RI-26], anchor: signature, residual: {L: 2, I: 4}, tests: [test_every_policy_rule_decides_as_written, test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten, test_federation_partners_earn_trust_by_evidence_and_acceptance_is_limited]}
+  - {id: SITE-AUTONOMY, owner: security_officer, status: active, review_by: "2027-04-08", topic: site-autonomy, effect: require, parameter: "every site sized to run alone for 72 hours: issuers keep issuing, queues hold 72 hours, certificates outlive the budget; isolation time is a signal", scope: {}, valid_from: "2026-10-10", mitigates: [RI-10], anchor: configuration, residual: {L: 1, I: 3}, tests: [test_every_policy_rule_decides_as_written, test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten]}
+  - {id: TEMP-ISLE-NO-TRUST, owner: security_officer, status: active, review_by: "2027-04-08", topic: temporary-isle-trust, effect: forbid, parameter: "a temporary Isle never grants or renews leases, issues identities, certificates or tokens for others, writes or signs policy, accepts a release or moves a writer; it relays, caches, aggregates, serves locally and passes on revocations (platform/layers.yaml temporary_isle)", scope: {}, valid_from: "2026-10-10", mitigates: [RI-19], anchor: configuration, residual: {L: 1, I: 3}, tests: [test_every_policy_rule_decides_as_written, test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten, test_a_temporary_isle_never_creates_trust_and_is_bound_to_risk_and_policy]}
+  - {id: TEMP-ISLE-LEASE, owner: security_officer, status: active, review_by: "2027-04-08", topic: temporary-isle-lease, effect: limit, parameter: "the temporary Isle lease lasts at most 15 minutes, renewed by heartbeat; it ends when any Isle is reachable; a site served by a temporary Isle runs at band amber or higher", by_band: {amber: "15m", red: "5m", black: "0"}, scope: {}, valid_from: "2026-10-10", mitigates: [RI-20], anchor: signature, residual: {L: 1, I: 3}, tests: [test_every_policy_rule_decides_as_written, test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten, test_a_temporary_isle_never_creates_trust_and_is_bound_to_risk_and_policy]}
+  - {id: SKIFF-ROAMING, owner: security_officer, status: active, review_by: "2027-04-08", topic: skiff-roaming, effect: limit, parameter: "a Skiff whose Islet is unreachable may reach another Isle or Islet of its own ring through any relay, keeping its own lease and getting no new grant; never a site outside its ring; a roaming Skiff runs at band amber or higher and its session is at most 1 hour", by_band: {amber: "1h", red: "15m", black: "0"}, scope: {}, valid_from: "2026-10-10", mitigates: [RI-21], anchor: configuration, residual: {L: 1, I: 3}, tests: [test_every_policy_rule_decides_as_written, test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten, test_skiffs_reach_the_overlay_through_any_relay_of_their_ring_under_their_own_lease]}
+  - {id: BREAK-GLASS-UPGRADE-GATE, owner: security_officer, status: active, review_by: "2027-04-10", topic: break-glass-upgrade, effect: require, parameter: "no standing break-glass token is kept; an OpenBao upgrade proceeds only after the root-on-demand drill (regenerate a root from unseal shares through the loopback-only listener, use it, revoke it) passes on the new version in a test", scope: {}, valid_from: "2026-10-11", mitigates: [RI-22], anchor: configuration, residual: {L: 1, I: 4}, tests: [test_every_policy_rule_decides_as_written, test_break_glass_keeps_a_loopback_only_generate_root_listener_and_its_risk_is_gated]}
+  - {id: BACKUP-BENEATH-CORE, owner: security_officer, status: active, review_by: "2027-04-13", topic: backup-beneath-core, effect: require, parameter: "every master backed up where platform/resilience.yaml says, with a copy outside the failure domain it protects; backup keys on the break-glass tokens, never only in OpenBao; a release proceeds only when the core restore drill (platform/resops.yaml core_restore_order, without Keycloak, OpenBao, NetBird or the policy point running) passed within 90 days (ADR-0139)", scope: {}, valid_from: "2026-10-13", mitigates: [RI-23, RI-24], anchor: configuration, residual: {L: 1, I: 5}, tests: [test_every_policy_rule_decides_as_written, test_resops_is_core_risk_and_backup_sits_beneath_the_core]}
+  # --- protection of the sources of truth (ADR-0079) ---
+  - {id: TWO-PERSON-INTERIM, owner: security_officer, status: active, review_by: "2027-04-08", topic: self-approval, effect: limit, parameter: "in single-operator start-up mode a proposer approves their own change only after 24 hours, with an independent pipeline verification and an external alert", scope: {}, valid_from: "2026-10-10", mitigates: [RI-11], anchor: human-approval, residual: {L: 3, I: 3}, tests: [test_every_policy_rule_decides_as_written, test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten]}
+  - {id: MASTER-BULK-READ, owner: security_officer, status: active, review_by: "2027-04-08", topic: master-bulk-read, effect: limit, by_trust: {high: "quota per day, alert on export", medium: "deny", low: "deny", none: "deny"}, scope: {}, valid_from: "2026-10-10", mitigates: [RI-12], anchor: configuration, residual: {L: 2, I: 3}, tests: [test_every_policy_rule_decides_as_written, test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten]}
+  - {id: NO-STANDING-WRITE, owner: security_officer, status: active, review_by: "2027-04-08", topic: master-standing-write, effect: forbid, parameter: "standing human write access to any master; writes are applied by pipelines, people get just-in-time elevation or break-glass only", scope: {}, valid_from: "2026-10-10", mitigates: [RI-13], anchor: configuration, residual: {L: 1, I: 4}, tests: [test_every_policy_rule_decides_as_written, test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten]}
+  - {id: OOB-ISOLATION, owner: security_officer, status: active, review_by: "2027-04-08", topic: oob-isolation, effect: require, parameter: "BMCs only on the isolated management network through the bastion; IPMI disabled; per-operation Redfish accounts from OpenBao; signed firmware only; every Redfish action audited", scope: {}, valid_from: "2026-10-10", mitigates: [RI-14], anchor: configuration, residual: {L: 1, I: 4}, tests: [test_every_policy_rule_decides_as_written, test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten]}
+  # --- the factory (ADR-0088) ---
+  - {id: FACTORY-NO-AUTOMERGE, owner: security_officer, status: active, review_by: "2027-04-08", topic: factory-update-merge, effect: forbid, parameter: "auto-merging update merge requests; every update passes signatures, provenance, lab and conformance before release", scope: {}, valid_from: "2026-10-10", mitigates: [RI-15], anchor: signature, residual: {L: 2, I: 4}, tests: [test_every_policy_rule_decides_as_written, test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten]}
+  - {id: FACTORY-SLA-CLOCK, owner: security_officer, status: active, review_by: "2027-04-08", topic: factory-sla-clock, effect: require, parameter: "the patch SLA clock starts at advisory publication; an alarm at half time; past SLA only an accepted risk with expiry", scope: {}, valid_from: "2026-10-10", mitigates: [RI-16], anchor: configuration, residual: {L: 2, I: 3}, tests: [test_every_policy_rule_decides_as_written, test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten]}
+  - {id: FACTORY-CRA-CLOCK, owner: security_officer, status: active, review_by: "2027-04-08", topic: factory-cra-clock, effect: require, parameter: "an exploited vulnerability in the product starts the CRA clocks (24h early warning, 72h notification) with an alarm at half time", scope: {}, valid_from: "2026-10-10", mitigates: [RI-17], anchor: configuration, residual: {L: 1, I: 3}, tests: [test_every_policy_rule_decides_as_written, test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten]}
+  - {id: FACTORY-VEX-EVIDENCE, owner: security_officer, status: active, review_by: "2027-04-08", topic: factory-vex-evidence, effect: require, parameter: "a not_affected statement carries a justification, evidence and a decision taker; critical advisories are re-tested", scope: {}, valid_from: "2026-10-10", mitigates: [RI-18], anchor: human-approval, residual: {L: 2, I: 3}, tests: [test_every_policy_rule_decides_as_written, test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten]}

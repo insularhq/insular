@@ -1,0 +1,16 @@
+# ADR-0037, ADR-0039 amendment: the PDP answers ext_authz only to the gateway's proxies (9191) and gives
+# metrics only to Pharos's Prometheus (8282); its REST API (8181) is reachable from nowhere. Flows from
+# the lab's measured east-west inventory; kubelet probes from the local host stay allowed by Cilium.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata: {name: ingress, namespace: vdh-pdp}
+spec:
+  endpointSelector: {}
+  ingress:
+    - fromEndpoints: [{matchLabels: {k8s:io.kubernetes.pod.namespace: envoy-gateway-system}}]
+      toPorts: [{ports: [{port: "9191", protocol: TCP}]}]
+    - fromEndpoints: [{matchLabels: {k8s:io.kubernetes.pod.namespace: vdh-pharos, app: prometheus}}]
+      toPorts: [{ports: [{port: "8282", protocol: TCP}]}]
+    # the decision inbox asks OPA's REST API with the person's token (ADR-0169)
+    - fromEndpoints: [{matchLabels: {k8s:io.kubernetes.pod.namespace: vdh-pharos, app: decision-inbox}}]
+      toPorts: [{ports: [{port: "8181", protocol: TCP}]}]

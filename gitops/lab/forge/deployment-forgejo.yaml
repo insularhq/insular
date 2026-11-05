@@ -1,0 +1,78 @@
+# Forgejo (ADR-0154; v16.0.5, the newest release past the two-week age rule). Rootless image; configuration
+# from GITEA__ variables on every start, its
+# own secrets generated once onto its volume (never in the tree), its database from the operator's secret. Sign-in
+# only through the ring's Keycloak (the source is added by the lab tooling); no SSH, no registration form,
+# no OpenID, no update checks, no external assets; repositories private by default.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: forgejo, namespace: vdh-forge, annotations: {vdh.component: "Forgejo", vdh.app-version: "v16.0.5"}}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector: {matchLabels: {app: forgejo}}
+  template:
+    metadata: {labels: {app: forgejo}}
+    spec:
+      automountServiceAccountToken: false
+      securityContext: {runAsNonRoot: true, runAsUser: 1000, runAsGroup: 1000, fsGroup: 1000, seccompProfile: {type: RuntimeDefault}, seLinuxOptions: {level: "s0:c10,c11"}}
+      initContainers:
+        - name: secrets
+          image: codeberg.org/forgejo/forgejo:16.0.5-rootless@sha256:5effb7305584aca479b29fde6f9631a6dbe86ae798ae02eeea33a3666f0c0bf8
+          command: ["/bin/sh", "-c", "umask 077; mkdir -p /var/lib/gitea/secrets && cd /var/lib/gitea/secrets && for k in SECRET_KEY INTERNAL_TOKEN JWT_SECRET; do [ -s $k ] || forgejo generate secret $k > $k; done; cat /etc/ssl/certs/ca-certificates.crt /lab-ca/ca.crt > /trust/bundle.pem"]
+          securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+          volumeMounts:
+            - {name: data, mountPath: /var/lib/gitea}
+            - {name: lab-ca, mountPath: /lab-ca, readOnly: true}
+            - {name: trust, mountPath: /trust}
+      containers:
+        - name: forgejo
+          image: codeberg.org/forgejo/forgejo:16.0.5-rootless@sha256:5effb7305584aca479b29fde6f9631a6dbe86ae798ae02eeea33a3666f0c0bf8
+          env:
+            - {name: SSL_CERT_FILE, value: /trust/bundle.pem}
+            - {name: GITEA__database__DB_TYPE, value: postgres}
+            - {name: GITEA__database__HOST, value: "forgejo-db-rw:5432"}
+            - {name: GITEA__database__NAME, value: forgejo}
+            - {name: GITEA__database__USER, value: forgejo}
+            - {name: GITEA__database__PASSWD, valueFrom: {secretKeyRef: {name: forgejo-db-app, key: password}}}
+            - {name: GITEA__server__DOMAIN, value: "git.${ring_domain:=lab.vdh.test}"}
+            - {name: GITEA__server__ROOT_URL, value: "https://git.${ring_domain:=lab.vdh.test}/"}
+            - {name: GITEA__server__HTTP_PORT, value: "3000"}
+            - {name: GITEA__server__DISABLE_SSH, value: "true"}
+            - {name: GITEA__server__START_SSH_SERVER, value: "false"}
+            - {name: GITEA__server__OFFLINE_MODE, value: "true"}
+            - {name: GITEA__security__INSTALL_LOCK, value: "true"}
+            - {name: GITEA__security__SECRET_KEY_URI, value: "file:/var/lib/gitea/secrets/SECRET_KEY"}
+            - {name: GITEA__security__INTERNAL_TOKEN_URI, value: "file:/var/lib/gitea/secrets/INTERNAL_TOKEN"}
+            - {name: GITEA__oauth2__JWT_SECRET_URI, value: "file:/var/lib/gitea/secrets/JWT_SECRET"}
+            - {name: GITEA__service__DISABLE_REGISTRATION, value: "false"}
+            - {name: GITEA__service__ALLOW_ONLY_EXTERNAL_REGISTRATION, value: "true"}
+            - {name: GITEA__service__ENABLE_INTERNAL_SIGNIN, value: "false"}   # Forgejo's name (modules/setting/service.go); no password form
+            - {name: GITEA__service__DEFAULT_KEEP_EMAIL_PRIVATE, value: "true"}
+            - {name: GITEA__oauth2_client__ENABLE_AUTO_REGISTRATION, value: "true"}
+            - {name: GITEA__oauth2_client__USERNAME, value: nickname}
+            - {name: GITEA__oauth2_client__ACCOUNT_LINKING, value: disabled}
+            - {name: GITEA__openid__ENABLE_OPENID_SIGNIN, value: "false"}
+            - {name: GITEA__openid__ENABLE_OPENID_SIGNUP, value: "false"}
+            - {name: GITEA__cron.update_checker__ENABLED, value: "false"}
+            - {name: GITEA__federation__ENABLED, value: "false"}
+            - {name: GITEA__repository__DEFAULT_PRIVATE, value: private}
+            - {name: GITEA__mailer__ENABLED, value: "false"}
+            - {name: GITEA__log__LEVEL, value: Info}
+            - {name: GITEA__mirror__ENABLED, value: "false"}   # no pull or push mirrors (the egress floor drops them anyway)
+            - {name: GITEA__repository__DISABLE_MIGRATIONS, value: "true"}
+            - {name: GITEA__webhook__ALLOWED_HOST_LIST, value: "collector-gateway.vdh-telemetry.svc.cluster.local"}   # only the event store
+            - {name: GITEA__metrics__ENABLED, value: "true"}   # Pharos scrapes /metrics in the ring; the route refuses it from outside
+          ports: [{name: metrics, containerPort: 3000}]
+          readinessProbe: {httpGet: {path: /api/healthz, port: 3000}, periodSeconds: 10}
+          livenessProbe: {httpGet: {path: /api/healthz, port: 3000}, initialDelaySeconds: 60, periodSeconds: 30}
+          securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+          resources: {requests: {cpu: 50m, memory: 128Mi}, limits: {memory: 1Gi}}
+          volumeMounts:
+            - {name: data, mountPath: /var/lib/gitea}
+            - {name: trust, mountPath: /trust, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - {name: data, persistentVolumeClaim: {claimName: forgejo-data}}
+        - {name: lab-ca, configMap: {name: lab-ca}}
+        - {name: trust, emptyDir: {}}
+        - {name: tmp, emptyDir: {}}

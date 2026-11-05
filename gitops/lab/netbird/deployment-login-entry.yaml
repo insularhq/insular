@@ -1,0 +1,49 @@
+# ADR-0122 and ADR-0134: NetBird the login network: devices' machine peers and the login entry in front of Keycloak, nothing else. Server config with its keys is a Secret made inside the ring
+# (by the lab tooling); TLS from the ring CA (ClusterIssuer ring-ca); trust for Keycloak's TLS through the
+# same CA bundle as OpenCloud.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: login-entry
+  namespace: vdh-nblogin
+  labels: {app: login-entry}
+  annotations: {vdh.component: "NetBird", vdh.app-version: "v0.80.0"}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector: {matchLabels: {app: login-entry}}
+  template:
+    metadata: {labels: {app: login-entry}}
+    spec:
+      automountServiceAccountToken: false
+      initContainers:
+        - name: trust
+          image: docker.io/curlimages/curl:8.16.0@sha256:463eaf6072688fe96ac64fa623fe73e1dbe25d8ad6c34404a669ad3ce1f104b6
+          command: ["/bin/sh", "-c", "cat /etc/ssl/certs/ca-certificates.crt /ring-ca/ca.crt > /trust/bundle.pem"]
+          securityContext: {runAsNonRoot: true, runAsUser: 100, allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+          volumeMounts: [{name: ring-ca, mountPath: /ring-ca, readOnly: true}, {name: trust, mountPath: /trust}]
+      containers:
+        - name: netbird
+          image: docker.io/netbirdio/netbird:0.80.0@sha256:4976692ea44bb93871743d0b742b4a8f97f6425bfc458ca2d78e28fdb8bdf4ad
+          env:
+            - {name: NB_MANAGEMENT_URL, value: "https://nbl.vdh.test:443"}
+            - {name: NB_SETUP_KEY, valueFrom: {secretKeyRef: {name: login-entry-key, key: key}}}   # one-off, made inside the ring
+            - {name: NB_HOSTNAME, value: login-entry}
+            - {name: SSL_CERT_FILE, value: /trust/bundle.pem}
+          securityContext: {privileged: true}   # a peer opens /dev/net/tun (lab entry; a device plugin is the production form)
+          resources: {requests: {cpu: 50m, memory: 64Mi}, limits: {memory: 256Mi}}
+          volumeMounts: [{name: trust, mountPath: /trust, readOnly: true}, {name: state, mountPath: /var/lib/netbird}, {name: tun, mountPath: /dev/net/tun}]
+        - name: proxy
+          image: docker.io/envoyproxy/envoy@sha256:eb2c01c13125d1629637cb4e4cce7207009fb7cc2c8027f9742758549d15b6f4
+          args: ["-c", "/etc/envoy/envoy.yaml", "--log-level", "warn"]
+          env: [{name: ENVOY_UID, value: "0"}]   # the image's entrypoint would switch user, which needs SETUID; root with one capability instead
+          securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL], add: [NET_BIND_SERVICE]}}
+          resources: {requests: {cpu: 20m, memory: 32Mi}, limits: {memory: 128Mi}}
+          volumeMounts: [{name: envoy, mountPath: /etc/envoy, readOnly: true}]
+      volumes:
+        - {name: ring-ca, configMap: {name: ring-ca}}
+        - {name: trust, emptyDir: {}}
+        # the entry's WireGuard identity survives restarts: same peer, same overlay address (endpoints' hosts point at it)
+        - {name: state, persistentVolumeClaim: {claimName: login-entry-state}}
+        - {name: tun, hostPath: {path: /dev/net/tun, type: CharDevice}}
+        - {name: envoy, configMap: {name: login-entry-envoy}}

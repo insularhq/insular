@@ -1,0 +1,9 @@
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: ClientTrafficPolicy
+metadata: {name: harbor-mtls, namespace: vdh-harbor}
+spec:
+  targetRefs: [{group: gateway.networking.k8s.io, kind: Gateway, name: harbor-gw}]
+  tls: {clientValidation: {caCertificateRefs: [{kind: ConfigMap, name: partner-ca}]}}
+  # Cert: the verified leaf, so the PDP can bind the partner to its own CA; SanitizeSet drops
+  # any x-forwarded-client-cert a client sends, so the PDP only ever sees the gateway's own
+  headers: {xForwardedClientCert: {mode: SanitizeSet, certDetailsToAdd: [URI, Subject, Cert]}}

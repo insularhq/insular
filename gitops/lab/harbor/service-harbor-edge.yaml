@@ -1,0 +1,8 @@
+# the ring front passes the Harbor's names here (TLS through; gitops/lab/netbird/configmap-ring-front.yaml); only the
+# ring front reaches the Harbor's Envoy (CiliumNetworkPolicy below)
+apiVersion: v1
+kind: Service
+metadata: {name: harbor-edge, namespace: envoy-gateway-system}
+spec:
+  selector: {app.kubernetes.io/component: proxy, app.kubernetes.io/managed-by: envoy-gateway, app.kubernetes.io/name: envoy, gateway.envoyproxy.io/owning-gateway-name: harbor-gw, gateway.envoyproxy.io/owning-gateway-namespace: vdh-harbor}
+  ports: [{name: https, port: 443, targetPort: 10443}]

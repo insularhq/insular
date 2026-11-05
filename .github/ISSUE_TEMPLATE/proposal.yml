@@ -1,0 +1,31 @@
+name: Proposal
+description: Propose a change to a decision, the model or the documentation
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Issues here follow one shape: What, Why, Done when, References. Everything here is public at once: use fictional data only.
+  - type: textarea
+    id: what
+    attributes:
+      label: What
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why
+    validations:
+      required: true
+  - type: textarea
+    id: done
+    attributes:
+      label: Done when
+    validations:
+      required: true
+  - type: input
+    id: references
+    attributes:
+      label: References
+      description: The decision record this would change, if any (ADR-nnnn).

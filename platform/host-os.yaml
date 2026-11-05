@@ -1,0 +1,78 @@
+# The operating system under the containers: in VMs on Proxmox, on bare-metal edge nodes and on cloud VMs. One image
+# everywhere (cloud included) means one SBOM, one hardening baseline and one patch stream; the provider's image is
+# only used to boot the installer. Decided: SUSE Micro (ADR-0050).
+
+requirements:
+  - "immutable or transactional root with automatic rollback (an update that fails its health check reverts)"
+  - "mandatory access control enforcing by default (SELinux or AppArmor)"
+  - "kernel recent enough for Cilium eBPF, BTF for Falco's modern probe, user namespaces, WireGuard, TPM 2.0 and measured boot for Keylime"
+  - "signed updates; an SBOM per image; CVE feed per package"
+  - "first-boot configuration from code (cloud-init, Ignition or Combustion)"
+  - "runs K3s unchanged (the upgradeability decision: K3s from S)"
+  - "support available from an EU or European company, or a neutral foundation"
+
+host_bom:   # what the host itself must carry; the rest arrives as containers
+  - {item: kernel, why: "eBPF (Cilium, Falco, Tetragon), WireGuard, user namespaces, TPM"}
+  - {item: systemd, why: "services, sysext/confext, measured boot"}
+  - {item: K3s binary, why: "includes containerd, runc, CoreDNS, Flannel (disabled for Cilium), local-path storage"}
+  - {item: nftables, why: "host firewall baseline (tools/gen_firewall.py)"}
+  - {item: tpm2-pkcs11, why: "exposes the TPM as a PKCS#11 token for the OpenBao seal"}
+  - {item: chrony, why: "time with NTS"}
+  - {item: tpm2 tools and Keylime agent, why: "attestation (L)"}
+  - {item: RAUC, why: "A/B on the boot stick and appliances (M); redundant where the OS updates itself transactionally"}
+  - {item: gVisor runsc and Kata, why: "sandbox runtimes (M, L)"}
+  - {item: OpenSSH (optional), why: "only with OpenBao SSH certificates; none on an API-only OS"}
+
+options:
+  openSUSE Leap Micro / SUSE Linux Micro:
+    steward: "SUSE (DE)"
+    for: "transactional updates with btrfs snapshots and automatic rollback; SELinux enforcing; SUSE also stewards K3s and RKE2, so one EU vendor can support OS and Kubernetes; Combustion or Ignition at first boot (not cloud-init: J16)"
+    against: "openSUSE Leap Micro has community support only; the SUSE edition needs a subscription for support"
+  Flatcar Container Linux:
+    steward: "CNCF (origin Kinvolk, Berlin; Microsoft-sponsored)"
+    for: "immutable, A/B updates with rollback, minimal, systemd-sysext for K3s; neutral governance"
+    against: "no named EU support vendor; Ignition-first"
+  Talos Linux:
+    steward: "Sidero Labs (US)"
+    for: "API-only, no shell or SSH: the strongest zero-trust posture; immutable and minimal"
+    against: "ships its own Kubernetes, not K3s (breaks the upgradeability decision); US company; Omni is source-available"
+  Debian with mkosi and RAUC (own image):
+    steward: "Debian (community) plus VDHome as image maintainer"
+    for: "full control; same base as Proxmox VE"
+    against: "VDHome becomes a distribution maintainer (patch stream, SBOM, CVE triage): against operability by a small team"
+  Fedora CoreOS / Ubuntu Core / Bottlerocket:
+    steward: "Red Hat (US) / Canonical (UK) / AWS (US)"
+    for: "mature immutable designs"
+    against: "short-lived base (Fedora), snap-centric (Ubuntu Core), cloud-specific (Bottlerocket)"
+
+support_matrix:   # host-level parts only; everything else is containers and OS-agnostic. ok | extra (works with extra effort) | no | verify
+  #                 K3s     Cilium  Falco   gVisor  Kata    Keylime  MAC              updates
+  SUSE Micro:      {K3s: ok, Cilium: ok, Falco: ok, gVisor: extra, Kata: verify, Keylime: ok, mac: "SELinux enforcing, k3s-selinux policy", updates: "transactional with rollback (RAUC not needed)"}
+  Flatcar:         {K3s: extra, Cilium: ok, Falco: ok, gVisor: extra, Kata: extra, Keylime: extra, mac: "SELinux (verify enforcing default)", updates: "A/B with rollback; K3s and runtimes as system extensions"}
+  Talos:           {K3s: "no (own Kubernetes)", Cilium: ok, Falco: verify, gVisor: ok, Kata: ok, Keylime: "no (Talos-native TPM measured boot instead)", mac: "minimal OS, no shell", updates: "A/B image; no SSH, so the OpenBao SSH CA and host nftables generation do not apply"}
+  Debian (own):    {K3s: ok, Cilium: ok, Falco: ok, gVisor: ok, Kata: ok, Keylime: verify, mac: "AppArmor", updates: "our mkosi image with RAUC A/B: we carry the patch stream"}
+substrate_limits:   # independent of the OS
+  proxmox-vm: "Kata needs nested virtualisation (CPU type host); Keylime attests a vTPM (swtpm), which trusts the hypervisor, so the Proxmox host is attested too"
+  bare-metal-edge: "everything; physical TPM for Keylime; Kata on KVM"
+  cloud-vm: "no nested virtualisation and no vTPM on most EU cloud VMs (verify per provider): Kata and Keylime only on dedicated servers, which matches Restricted (L) on eu-cloud-dedicated"
+  custom-image: "an own image is uploaded or installed from the provider's rescue system when the provider has no image of the chosen OS"
+criteria:   # 3 strong, 2 adequate, 1 weak
+  maintainability: "who patches, how long a release lives, effort for one person"
+  guardrails: "how hard it is to change a host outside the code path (immutability, no shell, no SSH)"
+  update_pushing: "central, staged rollout by group with health checks and rollback"
+  group_policy: "configuration and policy per group of hosts, applied centrally"
+  as_code: "the whole host described declaratively in git"
+  eu_support: "a support contract from an EU or European company"
+  stack_fit: "the current stack runs without re-architecture"
+scores:
+  SUSE Micro:   {maintainability: 3, guardrails: 2, update_pushing: 3, group_policy: 3, as_code: 2, eu_support: 3, stack_fit: 3,
+                 how: "transactional-update with rollback; system-upgrade-controller (Rancher, Apache-2.0) applies OS and K3s upgrades as Kubernetes plans from git (Flux); Uyuni (SUSE, GPL-2.0, upstream of SUSE Multi-Linux Manager) for groups, staged patch channels and Salt states; Combustion/Ignition at first boot; OpenSCAP content from ComplianceAsCode (verify SL Micro profile)"}
+  Flatcar:      {maintainability: 3, guardrails: 2, update_pushing: 3, group_policy: 1, as_code: 3, eu_support: 1, stack_fit: 2,
+                 how: "Nebraska (Apache-2.0) update server with groups and staged rollouts; Kured or the update operator for coordinated reboots; Butane/Ignition only at provisioning: a configuration change means reprovisioning"}
+  Talos:        {maintainability: 3, guardrails: 3, update_pushing: 3, group_policy: 3, as_code: 3, eu_support: 1, stack_fit: 1,
+                 how: "one declarative machine configuration per node with patches per group, applied over an mTLS API; no shell, no SSH; upgrades by API with automatic rollback; firewall rules in the machine configuration; images from the open Image Factory. Cost: K3s replaced by Talos's Kubernetes, Keylime by Talos measured boot, a Talos PKI beside OpenBao, US steward"}
+  Debian (own): {maintainability: 1, guardrails: 1, update_pushing: 2, group_policy: 2, as_code: 2, eu_support: 2, stack_fit: 3,
+                 how: "Ansible for configuration; our mkosi image with RAUC and Eclipse hawkBit (EPL-2.0, EU foundation) for staged A/B rollouts; we carry the patch stream"}
+edge_appliances: "independent of the host OS choice: boot sticks and appliances roll out through RAUC with Eclipse hawkBit campaigns"
+recommendation: "openSUSE Leap Micro in S (free), SUSE Linux Micro where a client wants a support contract; Flatcar as the neutral alternative; mkosi stays for appliance and boot-stick images only"
+decision: "SUSE Micro (openSUSE Leap Micro; SUSE Linux Micro with a support contract), ADR-0050"

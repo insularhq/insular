@@ -1,0 +1,238 @@
+# Data provenance, propagation, releasability and requests (ADR-0096).
+# Every piece of data carries who made it: its originating identities, and every identity that transformed,
+# aggregated or derived it, appended as signed steps. What it may do follows from that history: its label, purposes,
+# time scope and releasability are computed from its inputs, never declared loosely by whoever holds it last.
+# Attribution is not authority: every identity that touched the data is recorded, but only owners decide. A machine
+# (sensor, workload, agent) answers through the principal it acts for, so a request always reaches a person or role
+# that still exists. Implemented and checked by tools/data_provenance.py.
+
+envelope:   # travels with every record, event, table snapshot or file (by reference when large)
+  fields: [id, digest, label, releasable_to, purposes, valid_until, originators, chain]
+  id: "UUIDv7"
+  chain_step: [actor, activity, inputs, read_set, params, at, on_behalf_of, signature]
+  signing: "each step is signed by the actor's own identity (SPIFFE SVID for machines, passkey-bound key for people) as a DSSE envelope, so the chain is verifiable and append-only"
+  inputs_by_reference: "a step lists the digests of its input envelopes, not copies of them; the chain is a graph that can be walked back"
+  contributor_sets: "fan-in above 100 inputs is recorded as a contributor set {owner, kind, count, members Merkle root}, e.g. one site's sensor fleet; any member proves its inclusion, so aggregates stay small and still attributable"
+  digest_scope: "the digest covers the whole envelope except itself (sources, actors, steps, signatures included); a step names its inputs by digest, so the chain is a Merkle DAG"
+  verification: "nothing derives from an envelope it has not verified: the digest, every step signature, and every property recomputed from the product registry and the inputs (tools/data_provenance.py verify)"
+  read_set: "the data plane (gateway, lakehouse, OpenLineage), not the actor, records what a step read; a read that the step does not declare as an input fails closed"
+  transport: "the CloudEvents extension and the Iceberg table properties carry the envelope id; the catalog (OpenMetadata) and lineage (OpenLineage) index it"
+
+propagation:   # how a derived envelope is computed from its inputs; the derivation can only tighten
+  label: "the highest input label (high-water mark), raised one step by aggregation_uplift"
+  releasable_to: "the narrowest input ring"
+  purposes: "the intersection of the input purposes"
+  valid_until: "the earliest input valid_until (and never past the lease it was made under, ADR-0095)"
+  originators: "the union of the input originators; contributor sets stay sets"
+  aggregation_uplift:
+    when: "an aggregate combines inputs from two or more products with different purposes, or covers more than 1000 persons"
+    effect: "label one step higher unless the owners of the inputs record a decision that it is not"
+    once_per_lineage: "an uplift is not repeated downstream, so joins of joins do not creep to Restricted"
+    owned_by: "the aggregating actor's authority answers for the uplift in a release request"
+    persons: "computed by the platform from the read set, not supplied by the actor"
+  min_group_size: "policy topic data-min-group-size (policies/packs/data-centric.yaml; tenants may tighten)"   # aggregates of Sensitive or Restricted data below it are refused
+  declassify: "lowering a label, widening a ring or adding a purpose is never automatic: it is a release request (requests below)"
+
+rings:   # where data may go; each boundary has an enforcing point, and keys are scoped to the ring
+  order: [host, site, tenant, federation, public]
+  meaning:
+    host: "stays on the machine that holds it"
+    site: "may cross hosts within one site; never the site's WAN edge"
+    tenant: "may move between the tenant's own sites (the walled ecosystem), never to another organisation"
+    federation: "may go to partner organisations under a dataspace contract (EDC, ODRL)"
+    public: "may be published"
+  enforced_at:
+    host: "host firewall and the workload's network policy (Cilium)"
+    site: "the site egress gateway and the IEG"
+    tenant: "the release gateway and the dataspace connector"
+    federation: "the release gateway with a releasing officer"
+  key_scope: "data keys for a ring are released only to identities inside that ring, so data that leaves its ring anyway stays ciphertext"
+  label_max_ring: "policy topic data-max-ring per label (policies/packs/data-centric.yaml)"
+  band_cap: {green: public, amber: tenant, red: site, black: host}
+  inside_site:   # which readers count as inside a site ring (ADR-0106 for PoPs, ADR-0107 for devices)
+    pops: "an evidenced, time-gated member of the parent's site ring (policies/data-logistics.yaml memberships)"
+    devices:
+      conditions: [attested_within_lease, enrolled_active, site_overlay_only, managed_client]
+      attestation_lease_minutes: 60      # platform/identity.yaml device attestation; policies/time-gating.yaml identity_tokens
+      effect: "the device and the session on it count as inside the site ring of the overlay it is on; a lapsed condition fails the next key-lease renewal and ends access mid-session"
+      matrix: "a remote participant on such a device joins a Restricted room or call through the site's own homeserver and media server over the overlay, never through federation from another homeserver"   # the requester's risk band caps every ring crossing
+
+requests:   # how someone asks for more than they have; every outcome is a lease (ADR-0095) or a recorded refusal
+  kinds:
+    access: "use data inside its current ring for a purpose the requester has no lease for"
+    release: "move data to a wider ring (export, share, publish), or add a purpose, or lower a label"
+  must_state: [requester, data, purpose, scope, duration, target_ring]
+  routed_to: "the authority set: the owners of the inputs whose own policy blocks the request (decentralised label model: only the owner of a restriction can relax it); inputs whose policy already allows it need no one"
+  extra_approvers:
+    - {when: "target ring is tenant or wider", add: release_officer}
+    - {when: "the derived label is Restricted", add: second_owner_or_steward}
+    - {when: "the requester's band is amber or worse", add: security_officer}
+  outcome: "granted as a lease with the requested scope, purpose and time, or refused with a reason the requester sees; never silence: a request open longer than its sla escalates to the steward"
+  sla_hours: {access: 72, release: 120}
+
+authority:   # who answers for an identity that took part, and what happens when it no longer exists
+  attribution_only: [sensor, workload, agent, device, infrastructure]   # recorded in the chain, never approve anything
+  acts_for:   # a machine or a retired person resolves upward until a living person or role is reached
+    sensor: "the owner of the sensor fleet (site operations)"
+    device: "its registered owner, else site operations"
+    infrastructure: "site operations"
+    workload: "the owner of the app intent that runs it"
+    agent: "the person or role it acted on behalf of (the delegator in the actor chain)"
+    person: "authority belongs to the role, not the person: a leaver's role passes to its successor"
+  fallback: "if the resolved principal is retired or the role is vacant, authority passes to the product's steward, then to the data governance board; never to nobody, never to IT by default"
+  history: "a retired identity stays in every chain it signed; attribution is never rewritten"
+
+change:   # data changes, is proven false or is superseded; everything built on it must know (the graph walked forward)
+  immutability: "an envelope version never changes; a change is a new version that names the one it revises (W3C PROV wasRevisionOf); Iceberg snapshots keep every version readable (time travel)"
+  bitemporal: "every version carries valid time (when the fact holds in the world) and record time (when we knew it), so yesterday's analysis can be replayed exactly as it was known then"
+  kinds:   # what happened to an input, and what it does to everything downstream
+    update:       {meaning: "a newer fact replaces an older one; the older was right when recorded", downstream: stale}
+    supersession: {meaning: "a newer method, schema or version replaces the input", downstream: stale}
+    correction:   {meaning: "the input was wrong (proven false) and a corrected version exists", downstream: tainted}
+    retraction:   {meaning: "the input is withdrawn with no replacement (PROV wasInvalidatedBy)", downstream: tainted}
+  states:   # worst input state wins, transitively
+    order: [current, stale, tainted]
+    stale: "still a valid snapshot as of its record time; not current; recompute if still relevant"
+    tainted: "rests on something proven false or withdrawn; its conclusions are suspect until rebuilt or reviewed"
+  references: "a derived product or an artefact (note, report, decision, dashboard) cites data by envelope id and digest, like a lockfile; it never cites a moving target"
+  notification: "a change publishes a CloudEvent (data.version.updated / superseded / corrected / retracted) with the old and new digests; the forward index (inputs reversed) finds every dependent and every artefact citing a digest"
+  actions:
+    stale:
+      pipelines: "recompute automatically into a new version that supersedes the previous one, if the output is still relevant"
+      human_artefacts: "badge the artefact stale and ask its author or owner: re-run now, keep as historical, or retire"
+    tainted:
+      pipelines: "stop further releases of the output until it is rebuilt or a reviewer clears it"
+      human_artefacts: "badge tainted, notify the author and owner at once; a decision that cited it is flagged for review"
+      released_copies: "everyone who received a release of a tainted output gets a correction notice through the release record (recall, as with a retracted publication)"
+  relevance: "an artefact declares relevant_until (a lease, ADR-0093); past it, a change marks the artefact historical and asks for nothing; within it, a stale or tainted state asks for a new analysis, and the new one supersedes the old while the old stays readable as of its time"
+
+chain_privacy:   # the chain itself says who did what; it is data too
+  full_up_to: tenant
+  beyond: "outside the tenant the chain shows each identity as a per-envelope pseudonym with its kind, so a partner can verify that a sensor, a workload and a person-role took part without learning which; the full chain stays with the verifier inside the tenant"
+
+request_rules:   # review amendments to requests
+  access: "stays inside the data's ring and label; widening or lowering is a release request"
+  release_below_tenant: "within host or site, a release that no owner's restriction blocks is allowed by policy and still issued as a lease"
+  joint_purpose: "a join whose inputs share no purpose is usable only under a lease cosigned by every source owner for the joined purpose (an ODRL agreement with several assigners); requests show no_common_purpose"
+  per_source_blocking: "each source blocks only on its own ring, label ceiling and purposes; an uplift answers through whoever aggregated"
+  declassification: "lowering a label or crossing the label's ring ceiling needs every source owner plus the security officer, and lands as a signed declassify step in the chain"
+  effective_band: "the worst of the requester, the person it acts for, the site and the data caps the ring"
+  no_self_approval: "the requester and the person it acts for never approve; the steward or the board steps in"
+  duties: "a granted lease may carry duties (delete after, attribute, notify on onward use), as ODRL duties"
+
+identifiers:   # every unit of data is uniquely identifiable: what it is (content) and which one it is (instance)
+  principles:
+    - "two identities per unit: a content digest (sha256) says what it is; an id says which one it is, so two equal readings from two sensors stay two"
+    - "ids are persistent and never reused; retired units keep their ids (FAIR F1: globally unique, persistent identifiers)"
+    - "an envelope attaches at the granule where it pays off; smaller units inherit through Merkle inclusion in their granule"
+  granules:
+    product:   {id: "urn:vdh:<tenant>:product:<name>", unique_in: global, envelope: no, note: "the catalog entry; its owner and policy"}
+    version:   {id: "urn:vdh:<tenant>:product:<name>:v<major>", unique_in: global, envelope: no, note: "a breaking schema change is a new version"}
+    stream:    {id: "NATS subject of the product version", unique_in: tenant, envelope: no}
+    event:     {id: "CloudEvents source + id", unique_in: global, envelope: by-reference, note: "the source URI names the originating identity; CloudEvents requires source+id to be unique"}
+    packet:    {id: "originating identity + monotonic sequence + time", unique_in: global, envelope: inclusion, note: "sequence gaps and replays are detectable per sensor"}
+    record:    {id: "table primary key + snapshot id", unique_in: global, envelope: inclusion}
+    batch:     {id: "UUIDv7 + Merkle root of its members", unique_in: global, envelope: yes}
+    snapshot:  {id: "Iceberg snapshot id of the table", unique_in: global, envelope: yes}
+    file:      {id: "UUIDv7 + sha256 of the content (object version in storage)", unique_in: global, envelope: yes}
+    artefact:  {id: "UUIDv7 + sha256 of its content and its cited digests", unique_in: global, envelope: yes, note: "a note, report, dashboard or decision; it cites data by digest (change: references)"}
+  inclusion: "a record or packet proves membership of its batch or snapshot with a Merkle inclusion proof against the root in the envelope (tools/data_provenance.py merkle_root, prove, included)"
+
+applies_to:   # the same envelope, rings, leases, requests and identifiers hold for the platform's own data
+  data_classes: [business, infrastructure, governance, observability, security, logging, policy]
+  policy: "policy is data: a bundle carries the chain of its authors, change record, compile and signature; every decision cites the bundle digest it was made under, so a superseded bundle leaves past decisions valid as of their time and a corrected bundle taints the decisions it made, which are then reviewed"
+  rule: "every data class has at least one registered product with an owner, a steward and a ring; platform data is never exempt because IT holds it"
+
+scale:   # ADR-0097: provenance must not grow with history or with volume
+  by_reference: "an envelope holds only its own step and its inputs' digests; the history lives once in the lineage store and is walked on demand, so an envelope stays the same size at any depth (as a Git commit names its parents)"
+  store: "the lineage store indexes envelopes by digest with a reverse index (inputs to dependents) for impact; OpenLineage events feed it; it is a product itself (platform data)"
+  transparency_log: "every envelope digest is appended to a Merkle transparency log in the RFC 9162 tree shape (tools/provenance_log.py); signed tree heads; an inclusion proof shows an envelope was logged, a consistency proof that a later head extends an earlier one (nothing rewritten)"
+  anchoring: "the lineage store is untrusted: an envelope enters only with its log entry, a matching digest and its inputs present; every read recomputes the digest; the log is the anchor"
+  witnesses: "each signed tree head is cosigned by at least one witness outside the log operator (another site or the parent) and kept by them, so a log that shows different histories to different readers is caught (gossip)"
+  checkpoints: "a registered verifier signs {digest, verifier, log_size}; later verification stops there, so cost depends on what is new, not on history; a checkpoint is revocable (a tainted or superseded basis forces the full walk) and a checkpointed envelope's own digest is always recomputed"
+  granule: "provenance attaches to a granule (batch, snapshot, file, stream window), never to each byte; members prove inclusion"
+  runs: "a pipeline run inside one trust domain is one attested step (SLSA-style run provenance: inputs, outputs, the run log's Merkle root, internal step count); verification fetches the run log, checks its root and count, and rejects a run that folded a policy-relevant change"
+  never_collapsed: "a step that changes label, ring, owner, purpose or trust domain is always its own signed step; only steps that change none of these may be folded into a run"
+  hashing: "sha256 for interoperability; large objects hashed as Merkle trees (BLAKE3-style tree hashing) so parts can be verified and re-hashed incrementally"
+  one_byte_1000_workloads: "1000 steps of a few hundred bytes each in the store, one constant-size envelope at the end, verification bounded by the last checkpoint; within one pipeline, one run step"
+
+oversight:   # ADR-0097: the DPO and the security officer monitor data, provenance and DLP without reading content
+  principle: "oversight reads metadata, verdicts and aggregates; content stays with its owner and its leased consumers"
+  roles:
+    dpo:
+      sees: [classification, lineage-shape, actor-kinds, leases-and-requests, dlp-verdicts, access-statistics, retention-and-shred-ledger]
+      never: [content, person-identities-outside-a-case]
+    security_officer:
+      sees: [classification, lineage-shape, actor-kinds, decision-logs-pseudonymised, dlp-verdicts, edm-match-counts, transparency-log-proofs]
+      never: [content, person-identities-outside-a-case]
+  mechanisms:
+    in_ring_scanning: "DLP and classification run inside the data's ring as a leased workload (purpose dlp-scan); only verdicts leave: counts per type, keyed fingerprints and label findings, never matched text"
+    exact_data_match: "protected lists are registered by the data owner (at least 50 values, a per-list salt, a query budget); values are compared as keyed fingerprints inside the ring with a key that never leaves it; a verdict reports hits per list, never fingerprints, so the list cannot probe for one person (tools/oversight.py)"
+    detection_meaning: "a clean verdict means no detection, not the absence of personal data; detectors validate what they find (IBAN mod-97, phone formats) and their miss rate is measured on a review corpus"
+    aggregates: "dashboards show counts with a minimum group size; small counts are suppressed or noised (differential privacy) so oversight cannot single out a person"
+    view_allowlist: "the oversight view is an allowlist: label, ring, purposes, sources, month-level dates, actor kinds, originator counts suppressed below the floor, digests pseudonymised per case"
+    pseudonyms: "people appear as per-case pseudonyms; re-identification needs an investigation lease"
+    confidential_compute: "scanners for Restricted data run in attested enclaves (confidential ephemeral inference zone), so even the platform operator does not see the content they scan"
+    transparency: "the transparency log lets oversight prove lineage completeness and non-rewriting without any content"
+  content_access: "only through an investigation lease (policies/data-leases.yaml) for a named incident: two distinct persons in distinct roles, scoped and capped in records, short, at most one renewal, owner told (or the governance board when telling would harm the case), every read logged, a post-hoc report to the board, lease use visible as statistics"
+  data_subject_requests: "an access, rectification or erasure request is fulfilled by the controller's own process: the owner or steward assembles the answer; the DPO oversees through a completeness attestation (records per source, log proofs), not by reading content"
+
+ddil:   # ADR-0097: provenance keeps working cut off, and outlives the identities and PoPs that made it
+  offline_verification: "verification needs only public keys, logs and envelopes, never a live identity or the parent: the key register (public keys with validity windows) is small and replicated to every site"
+  dead_identities: "a step signed by an identity that no longer exists (a workload in a spun-down ephemeral PoP) verifies when its time lies inside the key's validity window and before any revocation; the time is anchored by the log's signed tree head (Sigstore model: short-lived signers, long-lived verifiability)"
+  site_logs: "a cut-off site keeps logging with its own signed tree heads; on reconnect the parent checks consistency from the last head it saw before the partition, so a site cannot rewrite what it logged while cut off"
+  drain_before_spin_down: "an ephemeral PoP flushes its envelopes, log entries and latest signed head to its parent or a peer before it is spun down; spin-down waits for the acknowledgement"
+  undrained: "data whose inputs died undrained cannot be verified: it is unverifiable, treated as Restricted and no wider than the site, until a steward decides (fail closed)"
+  authority_after_death: "who decides for a dead identity follows authority (acts_for, steward, board), which never depended on the identity being alive"
+
+assurance:   # ADR-0099: how much the provenance itself can be trusted; structured or not, every unit has a level
+  order: [attested, signed, asserted, transcribed, unidentified]   # strongest first; a derivation takes the weakest input
+  meaning:
+    attested: "produced by an identity whose integrity is measured (TPM-attested sensor or host) and signed by it"
+    signed: "signed by the producing identity (workload SVID, person's passkey-bound key)"
+    asserted: "attributable to a person who wrote it (a chat message, a case note): who said it is certain, what it rests on is the author's word"
+    transcribed: "a digital surrogate of something outside the platform (a photographed map, a scanned letter): the item is registered, the capture is signed, the original's own provenance is what is printed on it"
+    unidentified: "rests on at least one source its author did not identify; the unit is marked incomplete"
+  complete: "false when any input along the lineage is unidentified; shown to every consumer and on every request"
+  min_for_release: asserted       # a release to the tenant or wider of anything weaker or incomplete needs the provenance reviewer
+  source_request_sla_hours: 72    # an incomplete unit sends its author a request to name the source; the answer is a revision
+  revision: "when the author names the source, the restated claim is a new version derived from it; the old one is superseded, so everything built on it turns stale and can be recomputed complete (change: kinds)"
+  unstructured: "text, chat, documents and images are units identified by digest; a derivation cites the exact part it used with a span selector (position and the span's digest, never the text) per input, so a claim extracted from a document points at its words without copying them (W3C Web Annotation selectors)"
+  max_ring_by_assurance: "policy topics data-max-ring-unidentified and data-max-ring-transcribed (policies/packs/data-centric.yaml)"   # weak provenance narrows where data may go
+  attested_requires: "a measurement (TPM quote digest) per originator in the originate step and an attested flag on the actor's key in the register; without it a unit is only signed"
+  selectors: "a selector names the unit version it points into, start < end, and a span digest keyed by the document owner (a bare hash of a short span can be guessed); a revised document is a new unit"
+  reviewer_independence: "the provenance reviewer may not be among the unit's authors; the board steps in"
+  laundering_residual: "restating an unsourced claim as a new message without citing it cannot be prevented mechanically; a derivation from an unidentified unit stays incomplete, and the read set from the data plane (not the author) is what makes omission visible"
+  physical: "a physical item gets an inventory id and a custodian; it enters the platform only as a surrogate whose capture names the item, the surrogate's digest and the capture signer (C2PA-style capture assertion)"
+
+
+federation:   # ADR-0098: provenance across PoPs, sites, parents and peers, connected or not
+  holds_per_pop: "a PoP holds the proof bundle of each unit present at it (the envelope, its ancestors back to the nearest checkpoint signed by a verifier it trusts, log inclusion proofs and a signed tree head), never the lineage store of the estate"
+  key_register: "public keys of actors (with validity windows), checkpoint signers and log signers are replicated to every PoP; federation partners cross-register each other's checkpoint and log signers under the dataspace agreement"
+  isolated_access: "a unit already at the PoP verifies offline from its bundle, whoever made it and whether its PoP still exists; a unit not yet at the PoP cannot be read: the request waits in the store-and-forward queue (NATS leaf node) and is served on reconnect"
+  decisions_while_isolated: "label, ring, purposes and assurance travel in the envelope, so a local PDP decides access on its own; granting new leases or releases still needs the owner's site (policies/data-leases.yaml), except the emergency lease"
+  nesting: "every boundary crossing re-checkpoints: a site verifies an incoming bundle, logs it and vouches with its own checkpoint, so what it forwards to its parent or a peer is one envelope long; history never accumulates up the tree"
+  full_history: "the complete lineage stays in the producing site's store and is fetched lazily when connected (audits, investigations); operational trust never waits for it"
+  bundle_sizes: "bounded by the distance to the last checkpoint: a verifier checkpoints every N steps or at every boundary, whichever comes first"
+  checkpoint_every_steps: 50
+  # review amendments (ADR-0098 review)
+  signer_scope: "each checkpoint signer is registered with a scope (products, maximum label); a checkpoint outside it is ignored, so a federation partner cannot vouch for our products or above its label"
+  register_max_age_hours: 168     # an older key register (keys, signers, revocations, tombstones) fails closed
+  sth_max_age_hours: 72           # an older tree head marks the bundle stale
+  split_view: "the receiver keeps the last tree head it saw per log; a smaller head is refused and a larger one needs a consistency proof (the bundle carries proofs from the sizes the receiver announced; gossip on reconnect)"
+  tombstones: "superseded and tainted unit digests are replicated with the key register; a bundle containing one fails, so an old bundle cannot be replayed after a correction"
+  bundles_within: tenant          # bundles carry full lineage; beyond the tenant a unit leaves only through the release gateway
+  max_envelopes: "twice the checkpoint interval"
+  residual: "a site that vouches for a bundle is trusted for it within its scope; vouching is logged with the signer, and re-vouching another's checkpoint is not allowed across federation partners"
+
+authored:   # ADR-0104: conversation products (chat, rooms, mail bodies) hold authored units
+  rule: "an authored unit is written under the purpose of what it cites: when it cites data, its purposes come from the cited inputs only; it still brings its author, label, ring and assurance; without citations it keeps its own product's purposes"
+  entitlement: "access by a named reader needs a current lease on every cited, non-authored source for the request's purpose; people and roles hold leases like applications"
+minimisation:   # ADR-0104: a derivation that keeps less than its input may outlive it
+  kinds: [transcribe, summarise, redact, aggregate]
+  rule: "a registered minimisation sets its own retention, at most the global maximum for its label, instead of ending with its inputs; leases still decide who may read it"
+interpretation:   # ADR-0104: machine interpretation (speech to text, OCR, AI summaries) is never as strong as what was said or written
+  assurance_at_best: transcribed
+  fidelity: "the method and a confidence between 0 and 1 travel with the unit; a derivation keeps the lowest confidence among its inputs"
+  review: "a unit with machine interpretation below 0.9 confidence goes to a human before it is cited in a decision"
+

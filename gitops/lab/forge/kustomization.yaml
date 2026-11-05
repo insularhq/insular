@@ -1,0 +1,17 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# ADR-0154: the forge, the change spine; lab form: one Forgejo per ring, its own database, sign-in only
+# through the ring's Keycloak
+resources:
+  - networkpolicy-default-deny-ingress.yaml
+  - cnp-egress-floor.yaml
+  - cnp-database-to-api.yaml
+  - postgres-forgejo.yaml
+  - objectstore-ring-store.yaml
+  - scheduledbackup-forgejo-db.yaml
+  - pvc-forgejo-data.yaml
+  - deployment-forgejo.yaml
+  - service-forgejo.yaml
+  - httproute-forgejo.yaml
+  - httproutefilter-not-here.yaml
+  - cronjob-state-backup-forgejo.yaml

@@ -1,0 +1,14 @@
+# The Harbor gateway: mTLS against the partner's CA only (ConfigMap partner-ca, made at admission; without it no client
+# passes), the client certificate's identity set by Envoy (XFCC SanitizeSet, never taken from the client), every
+# request decided by the Harbor PDP (fail closed). Classes as routes: on the Harbor's own name /data, /_matrix and
+# /mgmt; this ring's identity provider (the vdh realm only) and OpenCloud on their own names (data plane).
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata: {name: harbor-gw, namespace: vdh-harbor}
+spec:
+  gatewayClassName: vdh-eg
+  listeners:
+    - {name: harbor, port: 443, protocol: HTTPS, hostname: "harbor.${ring_domain:=lab.vdh.test}", tls: {mode: Terminate, certificateRefs: [{name: harbor-tls}]}, allowedRoutes: {namespaces: {from: Same}}}
+    - {name: id, port: 443, protocol: HTTPS, hostname: "id.${ring_domain:=lab.vdh.test}", tls: {mode: Terminate, certificateRefs: [{name: harbor-tls}]}, allowedRoutes: {namespaces: {from: Same}}}
+    - {name: cloud, port: 443, protocol: HTTPS, hostname: "cloud.${ring_domain:=lab.vdh.test}", tls: {mode: Terminate, certificateRefs: [{name: harbor-tls}]}, allowedRoutes: {namespaces: {from: Same}}}
+    - {name: matrix, port: 443, protocol: HTTPS, hostname: "matrix.${ring_domain:=lab.vdh.test}", tls: {mode: Terminate, certificateRefs: [{name: harbor-tls}]}, allowedRoutes: {namespaces: {from: Same}}}

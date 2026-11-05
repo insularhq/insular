@@ -1,0 +1,10 @@
+# A demonstration instance (fictitious tenant) used to exercise interrogation packs.
+id: vdh-demo
+hosting: cloud-dedicated
+size: M
+labels: [Internal, Sensitive]
+sector: professional-services
+jurisdiction: BE
+nis2_entity: important
+modules: [ai-inference, remote-browser]
+packs: []

@@ -1,0 +1,149 @@
+# Data leases (ADR-0095): trust is a lease (ADR-0093), and so is data. A product's owner grants every use as a lease
+# for a purpose and a scope, with an end date, and can end it early. Revocation reaches copies because data is
+# encrypted under product keys and consumers hold keys only as short leases from the key access service.
+# Manageability holds because custody (ciphertext: backup, replication, retention) is separate from access.
+# Checked by tools/data_leases.py; the lease records live in platform/data-platform.yaml leases.
+
+principle: "data belongs to its owner, not to whoever holds a copy: every use is a lease the owner granted for a purpose; it ends on its date or earlier when the owner ends it; custody of ciphertext is separate from access, so ending a lease never breaks backup, restore, replication or audit"
+
+roles:
+  owner:
+    who: "a named person per product (data mesh domain ownership), never IT"
+    may: [grant, renew, suspend, revoke, request-shred]
+    lease: "ownership itself is a lease: owner_until on the product, reconfirmed by a decided record at each review"
+  steward:
+    who: "the domain owner (platform/data-platform.yaml mesh.domains)"
+    may: [renew-once, suspend, revoke]
+    note: "acts when the ownership lease lapses or the owner is unavailable; never grants a new purpose and never shreds"
+  custodian:
+    who: "the platform: backbone, object storage, backup, replication"
+    may: [store, replicate, back-up, restore, apply-retention]
+    note: "holds ciphertext only (platform/classification.yaml backup-storage); has no plaintext lease and needs none"
+  consumer:
+    who: "a workload, agent or person identity (platform/identity.yaml)"
+    may: [use-within-lease]
+
+lease_kinds:
+  subscription:
+    max_days: "policy topic data-lease-subscription-days per label (policies/packs/data-centric.yaml; tenants may tighten)"
+    granted_by: owner
+    renew: [decided, automated]
+    on_expiry: stop-flow
+    note: "the PDP decides each query and each stream delivery against the lease; in a dataspace the ODRL usage policy of the contract carries the same dates (EDC)"
+  key-release:
+    max_ttl: {Internal: "24h", Sensitive: "1h", Restricted: "15m"}
+    granted_by: "the key access service, on a valid lease and an attested context (policies/vault-access.yaml)"
+    renew: [collected, automated]
+    on_expiry: key-unusable
+    note: "data at rest and every copy is encrypted under product data keys; a consumer holds a key only as a short lease, so revocation reaches copies within one key ttl"
+  export:
+    max_days: {Internal: 30, Sensitive: 7, Restricted: 1}
+    granted_by: "the owner plus a releasing officer (platform/release-gateway.yaml)"
+    renew: [decided]
+    on_expiry: key-unusable
+    note: "an export leaves as a sealed artefact (platform/sealed-artefacts.yaml); its segment keys are leased like any other"
+  derived:
+    max_days: "the earliest end among its input leases"
+    granted_by: "the owner of the derived product, within its input leases"
+    renew: [automated]
+    on_expiry: stop-flow
+    note: "lineage (OpenLineage) links every derived product to the leases it was built under"
+  training:
+    max_days: {Internal: 365, Sensitive: 90, Restricted: 0}
+    granted_by: owner
+    renew: [decided]
+    on_expiry: stop-flow
+    note: "a model trained on leased data lists those leases in its model card (a memorising model is a plaintext copy); ending one stops further training, and the model is retired or retrained without that data within retire_after_revoke_days"
+    retire_after_revoke_days: 30
+  emergency:
+    max_ttl: {Internal: "4h", Sensitive: "4h", Restricted: "4h"}
+    granted_by: "two persons (security officer and steward); the owner is notified at once"
+    max_chain: 2                    # at most two back-to-back emergency leases, then a normal grant or nothing
+    renew: [decided]
+    on_expiry: key-unusable
+  investigation:
+    max_ttl: {Internal: "72h", Sensitive: "24h", Restricted: "8h"}
+    granted_by: "two distinct persons in distinct roles: the data owner or steward, and the DPO or security officer; never the investigator alone, never a self-grant"
+    max_records: 1000           # scope cap; a larger investigation is a new grant
+    max_renewals: 1
+    report_to: data-governance-board   # every investigation lease is reported after the fact
+    renew: [decided]
+    on_expiry: key-unusable
+    note: "the only way oversight reaches content (ADR-0097): a named incident, scoped to the records needed, the owner told unless the case record says that would harm it (then the governance board), every read logged; data-subject requests go through the owner's process instead"
+  legal-hold:
+    max_days: {Internal: 365, Sensitive: 365, Restricted: 365}
+    granted_by: "the legal or compliance authority, recorded with its basis"
+    renew: [decided]
+    on_expiry: hold-released
+    note: "blocks shred and retention deletion for its scope; grants no access; the hold authority may read only through the custodian under two persons"
+  ownership:
+    max_days: {Internal: 180, Sensitive: 180, Restricted: 180}
+    granted_by: "the domain owner"
+    renew: [decided]
+    on_expiry: steward-acts
+
+ending:   # early ends; each is a decision record with one taker (ADR-0093 triggers), propagated within the SLO
+  suspend:
+    reversible: true
+    who: [owner, steward, security_officer, detection-ladder]
+    effect: "the PDP denies and the key access service withholds keys; data, copies and the lease stay; resuming restores the lease unchanged"
+    mirrors: "GDPR Art. 18 restriction of processing"
+    propagation_slo_s: 60
+    max_days: 30                    # a suspension ends in resume or revoke; it is never a silent permanent denial
+  revoke:
+    reversible: false
+    who: [owner, steward, security_officer]
+    effect: "the lease ends: flows stop and keys are withheld; the consumer purges its plaintext copies and attests the purge; ciphertext copies need nothing because their keys are no longer released; a new lease is a new grant"
+    propagation_slo_s: 60
+    purge_attestation_s: 3600       # the consumer's signed purge attestation is due within an hour, or the consumer is quarantined
+    second_taker_when: [legal, safety]   # revoking a lease that carries such an obligation needs a second person
+  shred:
+    reversible: false
+    who: [owner, security_officer]
+    two_person: true
+    blocked_by: legal-hold
+    effect: "the product data key (or one segment key) and every backup of it are destroyed, so every copy, backup and replica becomes unreadable everywhere (crypto-shredding); the shred ledger records each destroyed key copy by location"
+    mirrors: "GDPR Art. 17 erasure; NIST SP 800-88 cryptographic erase"
+    propagation_slo_s: 300
+
+manageability:   # ending a lease must never break the platform's ability to run, recover and prove
+  - "custody is not access: backup, restore, replication, migration and retention run on ciphertext under the custodian, so suspending or revoking a lease never breaks them, and a restore never resurrects a revoked lease because keys follow the current lease state"
+  - "the owner is never a single point of failure: when the ownership lease lapses the steward acts; an orphaned product keeps its leases to their dates, gets no new grants and raises an alarm"
+  - "leases are managed by class (product, purpose, consumer class) with one renewal queue per owner and jittered dates (ADR-0093), not one record at a time"
+  - "derived products are flagged, not deleted, when an input lease ends: new releases stop and the owner decides to re-derive, purge or retire"
+  - "audit survives revocation and shredding: lease records, decisions and access logs keep their audit retention; they hold digests and pseudonyms, never leased content"
+  - "an emergency lease exists so that no revocation can lock out a safety-critical need: short, two-person and loud"
+  - "a site cut off from the WAN keeps the leases it holds to their band-shortened dates and can suspend and revoke locally; it cannot grant or renew without the owner's site"
+
+# review amendments (ADR-0095 review): each closes a way the promise could fail.
+plaintext_residency:   # keys reach ciphertext copies; plaintext needs its own bound
+  max_ttl: key-release            # plaintext (query results, caches, materialised views) lives no longer than the key lease it was opened under
+  where: "only in attested compute within the consumer's lease scope"
+  never_in: [logs, search-indexes, prompts-and-model-context, screenshots-and-exports, shared-caches]
+  residual: "a consumer that copies plaintext outside these rules is caught by its purge attestation and audit, not prevented; this honest-consumer assumption is stated, as sealed artefacts state theirs"
+offline:   # a site cut off from the WAN or from the key access service
+  key_grace: {Internal: "72h", Sensitive: "12h", Restricted: "0s"}   # cached key leases outlive their ttl at most this long while offline; Restricted never runs offline
+  slo_scope: "propagation SLOs hold while the site is reachable; offline, a parent's revoke lands on reconnect and at most key_grace late"
+  local_kas: "a site with must-run-local products runs its own key access service replica: local suspend and revoke take effect at once"
+key_custody:   # keys are data too
+  kas_replicas_min: 3             # per site that serves keys; a key access outage must not stop the platform
+  key_backups: "wrapped key backups are listed per product; a shred destroys every listed copy and the ledger counts them"
+  restore_rule: "a restore replays the shred ledger before any key is served, so restored backups never bring shredded data back"
+grants:
+  types: [new, renewal]
+  steward_may: [renewal]           # the steward never grants a new lease, never a new purpose
+  owner_lapsed: "an owner whose ownership lease has ended cannot grant: a lease from that owner starting after owner_until fails"
+  steward_is_not_owner: true       # the fallback must be a different person, or it is no fallback
+onward:
+  default: forbidden               # a consumer never re-leases; a sub-lease is its own record capped by its parent
+  allowed: [forbidden, sub-lease]
+  note: "in a dataspace the ODRL policy carries the same rule; the EDC policy monitor detects, it does not enforce"
+derived:
+  rule: "a lease with derived_from ends no later than the earliest of its input leases"
+  min_group_size: "policy topic data-min-group-size"   # a lease whose scope is aggregated names at least this group size
+combination: "two leases for two purposes do not add up to a third purpose: combining data across leases needs a lease for the joined purpose"
+renewal: {jitter: "policies/time-gating.yaml reconfirmation.jitter", kas_rate_limit: "per consumer, with request coalescing"}
+audit:
+  digests: "keyed HMAC whose key is shredded with the product key, so a shred also unlinks the audit trail from the data subject"
+  retention_days: {Internal: 1825, Sensitive: 1825, Restricted: 3650}
+lapsed_record_days: 30            # a lease ended more than 30 days ago must carry status ended (records are kept, never deleted)

@@ -1,0 +1,36 @@
+# Policy operations (ADR-0092): how rules are governed, compiled, shipped, observed and coupled to the risk bands.
+# Rules are data in policies/packs (the common policy model, policies/model.yaml); tools/policy_compile.py builds the
+# OPA bundle (policy/vdh/decide.rego evaluates them); a differential test keeps OPA and tools/policy_engine.py in
+# agreement. Checked by tools/policy_ops.py.
+
+lifecycle:
+  statuses: [draft, review, active, superseded, retired]
+  rule: "a rule is never deleted: it is superseded (supersedes in the newer rule) or retired, keeping its id and history; a git-history check fails when an id disappears"
+  required_on_every_rule: [owner, status, review_by]
+  review_period_days: 180
+  change: "every rule change is a change record (platform/change-contract.yaml); adding or removing a rule counts as loosening (an allow rule loosens), so it takes the stronger approval; a rollout stage moves only through platform/enforcement-rollout.yaml"
+  tests: "a rule names the tests that prove it (Rego unit tests in policy/, model tests); rules without tests are shown as untested on the pane, as risks with declared controls are"
+
+band_coupling:   # policies/model.yaml band_enforcement holds the floors; this is how they are used
+  source: "the adaptive risk band of the request (platform/adaptive-policy.yaml), computed per subject, device and site"
+  effect: "every rule's enforcement mode is raised to the band's floor; by_band parameters tighten with the band; at black exemptions are suspended"
+  risk_feedback: "a rule whose mitigated risk breaches appetite (a key risk indicator) is evaluated as if the band were one step higher for that risk's scope, until the breach is closed"
+  proof: "Rego unit tests (policy/vdh/decide_test.rego) and the differential test against tools/policy_engine.py"
+
+decision_log:   # OPA decision logs, shipped through the observability plane (platform/observability.yaml profile policy)
+  fields: [decision_id, timestamp, bundle_revision, path, input_digest, result, rule_ids, mode, band, trust, site, tenant, subject_pseudonym, latency_ms]
+  redaction: "OPA mask rules remove input fields that carry content or personal data before the log leaves the PDP; only the input digest and the scope dimensions remain"
+  retention: "decision logs follow platform/observability.yaml retention; Tier 0 decisions are also written to the audit chain"
+  traceability: "every decision_id appears in the change record or alarm that it produced, and every decision names its taker (the PDP's SPIFFE id, code digest and bundle revision)"
+
+metrics:   # exported per rule and per site; on the pane next to the risk it mitigates
+  - {name: vdh_policy_decisions_total, labels: [rule, mode, result, site], meaning: "decisions per rule, mode and result"}
+  - {name: vdh_policy_would_deny_total, labels: [rule, site], meaning: "denials a rule would issue if enforced (observe and warn modes)"}
+  - {name: vdh_policy_eval_errors_total, labels: [site], meaning: "evaluation errors; every error fails closed on write and bulk-read routes"}
+  - {name: vdh_policy_bundle_age_seconds, labels: [site], meaning: "age of the bundle in force at a site"}
+  - {name: vdh_policy_eval_latency_seconds, labels: [site], meaning: "decision latency (histogram)"}
+  - {name: vdh_policy_rule_last_hit_timestamp, labels: [rule], meaning: "when a rule last decided anything; a rule that never fires is a review finding"}
+
+coverage:
+  never_hit_days: 30
+  rule: "a rule that has not decided anything in 30 days is reviewed: is its scope wrong, is it obsolete, or is it a guard for something rare (then it gets a test that exercises it)"

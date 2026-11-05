@@ -1,0 +1,62 @@
+# Governance scaffold, tiers (ADR-0133): what each tier of the security and availability axes sets, and what it
+# requires from the organisation (persons, coverage, custodians). A requirement the organisation does not have is a shortfall.
+# Quorums are k-of-n SIGNERS INCLUDING the requester (TUF and IANA KSK practice), and the red and black bands add one
+# signer; every tier's requirements make each governed action reachable in the red band (tested). Where separation is
+# "compensated", an action may also pass in compensated mode: one signer, a signed announcement at least
+# compensation_delay_hours earlier, and the decision log (prior art: time-locked single-custodian operations). Where
+# separation is "required", compensated mode needs an exception record with an expiry (ADR-0132 EX-n).
+# The numbers are starting points from prior art (NIST SP 800-34 low/moderate/high contingency, ISO 22301 RTO/RPO,
+# 3-2-1-1-0 backups, the IANA root KSK and TUF quorums), not sourced norms; each tunable one is a knob below.
+tiers:
+  security:
+    "1":
+      settings: {root_quorum: 2, action_signers: 1, separation: compensated, compensation_delay_hours: 24, ceremony_witness: recorded, evidence_retention_years: 1, competency_validity_months: 36}
+      requires: {custodians: 1}
+    "2":
+      settings: {root_quorum: 2, action_signers: 2, separation: compensated, compensation_delay_hours: 48, ceremony_witness: recorded, evidence_retention_years: 3, competency_validity_months: 24}
+      requires: {custodians: 2}
+    "3":
+      settings: {root_quorum: 2, action_signers: 2, separation: required, compensation_delay_hours: 72, ceremony_witness: independent, evidence_retention_years: 5, competency_validity_months: 24}
+      requires: {custodians: 3, persons: 3}
+    "4":
+      settings: {root_quorum: 3, action_signers: 3, separation: required, compensation_delay_hours: 72, ceremony_witness: independent, evidence_retention_years: 10, competency_validity_months: 12}
+      requires: {custodians: 5, custodian_orgs: 2, persons: 5}
+  availability:
+    "1":
+      settings: {rto_hours: 168, rpo_hours: 24, backup: "3-2-1-1-0", restore_test_days: 365, dr_rehearsal_days: 0, bia: optional}
+      requires: {coverage: 0, persons: 1, bus_factor: 1}
+    "2":
+      settings: {rto_hours: 24, rpo_hours: 1, backup: "3-2-1-1-0", restore_test_days: 90, dr_rehearsal_days: 365, bia: required}
+      requires: {coverage: 1, persons: 2, bus_factor: 2}
+    "3":
+      settings: {rto_hours: 4, rpo_hours: 0.25, backup: "3-2-1-1-0", restore_test_days: 30, dr_rehearsal_days: 180, bia: required}
+      requires: {coverage: 2, persons: 4, bus_factor: 2}
+    "4":
+      settings: {rto_hours: 1, rpo_hours: 0, backup: "3-2-1-1-0 plus synchronous replication", restore_test_days: 30, dr_rehearsal_days: 90, bia: required}
+      requires: {coverage: 3, persons: 6, bus_factor: 3}   # six: a sustainable around-the-clock rotation (proposal)
+
+# what an organisation may tune: stricter says which direction tightens; floor is the loosest value any tweak or
+# deviation may reach (refused beyond it, ADR-0003: some floors are not deviable)
+knobs:
+  security.tier: {axis: security, field: tier, stricter: higher, floor: 1}
+  security.root_quorum: {axis: security, field: root_quorum, stricter: higher, floor: 2}
+  security.action_signers: {axis: security, field: action_signers, stricter: higher, floor: 1}
+  security.compensation_delay_hours: {axis: security, field: compensation_delay_hours, stricter: higher, floor: 24}
+  security.evidence_retention_years: {axis: security, field: evidence_retention_years, stricter: higher, floor: 1}
+  security.competency_validity_months: {axis: security, field: competency_validity_months, stricter: lower, floor: 60}
+  availability.tier: {axis: availability, field: tier, stricter: higher, floor: 1}
+  availability.rto_hours: {axis: availability, field: rto_hours, stricter: lower, floor: 336}
+  availability.rpo_hours: {axis: availability, field: rpo_hours, stricter: lower, floor: 48}
+  availability.restore_test_days: {axis: availability, field: restore_test_days, stricter: lower, floor: 365}
+
+# overlays add settings (they never relax one); produced by intake answers
+overlays:
+  nis2: {availability: {bia: required, incident_early_warning_hours: 24}, security: {supply_chain_review: required}}
+  sector: {security: {supply_chain_review: required, external_audit: yearly}}
+  classified: {security: {ceremony_witness: independent, media_handling: "per the classification authority"}}
+  ddil: {availability: {local_operation: "runs alone when cut off (ADR-0066)"}}
+  disconnected: {security: {release_media: "courier, ADR-0129"}, availability: {policy_bundles: persisted, offsite_copy: "carried media"}}
+  federated: {availability: {peer_replication: "between the ring's Isles only"}}
+  isolated: {availability: {offsite_copy: "carried media, rotated"}}
+  provider-operated: {support: {provider_sla_evidence: required}}
+  mandate: {security: {mandate_bundle: "signed by the parent, own bundle root"}}

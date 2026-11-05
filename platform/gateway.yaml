@@ -1,0 +1,65 @@
+# Consolidated API gateway: one LOGICAL gateway for infrastructure, data, AI and identity traffic; many PHYSICAL
+# enforcement cells. One control plane (routes generated from CALM, signed policy bundles, one AuthZEN decision
+# shape) and independent data-plane cells per label and per site, each highly available and statically stable.
+# The gateway is a policy enforcement point, not the decision point and not the only check (zero trust).
+control_plane:
+  source: "routes and policies generated from the CALM model, the patterns and the packs; signed OCI bundles pulled by each cell"
+  static_stability: "if the control plane is down, every cell keeps enforcing its last signed configuration until it expires (offline grace)"
+  in_runtime_path: false
+
+cells:   # each cell: the highest label it may carry, its replicas, its protocols and where it runs
+  public-internal: {max_label: Internal,     replicas: 2, protocols: [http, grpc], placement: eu-cloud}
+  sensitive:       {max_label: Sensitive, replicas: 2, protocols: [http, grpc], placement: eu-cloud}
+  restricted:      {max_label: Restricted,   replicas: 2, protocols: [http, grpc], placement: eu-cloud-dedicated}
+  management-r2:   {max_label: Sensitive, replicas: 2, protocols: [http, grpc, ssh], placement: eu-cloud, note: "admin APIs only (Kubernetes, OpenBao, Proxmox) for instances up to Sensitive, WireGuard, FIDO2 with step-up; never reachable from a tenant cell"}
+  management-restricted: {max_label: Restricted, replicas: 2, protocols: [http, grpc, ssh], placement: eu-cloud-dedicated, note: "administers Restricted enclaves from inside their own perimeter; a management plane is at least the label it manages, so it never lives on provider-controlled cloud VMs"}
+  edge-site:       {max_label: Sensitive, replicas: 2, protocols: [http, grpc], placement: edge-site, note: "per site; keeps working when islanded"}
+
+routes:   # one gateway, four kinds of traffic, each enforced at the right place
+  infrastructure: {via: management-r2, enforcement: "mTLS plus FIDO2 session; OPA per request"}
+  data-apis:      {via: "the cell of the product's label", enforcement: "token validation (DPoP), purpose and label from the data product contract, OPA row and column decisions passed to Trino"}
+  events:         {via: "NATS accounts (protocol-native enforcement point)", enforcement: "same policy source, per-subject permissions; not proxied through HTTP"}
+  ai:             {via: "the inference gateway behind the cell of the request's label, then the AI egress gate, then the model (ADR-0164)", enforcement: "caller identity, purpose, label inheritance, token and rate limits, content-free logging (prompt masking in decision logs, GenAI content capture off); pseudonymisation, the leak gate and the journal in the AI egress gate"}
+  identity:       {via: "the cell that fronts the broker", enforcement: "the gateway validates tokens and performs token exchange for legacy backends; it never hosts the identity provider"}
+
+rules:
+  - "a cell never carries traffic above its max_label (high-water mark per cell)"
+  - "every cell has at least two replicas from M; in S one replica on one node is an accepted, stated limitation"
+  - "each cell runs its own local policy decision point (OPA) with the cached signed bundle; no remote call per request"
+  - "services validate tokens themselves; the gateway is never the only check"
+  - "write paths fail closed when policy is stale; read paths keep the last signed policy until the grace expires"
+  - "the gateway logs decisions, not content, into the evidence chain"
+
+implementation:
+  S: "Envoy Gateway (one replica) with cert-manager; the same gateway as M and L, which only add replicas and cells"
+  M_and_L: "the same Envoy Gateway with more replicas and per-label cells, OIDC, JWT and external authorisation (OPA)"
+  ai_route: "the inference gateway; the Envoy AI Gateway project is now maintained as agent-router (Apache-2.0); watched, not adopted"
+
+# Not an ESB (checked 2026-10-06). Capability-wise the gateway, the NATS backbone, Camel, the schema registry and the
+# catalog together cover what an enterprise service bus did (routing, protocol mediation, security, monitoring,
+# registry). What differs is where logic lives and who owns it: "smart endpoints and dumb pipes" (Fowler and Lewis,
+# Microservices, 2014). Prior art: Google BeyondCorp access proxy; NIST SP 800-207 policy enforcement points; AWS
+# cell-based architecture and static stability; Envoy control plane / data plane split; Kubernetes Gateway API;
+# EU open alternative for API management: Gravitee APIM (France, Apache-2.0).
+not_an_esb:
+  - {esb: "business logic, transformation and orchestration inside the bus", here: "the gateway enforces policy only; transformation lives in producer-owned Camel routes, orchestration in domain-owned workflows"}
+  - {esb: "one central integration team and one central runtime", here: "one control plane, data planes in independent cells, domains own their products and contracts"}
+  - {esb: "synchronous calls and asynchronous messages on one bus", here: "request/response through gateway cells; events on the NATS backbone, enforced natively"}
+  - {esb: "one canonical enterprise data model", here: "a versioned contract per data product"}
+labels_and_dcs:   # what the gateway does for labelling and data-centric security (ADR-0073)
+  does:
+    - "one cell per label and site with a high-water mark; OPA decides on subject and resource labels"
+    - "passes the decision's obligations (session label, handling) to the backend as headers"
+    - "gives OPA bounded request metadata (and at most a small, bounded body) for label decisions on uploads"
+    - "logs decisions with their labels, never content; per-label TLS profiles"
+    - "routes key-release requests of the key access service (sealed ZTDF objects) through the focal point"
+  does_not:
+    - "decrypt or inspect data-centric protection (ZTDF, end-to-end encryption): it cannot and must not"
+    - "heavy DLP: content inspection of data crossing a label lives in the release gateway (Tika, ClamAV, YARA-X, Dangerzone, ExifTool, gitleaks, an officer, sealing), the AI egress gate for AI egress (its leak gate, ADR-0164) and the egress perimeters of the remote browser and of AI egress"
+  content_hygiene: "WAF (Coraza with the OWASP Core Rule Set), content-type allow-lists and size limits stay in the gateway"
+
+gateway_must_not:   # the line that keeps this from becoming an ESB again
+  - payload transformation
+  - business rules
+  - orchestration of several backend calls
+  - hand-written filters or scripts

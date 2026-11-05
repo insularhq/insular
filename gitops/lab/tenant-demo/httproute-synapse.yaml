@@ -1,0 +1,16 @@
+# The homeserver's client API and Synapse's own sign-in endpoints only; the admin API (/_synapse/admin) is never routed
+# to tenants (catalog/compensations.yaml Synapse), and federation (/_matrix/federation, /_matrix/key) goes through the
+# Harbor, not this route.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata: {name: synapse, namespace: vdh-tenant-demo}
+spec:
+  parentRefs: [{name: pharos-gw, namespace: vdh-pharos}]
+  hostnames: ["matrix.${ring_domain:=lab.vdh.test}"]
+  rules:
+    - matches:
+        - path: {type: PathPrefix, value: /_matrix/client}
+        - path: {type: PathPrefix, value: /_synapse/client}
+        - path: {type: PathPrefix, value: /_matrix/media}
+        - path: {type: Exact, value: /health}
+      backendRefs: [{name: synapse, port: 8008}]

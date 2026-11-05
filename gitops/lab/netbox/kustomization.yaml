@@ -1,0 +1,38 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# NetBox on the Isle (ADR-0171): the DCIM/IPAM master, hardened (login required, no superuser, no scripts,
+# webhooks or reporting home), reachable only through the pane's gateway with its sign-in and PDP gate (the route
+# lives in vdh-pharos); its keys generated once in the ring; two service accounts with expiring tokens; the site's
+# IPAM seeded from the address plan as pipeline-dcim; a read-only reconciler turning address drift into findings.
+resources:
+  - networkpolicy-default-deny-ingress.yaml
+  - cnp-egress-floor.yaml
+  - cnp-to-api.yaml
+  - cnp-database-to-api.yaml
+  - postgres-netbox.yaml
+  - objectstore-ring-store.yaml
+  - scheduledbackup-netbox-db.yaml
+  - deployment-valkey.yaml
+  - service-valkey.yaml
+  - deployment-netbox.yaml
+  - deployment-netbox-worker.yaml
+  - service-netbox.yaml
+  - referencegrant-netbox-from-pharos.yaml
+  - serviceaccount-netbox-keys.yaml
+  - serviceaccount-netbox-bootstrap.yaml
+  - role-netbox-keys.yaml
+  - role-netbox-bootstrap.yaml
+  - rolebinding-netbox-keys.yaml
+  - rolebinding-netbox-bootstrap.yaml
+  - cronjob-netbox-keys.yaml
+  - cronjob-netbox-bootstrap.yaml
+  - cronjob-netbox-seed.yaml
+  - serviceaccount-ipam-drift.yaml
+  - clusterrole-vdh-ipam-drift.yaml
+  - clusterrolebinding-vdh-ipam-drift.yaml
+  - deployment-ipam-drift.yaml
+configMapGenerator:
+  - name: netbox-code
+    namespace: vdh-netbox
+    options: {annotations: {kustomize.toolkit.fluxcd.io/substitute: disabled}}   # code: never substituted
+    files: [keys.py, bootstrap.py, seed.py, drift.py, drift-runner.py, seed-site.json]

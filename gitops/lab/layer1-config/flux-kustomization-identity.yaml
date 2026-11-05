@@ -1,0 +1,13 @@
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: identity, namespace: flux-system}
+spec:
+  interval: 10m
+  dependsOn: [{name: segmentation}, {name: backup-plugin}]   # no workload before its policy
+  sourceRef: {kind: OCIRepository, name: lab-gitops}
+  path: ./identity
+  prune: true
+  wait: false   # Keycloak waits for the bootstrap secret the bring-up script makes on the node
+  timeout: 10m
+  postBuild:   # the ring's own domain; without the ConfigMap the lab default applies
+    substituteFrom: [{kind: ConfigMap, name: ring-settings, optional: true}]

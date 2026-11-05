@@ -1,0 +1,89 @@
+# ADR-0139: NetBird's main network: its store (peers, setup keys, routes), its embedded IdP and its events; the GeoIP files are downloaded again.
+# A copy every six hours into the ring's Garage (bucket state-nbmain, prefix netbird/), from where an off-site job
+# carries it away. SQLite files are copied by SQLite's online backup, other files as they are:
+# crash-consistent, not quiesced (the restore drill decides whether that is enough). Garage keeps the newest copy, the
+# history is the off-site repository's. The volumes are mounted read-only on the application's node (required
+# affinity: a ReadWriteOnce volume).
+apiVersion: batch/v1
+kind: CronJob
+metadata: {name: state-backup, namespace: vdh-nbmain, annotations: {vdh.component: "NetBird", vdh.app-version: "0.80.0"}}
+spec:
+  schedule: "15 */6 * * *"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 3600
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 1800
+      template:
+        metadata: {labels: {app: state-backup}}
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          # the application's own SELinux level (the state register): a volume is readable only at its pod's level
+          securityContext: {runAsNonRoot: true, runAsUser: 65534, runAsGroup: 65534, fsGroup: 65534, seccompProfile: {type: RuntimeDefault}, seLinuxOptions: {level: "s0:c20,c21"}}
+          affinity:
+            podAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution: [{labelSelector: {matchLabels: {app: netbird}}, topologyKey: kubernetes.io/hostname}]
+          initContainers:
+            - name: copy
+              image: docker.io/library/python:3.12-slim@sha256:05cda9777409a9c3ffddd94a4c476b79f0769a0b4857f0c7ed9226b6800b0d6f
+              command: [python, -c]
+              args:
+                - |
+                  import fnmatch, os, shutil, sqlite3, sys, time
+                  skip = [p for p in os.environ.get("SKIP", "").split(",") if p] + ["*-wal", "*-shm", "*-journal"]
+                  magic = b"SQLite format 3" + bytes(1)
+                  for spec in sys.argv[1:]:
+                      name, src = spec.split("=", 1)
+                      dst = os.path.join("/work/data", name)
+                      dbs = files = 0
+                      def denied(e):   # an unreadable directory fails the copy; os.walk would skip it silently
+                          raise e
+                      for root, dirs, names in os.walk(src, onerror=denied):
+                          rel = os.path.relpath(root, src)
+                          os.makedirs(os.path.join(dst, rel), exist_ok=True)
+                          for f in names:
+                              s, d = os.path.join(root, f), os.path.join(dst, rel, f)
+                              if any(fnmatch.fnmatch(f, p) for p in skip) or os.path.islink(s) or not os.path.isfile(s):
+                                  continue
+                              with open(s, "rb") as h:
+                                  head = h.read(16)
+                              if head == magic:   # SQLite's online backup: a consistent copy while the application writes
+                                  a = sqlite3.connect("file:" + s + "?mode=ro", uri=True)
+                                  b = sqlite3.connect(d)
+                                  a.backup(b)
+                                  b.close()
+                                  a.close()
+                                  dbs += 1
+                              else:
+                                  shutil.copy2(s, d)
+                                  files += 1
+                      if not dbs + files and os.listdir(src):
+                          raise SystemExit(name + ": nothing copied from a volume that is not empty")
+                      print(time.strftime("%H:%M:%S"), name, dbs, "SQLite database(s) by online backup,", files, "file(s) copied")
+                - netbird-data=/src/netbird-data
+              env: [{name: SKIP, value: "GeoLite2-*.mmdb,geonames_*.db,*.bak-*"}, {name: PYTHONDONTWRITEBYTECODE, value: "1"}]
+              resources: {requests: {cpu: 20m, memory: 32Mi}, limits: {memory: 256Mi}}
+              securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+              volumeMounts:
+                - {name: work, mountPath: /work}
+                - {name: netbird-data, mountPath: /src/netbird-data, readOnly: true}
+          containers:
+            - name: into-garage
+              image: docker.io/rclone/rclone:1.75.1@sha256:45401ad7410db1d67ffdb58e19059ad20b0d8e0285a60e38bbec55cc1019c7a5
+              command: [sh, -c]
+              args:
+                - |
+                  set -eu
+                  rclone --config /target/rclone.conf --cache-dir /work/.rclone sync /work/data garage:state-nbmain/netbird
+                  echo "state in Garage: state-nbmain/netbird"
+              resources: {requests: {cpu: 20m, memory: 32Mi}, limits: {memory: 128Mi}}
+              securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+              volumeMounts: [{name: work, mountPath: /work}, {name: target, mountPath: /target, readOnly: true}]
+          volumes:
+            - {name: work, emptyDir: {sizeLimit: 4Gi}}
+            - {name: target, secret: {secretName: state-backup-target, defaultMode: 0440}}
+            - {name: netbird-data, persistentVolumeClaim: {claimName: netbird-data, readOnly: true}}

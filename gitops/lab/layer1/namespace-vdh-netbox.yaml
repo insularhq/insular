@@ -1,0 +1,4 @@
+# NetBox, the Isle's DCIM/IPAM master (ADR-0171); the namespace lives in layer 1 so a prune never takes it
+apiVersion: v1
+kind: Namespace
+metadata: {name: vdh-netbox, annotations: {kustomize.toolkit.fluxcd.io/prune: disabled}}

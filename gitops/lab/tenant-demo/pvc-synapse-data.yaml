@@ -1,0 +1,4 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: {name: synapse-data, namespace: vdh-tenant-demo}
+spec: {accessModes: [ReadWriteOnce], resources: {requests: {storage: 2Gi}}}

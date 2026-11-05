@@ -1,0 +1,119 @@
+# Standard operating procedures as code (ADR-0159, ADR-0157 item 9, ADR-0136). A procedure is what happens when an
+# alert class fires or an event arrives: a list of steps that a person is walked through (wizard) or that run on their
+# own (automatic), always loud, always through the one execution path (tools/automate.py: identity, policy decision,
+# autonomy level, approval, execution, hash-chained record) and always with a way back.
+#
+# Step kinds:
+#   check    look at something (a query or a page); a person confirms, or the runner records the answer
+#   action   one action of governance/autonomy.yaml on a target; its level comes from the matrix, never from here
+#   verify   a condition that must hold after the actions (the procedure fails and undoes if it does not)
+#   inform   tell the people named in announce, with the run's link
+# Every action step names its undo: another action that reverses it, or "none" with a reason when the action
+# restores declared state (restarting a workload, reconciling configuration) and so needs no reversal.
+#
+# mode: automatic is allowed only when every action is reversible and the matrix lets it run at notify or autonomous
+# for the procedure's tier; otherwise the procedure is a wizard and the steps that need a person wait for one.
+# announce: where a run is shown while it runs (the pane always; the ring's alert room; the page for critical runs).
+# Checked by tools/sop.py (test_sops_are_walked_or_automatic_loud_audited_and_reversible).
+announce_channels: [pane, alert-room, ntfy]
+
+sops:
+  SOP-001:
+    title: "A ring service does not answer"
+    trigger: {alert_class: service-down}
+    owner: platform_operator
+    tier: medium-appetite
+    mode: wizard
+    announce: [pane, alert-room]
+    steps:
+      - {id: look, kind: check, text: "open the service's pod, its node and its volume on the Live estate page", link: /d/pharos-estate}
+      - {id: restart, kind: action, action: restart-workload, target: "{{entity}}", undo: none, undo_reason: "a restart restores the declared state"}
+      - {id: answers, kind: verify, text: "the service answers its metrics again for five minutes", query: "up{namespace=\"{{namespace}}\", container=\"{{container}}\"} == 1"}
+      - {id: tell, kind: inform, text: "the service is back, or an incident is opened with this run attached"}
+
+  SOP-002:
+    title: "A ring's telemetry goes silent"
+    trigger: {alert_class: telemetry-silence}
+    owner: security_officer
+    tier: high-appetite
+    mode: automatic
+    announce: [pane, alert-room, ntfy]
+    steps:
+      - {id: watch, kind: action, action: raise-observation, target: "{{entity}}", undo: none, undo_reason: "watching in more detail changes nothing that runs; it ends with the run"}
+      - {id: keep, kind: action, action: snapshot-forensics, target: "{{entity}}", undo: none, undo_reason: "a snapshot is kept evidence; deleting it is a separate, human decision"}
+      - {id: blind, kind: inform, text: "the ring is treated as blind: its SOC tiles show no data, not zero, until the events flow again"}
+      - {id: flowing, kind: verify, text: "network flows reach the event store again", query: "max(vdh_events_age_seconds{domain=\"network.flow\"}) < 300"}
+
+  SOP-003:
+    title: "A certificate is not ready or does not renew"
+    trigger: {alert_class: certificate-expiry}
+    owner: platform_operator
+    tier: high-appetite
+    mode: automatic
+    announce: [pane, alert-room]
+    steps:
+      - {id: renew, kind: action, action: rotate-certificate, target: "{{entity}}", undo: none, undo_reason: "the old certificate stays valid until it expires; a renewal replaces nothing irreversibly"}
+      - {id: ready, kind: verify, text: "cert-manager reports the certificate ready", query: "certmanager_certificate_ready_status{condition=\"True\", name=\"{{name}}\"} == 1"}
+      - {id: tell, kind: inform, text: "renewed, or the issuer's error with this run attached"}
+
+  SOP-004:
+    title: "A host's trust drops"
+    trigger: {alert_class: host-trust-drop}
+    owner: platform_operator
+    tier: low-appetite
+    mode: automatic
+    announce: [pane, alert-room, ntfy]
+    steps:
+      - {id: keep, kind: action, action: snapshot-forensics, target: "{{entity}}", undo: none, undo_reason: "a snapshot is kept evidence"}
+      - {id: isolate, kind: action, action: quarantine-host, target: "{{entity}}", undo: release-quarantine}
+      - {id: cut-off, kind: verify, text: "no flow leaves the host except to the forensics collector", query: "sum(vdh_signal_quarantine_leaks{host=\"{{entity}}\"}) == 0"}
+      - {id: tell, kind: inform, text: "the host is quarantined; release it from the run's page once it re-attests (a person decides)"}
+
+  SOP-005:
+    title: "An OpenBao member is sealed"
+    trigger: {alert_class: secret-store-sealed}
+    owner: security_officer
+    tier: high-appetite
+    mode: wizard
+    announce: [pane, alert-room, ntfy]
+    # ADR-0159 amendment 1: the custodians unseal from the pane without a share ever passing through it. The pane shows
+    # the seal state, the cause and the progress; each custodian's share goes from their own browser to the store's own
+    # unseal page (step-up passkey sign-in, the custodian role, one share per custodian per round), never through
+    # Grafana, the event store, the alert room or a log.
+    steps:
+      - {id: why, kind: check, text: "see which members are sealed and why (node restart or power loss: the node's boot time beside the seal time)", link: /d/pharos-ops}
+      - {id: custodians, kind: inform, text: "the custodians on the roster are asked in the alert room and by ntfy; the message carries the round and the link, never a share"}
+      - {id: unseal, kind: action, action: unseal-store, target: "{{member}}", undo: none, undo_reason: "unsealing restores the declared state; sealing again is the break-glass response (seal-store), a separate decision"}
+      - {id: unsealed, kind: verify, text: "every member reports unsealed and the Raft cluster has its quorum", query: "min(probe_success{module=\"bao_unsealed\"}) == 1"}
+      - {id: record, kind: inform, text: "the round is closed: who entered a share and when, from the decision records; the alert resolves"}
+
+  SOP-006:
+    title: "The off-site backup is stale"
+    trigger: {alert_class: backup-stale}
+    owner: platform_operator
+    tier: high-appetite
+    mode: wizard
+    announce: [pane, alert-room, ntfy]
+    steps:
+      - {id: why, kind: check, text: "read the last offsite-backup job's log: Garage copy, the target reached, restic's answer", link: /d/pharos-ops}
+      - {id: target, kind: check, text: "is the target reachable from the ring (SFTP to the layer-2 box, the parent, the second provider)? a site cut off from a later layer is expected; layer 2 must stay current"}
+      - {id: now, kind: action, action: observe, target: "offsite-backup", undo: none, undo_reason: "running the job once more changes no data; restic adds a snapshot"}
+      - {id: fresh, kind: verify, text: "a new completed run within the hour", query: "max(vdh_backup_offsite_age_seconds) < 3600"}
+      - {id: tell, kind: inform, text: "the backup is current again, or an incident with this run attached (RI-24)"}
+
+  SOP-007:
+    title: "A federation partner is trusted above its evidence"
+    trigger: {alert_class: partner-trust-accepted}
+    owner: security_officer
+    tier: medium-appetite
+    mode: wizard
+    announce: [pane, alert-room]
+    # ADR-0149 point 3, the acceptance is the risk owner's decision; this walk keeps it in view every day it
+    # holds and ends with it re-decided, ended early or left to lapse at its end, never forgotten
+    steps:
+      - {id: register, kind: action, action: observe, target: "{{partner}}", undo: none, undo_reason: "reading the risk register (the partner's risks as the Harbor lists them) changes nothing"}
+      - {id: promise, kind: check, text: "has the evidence promised in the acceptance's reason arrived (the Harbor's received list, kind evidence), and is the band it earns close to the accepted one?"}
+      - {id: decide, kind: check, text: "the risk owner decides: keep it until its end, end it now (unaccept with the reason), or record a new acceptance (accept, at most 90 days and medium)"}
+      - {id: holds, kind: verify, text: "the pane shows the decision: accepted with its end, or the evidenced band", query: "vdh_harbor_partner_accepted{partner=\"{{partner}}\"} >= 0"}
+      - {id: tell, kind: inform, text: "the decision and its end date in the alert room, with this run attached"}
+

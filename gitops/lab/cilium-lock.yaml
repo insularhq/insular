@@ -1,0 +1,11 @@
+# Cilium lock (ADR-0039 amendment): the Cilium release the lab installs (set in the lab tooling:
+# CILIUM_VERSION, CLI CILIUM_CLI_VERSION) and the digest of every image it runs, recorded on the lab and
+# verified with cosign against Cilium's own release signatures (keyless, certificate identity
+# ^https://github.com/cilium/, issuer https://token.actions.githubusercontent.com). Cilium's chart pins these digests
+# itself; this lock is what the lab digest check compares against. Not a Kubernetes resource.
+cilium_version: "1.20.1"
+cli_version: "v0.20.1"
+images:
+  - {name: cilium, image: quay.io/cilium/cilium, tag: "v1.20.1", digest: "sha256:ae9ea21f7427fe24bc6ea7247eb552157a1b0a431744045d3f641545ca71d11b", upstream_signature: verified}
+  - {name: operator-generic, image: quay.io/cilium/operator-generic, tag: "v1.20.1", digest: "sha256:6c3885fc7b629099fdbe2a5c87869c86feb825fa18fae299eac0f61918d16ecf", upstream_signature: verified}
+  - {name: cilium-envoy, image: quay.io/cilium/cilium-envoy, tag: "v1.37.5-1786810558-766ccfb37260a43e9d228837aa84ce3faf9f64e7", digest: "sha256:75b8094c7127736a2ffd2dce3945e0931cb6df21b0372ff661940eca26730b91", upstream_signature: verified}

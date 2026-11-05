@@ -1,0 +1,60 @@
+# Technology radar: modern open-source candidates measured from forge signals and placed in a ring.
+# adopt: use now; trial: prove in a lab size before a client; assess: watch, document the trigger; hold: do not use.
+# A candidate that reaches adopt becomes a component (BOM, lock, provenance, resilience profile) through an ADR.
+radar:
+  Hubble:          {ring: adopt, for: "seam observer", size: S, why: "already inside Cilium: per-flow L3-L7 with both identities; the outside watcher of every seam"}
+  Cilium LB IPAM and BGP: {ring: adopt, for: "virtual IPs", size: S, why: "replaces MetalLB and kube-vip; BGP to the site router, ARP where none"}
+  Knot DNS:        {ring: adopt, for: "the Isle's signer, with Knot Resolver as the site resolver", size: S, why: "CZ.NIC (CZ, EU), runs .cz; official images of both servers; ADR-0172 amendment"}
+  Unbound:         {ring: hold, for: "site resolver", size: L, why: "NLnet Labs (NL, EU); no official container image, so replaced by Knot Resolver (ADR-0172 amendment)"}
+  OpenFGA:         {ring: trial, for: "relationship-based authorisation beside OPA", size: M, why: "sharing, delegation and tenant hierarchies are relations, where OPA is weak; CNCF"}
+  agentgateway:    {ring: trial, for: "agent to tool path (MCP, A2A)", size: optional, why: "an MCP-aware enforcement point for the AI modules; created 2025, very active"}
+  x509-certificate-exporter: {ring: trial, for: "observed certificate inventory", size: S, why: "Enix (FR), MIT; expiry, issuer and algorithm of certificates in Secrets and host files as metrics; the observed half of the lifecycle check (ADR-0144)"}
+  certspotter:     {ring: trial, for: "public names in Certificate Transparency logs", size: S, why: "SSLMate, MPL-2.0; detects certificates issued for our names that we did not request (ADR-0144)"}
+  trust-manager:   {ring: trial, for: "CA bundle distribution", size: S, why: "cert-manager project, Apache-2.0; carries old and new anchors through the rotation overlap (ADR-0144)"}
+  Kamaji:          {ring: trial, for: "hosted control planes per tenant", size: L, why: "Clastix (IT, EU); per-tenant Kubernetes control planes without per-tenant servers"}
+  Fleet:           {ring: assess, for: "fleet GitOps across many instances", size: L, why: "SUSE (EU); Flux per instance stays; Fleet only if instance counts make per-instance Flux unmanageable"}
+  Tetragon:        {ring: assess, for: "runtime detection with in-kernel enforcement", size: M, why: "same project as Cilium; could replace Falco and enforce, not only detect"}
+  k8gb:            {ring: assess, for: "multi-site DNS failover", size: L, why: "CNCF; global load balancing by DNS, no stretched layer 2"}
+  La Suite Docs:   {ring: assess, for: "collaborative editing for Internal data", size: optional, why: "French state (DINUM) with German and Dutch partners, MIT; not end-to-end encrypted, so CryptPad stays the vault"}
+  Zarf:            {ring: assess, for: "signed offline bundles for disconnected sites", size: optional, why: "Apache-2.0, very active; images, charts and SBOMs in one signed artifact; compare with the release loader (ADR-0129, ADR-0142)"}
+  Lula:            {ring: assess, for: "continuous control validation against the live cluster", size: optional, why: "Apache-2.0; control mappings as data checked against live state; the rewrite is early, Lula 1 (OSCAL) in maintenance (ADR-0142)"}
+  Sylva:           {ring: assess, for: "units as data generating the Flux layer per site and cluster type", size: L, why: "Linux Foundation Europe telco stack on Cluster API and Flux; pattern for generating GitOps from the model (ADR-0142)"}
+  Haven Compliancy Checker: {ring: assess, for: "conformance as an executable tool", size: S, why: "Dutch VNG hosting standard with a checker CLI; the model's contracts state 13 conformance tests in prose (ADR-0142)"}
+  OmniTrustILM:    {ring: assess, for: "certificate lifecycle hub across several CAs", size: L, why: "formerly CZERTAINLY (3Key), Apache-2.0; the only open-source multi-CA hub with discovery and policy; small community; trigger: a client's own CAs to federate (ADR-0144)"}
+  EJBCA Community: {ring: assess, for: "CA with device enrolment and post-quantum issuance", size: L, why: "Keyfactor, LGPL-2.1; ML-DSA and ML-KEM since 9.1; EST, CMP and SCEP; trigger: device enrolment at scale or a PQC CA ahead of OpenBao (ADR-0144)"}
+  cbomkit:         {ring: assess, for: "cryptographic bill of materials from source code", size: optional, why: "PQCA (Linux Foundation), Apache-2.0; CycloneDX 1.6 CBOM; code only, not live certificates (ADR-0144)"}
+  ntpd-rs:         {ring: assess, for: "time with NTS", size: S, why: "memory-safe NTP and NTS (Trifecta Tech Foundation, NL); chrony stays until it is packaged by the host OS"}
+  Kopia:           {ring: assess, for: "backup", size: S, why: "restic alternate with a UI and compression; restic stays (format documented, drills exist)"}
+  rustic:          {ring: assess, for: "backup", size: S, why: "restic-compatible repository in Rust: an exit without migrating backups"}
+  Warpgate:        {ring: trial, for: "operator bastion with session recording", size: M, why: "SSH, HTTPS and database bastion with SSO; driven by the ReliKey agent on its edge appliance (a pinned release); complements WireGuard plus the OpenBao SSH CA"}
+  Coroot:          {ring: assess, for: "service map from eBPF", size: M, why: "automatic seam map; overlaps Hubble and Grafana"}
+  Ory:             {ring: assess, for: "identity (EU alternate to Keycloak)", size: S, why: "Ory (DE), Apache-2.0; slower releases; Keycloak's brokering and SCIM ecosystem stay ahead"}
+  SpiceDB:         {ring: assess, for: "relationship-based authorisation", size: M, why: "alternate to OpenFGA"}
+  Cedar:           {ring: assess, for: "analysable policy language", size: M, why: "formally analysable policies; OPA stays the engine"}
+  Lakekeeper:      {ring: assess, for: "Iceberg REST catalog for Trino (undeclared backing service)", size: optional, why: "Vakamo (DE), Apache-2.0; candidate beside Apache Polaris and Nessie"}
+  Neko:            {ring: adopt, for: "pixels-only browser for non-platform destinations", size: optional, why: "disposable browser in a container streamed over WebRTC; Apache-2.0, 23 recent authors"}
+  CrowdSec:        {ring: assess, for: "public IP reputation signal for adaptive policy", size: optional, why: "CrowdSec SAS (FR); community blocklists and CTI API; optional feed (platform/adaptive-policy.yaml)"}
+  MISP:            {ring: assess, for: "threat intelligence informing the world state", size: optional, why: "CIRCL (LU) stewarded threat-sharing platform; feeds the security officer's world state"}
+  Selkies:         {ring: assess, for: "GPU-accelerated WebRTC desktop or browser streaming", size: optional, why: "MPL-2.0, active; a streaming layer without session orchestration; alternate if Neko stalls"}
+  KasmVNC:         {ring: hold, for: "remote browser", size: none, why: "the GPL VNC server lacks session orchestration; Kasm Workspaces, which has it, is not open source (US)"}
+  BrowserBox:      {ring: hold, for: "remote browser", size: none, why: "proprietary licence despite living on GitHub (DOSAYGO Corp, US)"}
+  kgateway:        {ring: adopt, for: "ready-to-swap alternate for Envoy Gateway", size: S, why: "CNCF, Envoy-based, official Gateway API conformance v1.3 to v1.6 (ADR-0073)"}
+  Apache APISIX:   {ring: assess, for: "data-plane diversity against an Envoy-wide flaw", size: none, why: "NGINX and Lua data plane; no published Gateway API conformance; advisory history not visible in GitHub data"}
+  Traefik:         {ring: hold, for: "ingress", size: none, why: "heaviest advisory record of the gateways measured; OIDC and JWT mostly in the commercial edition"}
+  Kanidm:          {ring: hold, for: "identity", size: S, why: "modern and small, but no brokering ecosystem for tenant federation"}
+  Pocket ID:       {ring: hold, for: "identity", size: S, why: "passkey-only and minimal: fine for a homelab, too small for federation"}
+  OpenNebula:      {ring: hold, for: "infrastructure cloud", size: none, why: "Apache-2.0, Enterprise is support not features; heavier than the sizes need; its federated-or-local tables, zone resync, typed backup backends and post-deploy validation are taken as patterns (ADR-0143)"}
+  Lemur:           {ring: hold, for: "certificate lifecycle", size: none, why: "Netflix, archived (ADR-0144)"}
+  Envoy AI Gateway: {ring: hold, for: "inference gateway", size: optional, why: "its repository now redirects to theagentrouter/agent-router: steward change to verify first"}
+  Neon:            {ring: hold, for: "branching PostgreSQL", size: none, why: "acquired by Databricks in 2025; last release 2025-07"}
+  Quickwit:        {ring: hold, for: "log search", size: none, why: "acquired by Datadog in 2025; VictoriaLogs stays"}
+  MetalLB:         {ring: hold, for: "virtual IPs", size: none, why: "Cilium LB IPAM covers it"}
+  kube-vip:        {ring: hold, for: "API virtual IP", size: none, why: "K3s agents balance over all servers; no VIP needed"}
+  Rook and Ceph:   {ring: hold, for: "replicated storage", size: none, why: "replication lives in the applications; shared storage adds a failure domain"}
+  Longhorn:        {ring: hold, for: "replicated storage", size: none, why: "same reason"}
+  Cilium ClusterMesh across sites: {ring: hold, for: "multi-site pod networking", size: none, why: "couples sites' failure domains; sites meet through gateway cells and NATS leaf nodes"}
+  Cloudify:        {ring: hold, for: "orchestrator of record", size: none, why: "export target only (ADR-0140): its own state would be a second master overlapping OpenTofu, Cluster API and Flux; Dell-owned since 2023"}
+  Dell Automation Platform: {ring: hold, for: "orchestrator of record", size: none, why: "export target only (ADR-0140): the model generates its blueprints; proprietary"}
+  UDS Core:        {ring: hold, for: "whole air-gapped platform", size: none, why: "builds on Istio and Pepr where the model chose Cilium, OPA and Envoy Gateway; its per-application Package is the pattern to learn from (ADR-0142)"}
+  Contrast:        {ring: hold, for: "confidential containers for an operator-blind guarantee", size: none, why: "Business Source License, not open source; the concept stays on the watch list (ADR-0142)"}
+  Teleport:        {ring: hold, for: "access platform", size: none, why: "community edition licence restrictions; Warpgate is the open candidate"}

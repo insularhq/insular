@@ -1,0 +1,58 @@
+# Automation across the chain. Engines differ per stage; the execution path is the same for all of them:
+#   identity -> policy decision -> autonomy level -> (approval when gated) -> execute -> attested, chained record.
+# Every run carries one trace id from commit to runtime to evidence, so any dashboard line or report figure can be
+# followed back to the change, the actor, the decision and the approval that caused it.
+stages:
+  build:      {engine: "GitLab CI / Forgejo Actions", tools: [Trivy, cosign, in-toto attestations, Renovate], output: "signed images and bundles with SBOM and provenance"}
+  develop:    {engine: "Dev Containers specification on Forgejo runners or local Podman", tools: [], output: "reproducible developer environments without production secrets", note: "Coder (AGPL-3.0) only if remote workspaces are needed"}
+  provision:  {engine: "OpenTofu (day 0 infrastructure) and Ansible (host configuration)", tools: [], output: "hosts, networks, DNS, provider firewalls"}
+  reconcile:  {engine: Flux, tools: [], output: "cluster state equals the signed bundle; drift reverted or reported"}
+  operate:    {engine: "Argo Workflows + Argo Events (CNCF graduated, Apache-2.0)", tools: [Ansible as a task inside workflows], output: "event-driven runbooks and remediations, with suspend steps for human approval", size: M}
+  evaluate:   {engine: "evaluator (OPA + green light + federate)", tools: [], output: "control states, signed lights, alerts"}
+  report:     {engine: "evaluator report job", tools: [compliance-trestle], output: "OSCAL assessment results, SSP and POA&M generated continuously; decision cards"}
+  improve:    {engine: "analyst agents (read-only)", tools: [], output: "proposals only: merge requests, deviation requests, risk register entries"}
+
+rejected_engines:
+  n8n: "Sustainable Use License, not open source"
+  Windmill: "open core with proprietary enterprise code"
+  Temporal: "strong but heavy for S/M; reconsider only for long-running cross-system processes"
+  Kestra: "Apache-2.0 core with an enterprise edition; good YAML flows, but a second engine beside Argo"
+  StackStorm: "Apache-2.0 event automation; overlaps with Argo Events"
+
+execution_path:
+  - "every run has a subject (workload, agent or person) from platform/identity.yaml"
+  - "every run asks the policy engine (AuthZEN request) and the autonomy matrix (governance/autonomy.yaml)"
+  - "human and gated levels need an approval bound to the exact run request (hash), from the right role, not the requester"
+  - "every action is gate-capable: a tier or context can always raise it to human or gated"
+  - "every run writes a record: trace id, subject, actor chain, decision, level, approval, result, previous record hash"
+  - "analyst agents never execute: their output is a proposal that enters the same path"
+
+observability:
+  traces: "OpenTelemetry trace id propagated from commit (git trailer) through CI, Flux, Argo and the evaluator"
+  records: "hash-chained run records per site, anchored upstream on reconnect (DDIL)"
+  pane: "Grafana: runs by stage, decisions, approvals waiting, failures; drill-down to the record and its trace"
+  ddil: "Argo and the evaluator run per site; central policy bundles are cached and enforced locally; records sync up"
+
+# ADR-0159: the agent surface, designed in from the start. Agents (an LLM or any other) reach the platform through MCP
+# tools that only read or propose; nothing an agent calls executes. A proposed run enters the same execution path as a
+# person's, with the agent as the subject and the person it acts for in the actor chain, so the autonomy matrix, the
+# approval rule and the hash-chained record apply unchanged (execution_path above; governance/autonomy.yaml
+# agent_limits and kill switch).
+agent_surface:
+  protocol: "Model Context Protocol, revision 2025-11-25 pinned (2026-07-28 reviewed before a move: stateless, tasks as an extension)"
+  authorization:
+    - "OAuth 2.1 through the ring's Keycloak; the MCP server is a protected resource (RFC 9728 metadata) and accepts only tokens issued for its own audience"
+    - "no token passthrough: the server calls the platform with its own workload identity, never with the agent's token"
+    - "Keycloak does not support RFC 8707 resource indicators (keycloak.org MCP page, 2026-10-17): the audience is set by a client scope with an audience mapper per MCP server, and checked by a test before the first server runs"
+    - "PKCE S256; scopes per tool; a side-effecting scope only by step-up"
+  tool_integrity: "tool names, descriptions and schemas are pinned by hash in git; a changed description is a finding (tool poisoning, rug pull)"
+  output_is_data: "tool output reaches the agent as data, never as instructions; the server never forwards content above the agent's label"
+  tools:
+    - {name: list_sops, effect: read, returns: "procedures, their triggers, modes and levels"}
+    - {name: explain_sop, effect: read, returns: "a procedure's steps with the level and who acts, for a tier and context (tools/sop.py plan)"}
+    - {name: read_run, effect: read, returns: "a run's records, its trace and its undo plan"}
+    - {name: simulate_sop, effect: read, returns: "the policy decision and autonomy level of each step, without executing (dry run)"}
+    - {name: query_signals, effect: read, returns: "pane signals and events the agent's person may read, by label"}
+    - {name: propose_sop_run, effect: propose, returns: "a proposal that enters review: a person or the approval flow starts it"}
+    - {name: propose_change, effect: propose, returns: "a merge request on the forge"}
+  enforcement_point: "agentgateway (catalog/radar.yaml trial) in front of every MCP server once there is more than one; until then the server itself"

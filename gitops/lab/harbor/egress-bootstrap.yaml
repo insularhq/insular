@@ -1,0 +1,7 @@
+# The Harbor's way out: a fixed bootstrap that takes its listener and cluster from files (Envoy's file-based dynamic
+# configuration). The files name the partners and are written when a partner is admitted (ConfigMap harbor-egress-dyn,
+# by the lab tooling); Envoy picks them up without a restart, and idles on the empty files of configmap-harbor-egress-dyn.yaml while there are none.
+node: {id: harbor-egress, cluster: harbor-egress}
+dynamic_resources:
+  lds_config: {resource_api_version: V3, path_config_source: {path: /dyn/lds.yaml, watched_directory: {path: /dyn}}}
+  cds_config: {resource_api_version: V3, path_config_source: {path: /dyn/cds.yaml, watched_directory: {path: /dyn}}}

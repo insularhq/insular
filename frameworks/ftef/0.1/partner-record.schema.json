@@ -1,0 +1,516 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ftef.vdhome.be/schema/0.1/partner-record.schema.json",
+  "title": "FTEF partner record",
+  "description": "What a relying party holds about one federation partner (FTEF 0.1, section 5).",
+  "type": "object",
+  "required": [
+    "ftef",
+    "partner",
+    "relyingParty",
+    "state",
+    "stateHistory",
+    "evidence"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "ftef": {
+      "const": "0.1"
+    },
+    "partner": {
+      "$ref": "#/$defs/party"
+    },
+    "relyingParty": {
+      "$ref": "#/$defs/party"
+    },
+    "state": {
+      "$ref": "#/$defs/state"
+    },
+    "stateHistory": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/stateChange"
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/evidence"
+      }
+    },
+    "acceptance": {
+      "$ref": "#/$defs/acceptance"
+    },
+    "shares": {
+      "description": "Dependencies the partner shares with the relying party (common mode, principle 7).",
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "anyOf": [
+          {
+            "enum": [
+              "policy-source",
+              "release-pipeline",
+              "operator",
+              "hosting-provider",
+              "identity-provider",
+              "network-carrier"
+            ]
+          },
+          {
+            "type": "string",
+            "format": "uri"
+          }
+        ]
+      }
+    },
+    "recourse": {
+      "$ref": "#/$defs/recourse"
+    },
+    "evaluation": {
+      "$ref": "#/$defs/evaluation"
+    }
+  },
+  "$defs": {
+    "party": {
+      "type": "object",
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uri",
+          "description": "For example an OpenID Federation entity identifier."
+        },
+        "name": {
+          "type": "string"
+        }
+      }
+    },
+    "band": {
+      "enum": [
+        "none",
+        "low",
+        "medium",
+        "high"
+      ]
+    },
+    "state": {
+      "enum": [
+        "member",
+        "watch",
+        "restricted",
+        "suspended",
+        "joining",
+        "withdrawn",
+        "exited"
+      ],
+      "description": "From most to least trusted (5.6)."
+    },
+    "stateChange": {
+      "type": "object",
+      "required": [
+        "state",
+        "since",
+        "trigger"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "state": {
+          "$ref": "#/$defs/state"
+        },
+        "since": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "trigger": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The event or decision that caused the change."
+        },
+        "decidedBy": {
+          "type": "string",
+          "minLength": 1,
+          "description": "REQUIRED for a move up the ladder (6.4)."
+        },
+        "record": {
+          "type": "string",
+          "format": "uri"
+        }
+      }
+    },
+    "evidenceClass": {
+      "anyOf": [
+        {
+          "enum": [
+            "self-declared",
+            "self-measured",
+            "observed",
+            "assessed-by-relying-party",
+            "independently-assessed",
+            "attested"
+          ]
+        },
+        {
+          "type": "string",
+          "format": "uri",
+          "description": "An extension class defined by a profile (5.3)."
+        }
+      ]
+    },
+    "axes": {
+      "type": "object",
+      "required": [
+        "source",
+        "timeBasis",
+        "binding",
+        "scope"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "source": {
+          "enum": [
+            "first-party",
+            "second-party",
+            "third-party",
+            "verifier"
+          ]
+        },
+        "assessor": {
+          "enum": [
+            "none",
+            "accredited",
+            "mutually-recognised"
+          ]
+        },
+        "timeBasis": {
+          "enum": [
+            "point-in-time",
+            "period",
+            "continuous",
+            "at-access"
+          ]
+        },
+        "binding": {
+          "enum": [
+            "unsigned",
+            "signed",
+            "signed-transparent",
+            "hardware-rooted"
+          ]
+        },
+        "scope": {
+          "enum": [
+            "full",
+            "partial",
+            "none"
+          ]
+        },
+        "liability": {
+          "enum": [
+            "none",
+            "contractual",
+            "legal"
+          ]
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "required": [
+        "id",
+        "class",
+        "axes",
+        "issuer",
+        "issuedAt",
+        "covers"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "class": {
+          "$ref": "#/$defs/evidenceClass"
+        },
+        "axes": {
+          "$ref": "#/$defs/axes"
+        },
+        "issuer": {
+          "$ref": "#/$defs/party"
+        },
+        "issuedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "coversFrom": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "coversUntil": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "reference": {
+          "type": "string",
+          "format": "uri",
+          "description": "Where the evidence itself can be retrieved."
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "receipt": {
+          "type": "string",
+          "format": "uri",
+          "description": "A transparency-log receipt, when the binding is signed-transparent."
+        },
+        "covers": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The systems, services or processes the evidence is about (5.2). The relying party derives scope from it."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "axes": {
+                "properties": {
+                  "timeBasis": {
+                    "const": "period"
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "coversFrom",
+              "coversUntil"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "axes": {
+                "properties": {
+                  "binding": {
+                    "const": "signed-transparent"
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "receipt"
+            ]
+          }
+        }
+      ]
+    },
+    "limit": {
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "enum": [
+            "data-ceiling",
+            "no-transit",
+            "no-automatic-actions",
+            "reduced-lease",
+            "release-on-attestation"
+          ]
+        },
+        "value": {
+          "type": [
+            "string",
+            "number"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "reduced-lease"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "value"
+            ],
+            "properties": {
+              "value": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "exclusiveMaximum": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "data-ceiling"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "value"
+            ],
+            "properties": {
+              "value": {
+                "type": "string",
+                "minLength": 1,
+                "description": "A label of the relying party's own classification scheme (6.5)."
+              }
+            }
+          }
+        }
+      ]
+    },
+    "acceptance": {
+      "type": "object",
+      "required": [
+        "decidedBy",
+        "decidedAt",
+        "until",
+        "band",
+        "reason",
+        "situationLevel",
+        "limits"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "decidedBy": {
+          "type": "string",
+          "minLength": 1
+        },
+        "decidedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "until": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "band": {
+          "enum": [
+            "low",
+            "medium"
+          ],
+          "description": "An acceptance MUST NOT lift a partner to the highest band (6.3)."
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "situationLevel": {
+          "type": "string",
+          "minLength": 1
+        },
+        "limits": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/limit"
+          }
+        },
+        "record": {
+          "type": "string",
+          "format": "uri"
+        },
+        "lapsedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Set by the relying party when the acceptance lapses (6.3); a lapsed acceptance never applies again."
+        },
+        "lapseReason": {
+          "enum": [
+            "until",
+            "situation-level",
+            "downgrade"
+          ]
+        }
+      },
+      "dependentRequired": {
+        "lapsedAt": [
+          "lapseReason"
+        ],
+        "lapseReason": [
+          "lapsedAt"
+        ]
+      }
+    },
+    "recourse": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "incidentContact": {
+          "type": "string",
+          "minLength": 1
+        },
+        "responseTime": {
+          "type": "string",
+          "format": "duration"
+        },
+        "postureChangeNotice": {
+          "type": "string",
+          "format": "duration"
+        },
+        "exit": {
+          "type": "string"
+        }
+      }
+    },
+    "evaluation": {
+      "type": "object",
+      "required": [
+        "at",
+        "situationLevel",
+        "band",
+        "evidencedBand",
+        "accepted"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "situationLevel": {
+          "type": "string"
+        },
+        "band": {
+          "$ref": "#/$defs/band"
+        },
+        "evidencedBand": {
+          "$ref": "#/$defs/band"
+        },
+        "accepted": {
+          "type": "boolean"
+        },
+        "limits": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/limit"
+          }
+        }
+      }
+    }
+  }
+}

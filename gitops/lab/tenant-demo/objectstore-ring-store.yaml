@@ -1,0 +1,17 @@
+# Where synapse-db archives WAL and base backups (ADR-0113): the ring's Garage, bucket pg-tenant-demo, with a key scoped to
+# that bucket alone. The Secret garage-s3 is made on the ring by the lab tooling, never committed. Garage
+# shares the ring's fate: the copy off the Isle is the off-site backup.
+apiVersion: barmancloud.cnpg.io/v1
+kind: ObjectStore
+metadata: {name: ring-store, namespace: vdh-tenant-demo}
+spec:
+  configuration:
+    destinationPath: s3://pg-tenant-demo/
+    endpointURL: http://garage.vdh-backup.svc.cluster.local:3900
+    s3Credentials:
+      accessKeyId: {name: garage-s3, key: ACCESS_KEY_ID}
+      secretAccessKey: {name: garage-s3, key: ACCESS_SECRET_KEY}
+      region: {name: garage-s3, key: REGION}
+    wal: {compression: gzip}
+    data: {compression: gzip}
+  retentionPolicy: "7d"

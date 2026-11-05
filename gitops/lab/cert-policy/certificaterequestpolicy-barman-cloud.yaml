@@ -1,0 +1,16 @@
+# The Barman Cloud plugin's chart makes its own self-signed issuer and two certificates for the plugin's gRPC between
+# CloudNativePG and the plugin: exactly those names, uses and the chart's 90 days, never a CA
+apiVersion: policy.cert-manager.io/v1alpha1
+kind: CertificateRequestPolicy
+metadata: {name: barman-cloud}
+spec:
+  allowed:
+    commonName: {value: "barman-cloud*", required: true}   # approver-policy takes one value with wildcards: barman-cloud, barman-cloud-client
+    dnsNames: {values: ["barman-cloud"]}
+    usages: ["client auth", "server auth"]
+    isCA: false
+  constraints:
+    maxDuration: 2160h
+  selector:
+    issuerRef: {name: barman-cloud-plugin-barman-cloud-selfsigned-issuer, kind: Issuer, group: cert-manager.io}
+    namespace: {matchNames: [cnpg-system]}

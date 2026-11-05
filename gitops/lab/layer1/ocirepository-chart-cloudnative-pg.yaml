@@ -1,0 +1,13 @@
+# ADR-0126: one OCIRepository per chart in the in-site mirror, verified by cosign over the
+# mirror's TLS. Charts reach the mirror from gitops/lab/chart-lock.yaml through the layer script (sha256 checked,
+# pushed, signed). A HelmRepository chart source was tried first: its cosign verifier ignores certSecretRef.
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: OCIRepository
+metadata: {name: chart-cloudnative-pg, namespace: flux-system}
+spec:
+  interval: 1h
+  url: oci://registry.vdh-mirror.svc.cluster.local:5000/charts/cloudnative-pg
+  ref: {tag: "0.29.1"}
+  layerSelector: {mediaType: "application/vnd.cncf.helm.chart.content.v1.tar+gzip", operation: copy}
+  certSecretRef: {name: mirror-ca}
+  verify: {provider: cosign, secretRef: {name: cosign-pub}}

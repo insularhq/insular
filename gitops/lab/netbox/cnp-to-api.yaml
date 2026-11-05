@@ -1,0 +1,9 @@
+# Only the database, the keys and bootstrap jobs and the reconciler talk to the Kubernetes API
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata: {name: to-api, namespace: vdh-netbox}
+spec:
+  endpointSelector:
+    matchExpressions: [{key: app, operator: In, values: [netbox-keys, netbox-bootstrap, ipam-drift]}]
+  egress:
+    - toEntities: [kube-apiserver]

@@ -1,0 +1,2 @@
+# Vendored files are pinned by sha256 of their bytes (frameworks/external-pins.yaml): never convert line endings.
+frameworks/** -text

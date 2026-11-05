@@ -1,0 +1,43 @@
+# Places: where things are, physical and logical (ADR-0174). One model for access (leases, groups, doors),
+# situation levels (ADR-0173 section 24), placement and situational risk (ADR-0147), so a level, a lease or a door
+# refers to the same place everywhere. The system knows about nested locations and sites: org sites (logical) can be several
+# on the same physical site, one org can span several physical sites, with buildings per site and antenna sites belonging to
+# another site. reviewed and accepted. Doors and containers are not places: they are checkpoints and containers in the access-path graph (ADR-0175).
+schema: places/0.1
+status: accepted
+
+physical:
+  kinds: [region, campus, site, building, floor, space]   # outermost first; levels may be skipped; a space's type says what it is (room, cage, aisle, hallway, mantrap, yard, common_area)
+  nest_same_kind: [region, campus, building, space]          # a region in a region, a wing in a building, a cage in a room
+  within: "geographic containment: one tree; a building is within a site, a room within a floor; an org's occupancy of a place covers everything inside it; anything below site level sits under a site or an outpost, so it always has a deputy and a site master"
+  zones: "security, fire and HVAC zones are overlays: typed sets of places that may span floors and buildings, never a level of the tree (Brick and IFC zones, RealEstateCore AccessControlZone)"
+  doors: "a door, gate, turnstile or mantrap is not a place: it is a checkpoint between two places, with the place on each side (ADR-0175; IndoorGML transitions), so a restriction applies on the secure side and exits stay free"
+  retired: "a retired place id is listed in retired_places and never reused; anything still referring to it fails closed"
+  changes: "a change to within or belongs_to is signed by the old owner, the new owner and the place's master; a change that lowers a place's effective level counts as a lowering and needs two people; only the site edits its own places and outposts, and bundles carry a hash of the place tree"
+  mobile: "vehicles, vessels and temporary event sites are places with valid_from and valid_until, placed by a time series of signed events; a mobile place's level is the higher of its own and its current host's; an Isle that moves records the move, never a silent overwrite"
+  outpost:
+    meaning: "a physical place of its own run from another site: an antenna site, a remote cabinet, a pumping station, a guard post down the road; it sits within its own region and belongs_to the site that runs it"
+    rules: "an outpost belongs to exactly one site and is never inside it; it shares that site's levels, deputy and administration, and every administrative check uses the same scope_chain; it keeps its own physical risk (ADR-0147); its own buildings and spaces are within it; NetBox carries it as a Site in the owning site's Site Group"
+  ids: "immutable ids (place:<site>/<path> by convention); names and addresses are attributes that may change"
+  isles: "an Isle is placed at one physical place (the records field hosts, in the engine's neutral term); its Islets and Skiffs at places too; an Isle that moves (ADR-0147) changes its place record, never its id"
+  master: "the site's NetBox in Insular (Region, Site Group, Site, nested Location; sources-of-truth.yaml physical-assets, site-mastered); KeyClerk standalone keeps place records in git next to the grants, or imports them from NetBox read-only"
+
+logical:
+  org_units: "the tenant, its divisions and its org sites, one tree by parent; an org site is a logical unit (an office, a team's base, a branch), not a building"
+  occupies: "an org unit occupies physical places at or below site level, many to many: one org site over several physical sites, several org units (of one tenant or of several) in one building; occupancy is the tenant's claim and counts for a shared place only once its steward confirms it"
+  master: "the tenant's HR or organisation source for org units; the tenant's facilities owner for occupancy"
+
+tenancy:
+  shared: "a place marked shared or with a steward is shared, and so is everything inside it, unless the steward assigns an inner place to one tenant (assigned_to); the master of a shared place is the steward's source, tenants import it read-only and ids carry the master's namespace"
+  steward: "the steward covers common areas: it announces the shared place's level (a tenant may raise, never lower, for its own people there), and doors of a place assigned to one tenant need that tenant's co-approval; a steward lowering needs two people, and each tenant sees the steward's acts in its own audit trail"
+  levels_stop: "a tenant's place-scoped level stops at a shared place inside it: only the steward or a feed above every tenant reaches a shared place"
+  visibility: "a tenant sees its own org units and the places they occupy; of a shared place it sees the id, the steward, the levels that reach it and a reason category (never the free text), never the other tenants or their occupancy; door events at shared doors are filtered by the cardholder's tenant"
+
+resolution:
+  place_scope: "what reaches a place: its own record, every place it is within, and for an outpost the site it belongs to with that site's containers (tools/places.py scope_chain)"
+  org_scope: "what reaches an org unit: itself and its parents"
+  subject_at_place: "a decision about a person of org unit O at place P uses both chains: place facts (levels, door schedules) from P's scope, org facts (an org's level, its rules) from O's"
+  physical_versus_org: "a place-scoped announcement applies to everyone at the place, all tenants; only the place's steward, or a tenant officer for places its tenant alone occupies, makes one; an org-scoped announcement applies to that org's people, leases and groups wherever they are, never to other orgs at the same place"
+  resource_place: "access is judged at the place of the resource (the door, the Isle, the room), not of the person's home site"
+
+prior_art: ["NetBox Region, Site Group (functional grouping, the carrier for outposts), Site, Location nested within one site, Tenant", "Brick Schema (hasPart and isPartOf for spaces, zones as groupings)", "IFC spatial structure and IfcZone across storeys", "RealEstateCore 4 (AccessControlZone, ownedBy, operatedBy)", "OGC IndoorGML (cells and transitions in layers)", "Microsoft Places (building, floor, section, room)", "Genetec partitions and LenelS2 OnGuard database segmentation as the tenant boundary in a PACS"]

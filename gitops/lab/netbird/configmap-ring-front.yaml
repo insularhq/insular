@@ -1,0 +1,72 @@
+# ADR-0122 amended: the ring front, the one published door of a ring for endpoints. Envoy on the nodes' host
+# network, IPv4 and IPv6 on 443, routing by TLS server name to the two NetBird servers (TLS passes through; the
+# servers keep their own certificates). It needs nothing from the cloud but an address: no load balancer, no
+# provider API. The node's host baseline admits endpoints by an expiring set (a lease), made inside the ring.
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: ring-front, namespace: vdh-front}
+data:
+  envoy.yaml: |
+    static_resources:
+      listeners:
+        - name: front
+          address: {socket_address: {address: "::", port_value: 443, ipv4_compat: true}}
+          listener_filters:
+            - name: envoy.filters.listener.tls_inspector
+              typed_config: {"@type": type.googleapis.com/envoy.extensions.filters.listener.tls_inspector.v3.TlsInspector}
+          filter_chains:
+            - filter_chain_match: {server_names: [nb.vdh.test]}
+              filters:
+                - name: envoy.filters.network.local_ratelimit
+                  typed_config: {"@type": type.googleapis.com/envoy.extensions.filters.network.local_ratelimit.v3.LocalRateLimit, stat_prefix: main, token_bucket: {max_tokens: 200, tokens_per_fill: 50, fill_interval: 1s}}
+                - name: envoy.filters.network.tcp_proxy
+                  typed_config:
+                    "@type": type.googleapis.com/envoy.extensions.filters.network.tcp_proxy.v3.TcpProxy
+                    stat_prefix: main
+                    cluster: main
+                    idle_timeout: 3600s
+                    access_log: [{name: envoy.access_loggers.stdout, typed_config: {"@type": type.googleapis.com/envoy.extensions.access_loggers.stream.v3.StdoutAccessLog, log_format: {json_format: {door: main, client: "%DOWNSTREAM_REMOTE_ADDRESS%", sni: "%REQUESTED_SERVER_NAME%", start: "%START_TIME%", bytes_in: "%BYTES_RECEIVED%", bytes_out: "%BYTES_SENT%", seconds: "%DURATION%", flags: "%RESPONSE_FLAGS%"}}}}]
+            # the Harbor (ADR-0151): its own name and this ring's identity provider, OpenCloud and homeserver (ADR-0114) as partners reach them;
+            # TLS passes through, the Harbor demands the partner's client certificate (operators use the overlay, not this door)
+            - filter_chain_match: {server_names: ["harbor.${ring_domain:=lab.vdh.test}", "id.${ring_domain:=lab.vdh.test}", "cloud.${ring_domain:=lab.vdh.test}", "matrix.${ring_domain:=lab.vdh.test}"]}
+              filters:
+                - name: envoy.filters.network.local_ratelimit
+                  typed_config: {"@type": type.googleapis.com/envoy.extensions.filters.network.local_ratelimit.v3.LocalRateLimit, stat_prefix: harbor, token_bucket: {max_tokens: 100, tokens_per_fill: 20, fill_interval: 1s}}
+                - name: envoy.filters.network.tcp_proxy
+                  typed_config:
+                    "@type": type.googleapis.com/envoy.extensions.filters.network.tcp_proxy.v3.TcpProxy
+                    stat_prefix: harbor
+                    cluster: harbor
+                    idle_timeout: 600s
+                    access_log: [{name: envoy.access_loggers.stdout, typed_config: {"@type": type.googleapis.com/envoy.extensions.access_loggers.stream.v3.StdoutAccessLog, log_format: {json_format: {door: harbor, client: "%DOWNSTREAM_REMOTE_ADDRESS%", sni: "%REQUESTED_SERVER_NAME%", start: "%START_TIME%", bytes_in: "%BYTES_RECEIVED%", bytes_out: "%BYTES_SENT%", seconds: "%DURATION%", flags: "%RESPONSE_FLAGS%"}}}}]
+            - filter_chain_match: {server_names: [nbl.vdh.test]}
+              filters:
+                - name: envoy.filters.network.local_ratelimit
+                  typed_config: {"@type": type.googleapis.com/envoy.extensions.filters.network.local_ratelimit.v3.LocalRateLimit, stat_prefix: login, token_bucket: {max_tokens: 200, tokens_per_fill: 50, fill_interval: 1s}}
+                - name: envoy.filters.network.tcp_proxy
+                  typed_config:
+                    "@type": type.googleapis.com/envoy.extensions.filters.network.tcp_proxy.v3.TcpProxy
+                    stat_prefix: login
+                    cluster: login
+                    idle_timeout: 3600s
+                    access_log: [{name: envoy.access_loggers.stdout, typed_config: {"@type": type.googleapis.com/envoy.extensions.access_loggers.stream.v3.StdoutAccessLog, log_format: {json_format: {door: login, client: "%DOWNSTREAM_REMOTE_ADDRESS%", sni: "%REQUESTED_SERVER_NAME%", start: "%START_TIME%", bytes_in: "%BYTES_RECEIVED%", bytes_out: "%BYTES_SENT%", seconds: "%DURATION%", flags: "%RESPONSE_FLAGS%"}}}}]
+      clusters:
+        - name: harbor
+          type: STRICT_DNS
+          dns_lookup_family: V6_ONLY
+          connect_timeout: 5s
+          load_assignment: {cluster_name: harbor, endpoints: [{lb_endpoints: [{endpoint: {address: {socket_address: {address: harbor-edge.envoy-gateway-system.svc.cluster.local, port_value: 443}}}}]}]}
+        - name: main
+          type: STRICT_DNS
+          dns_lookup_family: V6_ONLY
+          connect_timeout: 5s
+          load_assignment: {cluster_name: main, endpoints: [{lb_endpoints: [{endpoint: {address: {socket_address: {address: netbird.vdh-nbmain.svc.cluster.local, port_value: 443}}}}]}]}
+        - name: login
+          type: STRICT_DNS
+          dns_lookup_family: V6_ONLY
+          connect_timeout: 5s
+          load_assignment: {cluster_name: login, endpoints: [{lb_endpoints: [{endpoint: {address: {socket_address: {address: netbird.vdh-nblogin.svc.cluster.local, port_value: 443}}}}]}]}
+    overload_manager:
+      resource_monitors:
+        - name: envoy.resource_monitors.global_downstream_max_connections
+          typed_config: {"@type": type.googleapis.com/envoy.extensions.resource_monitors.downstream_connections.v3.DownstreamConnectionsConfig, max_active_downstream_connections: 4096}

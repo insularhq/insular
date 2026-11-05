@@ -1,0 +1,57 @@
+# OpenBao's Raft snapshot every six hours into the ring's Garage (bucket openbao-snapshots), from where the offsite job
+# carries it off the node with the databases. The snapshot is encrypted by OpenBao's own
+# barrier: it opens only with the unseal shares (the custodians, ADR-0134). It also keeps key material a crypto-shred
+# has since destroyed: its retention stays short and a restore replays the shred ledger.
+apiVersion: batch/v1
+kind: CronJob
+metadata: {name: openbao-snapshot, namespace: openbao, annotations: {vdh.component: "OpenBao", vdh.app-version: "v2.7.1"}}
+spec:
+  schedule: "0 */6 * * *"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 3600
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 900
+      template:
+        metadata: {labels: {app: openbao-snapshot}}
+        spec:
+          restartPolicy: Never
+          serviceAccountName: openbao-snapshot
+          securityContext: {runAsNonRoot: true, runAsUser: 65534, runAsGroup: 65534, fsGroup: 65534, seccompProfile: {type: RuntimeDefault}}
+          initContainers:
+            - name: snapshot
+              image: quay.io/openbao/openbao:2.7.1@sha256:6d2b93856e3fcf7b18ad855a0b51eaba474dc8b79cf554379ea32034797d2acf
+              command: [sh, -c]
+              env: [{name: BAO_ADDR, value: "http://openbao-active.openbao.svc:8200"}, {name: HOME, value: /work}]
+              args:
+                - |
+                  set -eu
+                  jwt=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+                  BAO_TOKEN=$(bao write -field=token auth/kubernetes/login role=snapshot jwt="$jwt")
+                  export BAO_TOKEN
+                  bao operator raft snapshot save "/work/raft-$(date -u +%Y%m%dT%H%M%SZ).snap"
+                  bao token revoke -self >/dev/null 2>&1 || true
+                  ls -l /work/*.snap
+              resources: {requests: {cpu: 20m, memory: 32Mi}, limits: {memory: 128Mi}}
+              securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+              volumeMounts: [{name: work, mountPath: /work}]
+          containers:
+            - name: into-garage
+              image: docker.io/rclone/rclone:1.75.1@sha256:45401ad7410db1d67ffdb58e19059ad20b0d8e0285a60e38bbec55cc1019c7a5
+              command: [sh, -c]
+              args:
+                - |
+                  set -eu
+                  rclone --config /target/rclone.conf --cache-dir /work/.rclone copy /work garage:openbao-snapshots --include "*.snap"
+                  # fourteen days in Garage (short, because a snapshot outlives a shred); the off-site copies follow restic's retention
+                  rclone --config /target/rclone.conf delete garage:openbao-snapshots --min-age 14d --include "*.snap" || true
+                  echo "snapshot in Garage"
+              resources: {requests: {cpu: 20m, memory: 32Mi}, limits: {memory: 128Mi}}
+              securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+              volumeMounts: [{name: work, mountPath: /work}, {name: target, mountPath: /target, readOnly: true}]
+          volumes:
+            - {name: work, emptyDir: {sizeLimit: 1Gi}}
+            - {name: target, secret: {secretName: openbao-snapshot-target, defaultMode: 0440}}

@@ -1,0 +1,92 @@
+# ADR-0137: OpenCloud as the first intra-tenant workload, the demo tenant on the S Isle (Internal only,
+# ADR-0134). Keycloak is the identity provider (OpenCloud's own idp is not run): accounts are autoprovisioned from
+# the token into OpenCloud's built-in user store (idm), roles come from the token's "roles" claim (realm roles
+# opencloudAdmin, opencloudSpaceAdmin, opencloudUser, opencloudGuest; no role, no sign-in). No end-to-end encryption:
+# the operator can read content, stated in ADR-0137. One replica (embedded NATS, local metadata), Recreate.
+# Trust for Keycloak's TLS: the lab CA's public certificate, made inside the ring (ConfigMap lab-ca, made by
+# the lab tooling), bundled with the system roots by the init container.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: opencloud
+  namespace: vdh-tenant-demo
+  labels: {app: opencloud}
+  annotations: {vdh.component: "OpenCloud", vdh.app-version: "7.2.4"}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector: {matchLabels: {app: opencloud}}
+  template:
+    metadata: {labels: {app: opencloud}}
+    spec:
+      automountServiceAccountToken: false
+      securityContext: {runAsNonRoot: true, runAsUser: 1000, runAsGroup: 1000, fsGroup: 1000, seccompProfile: {type: RuntimeDefault}, seLinuxOptions: {level: "s0:c30,c31"}}
+      initContainers:
+        - name: init
+          image: docker.io/opencloudeu/opencloud:7.2.4@sha256:6d992ccc5f1cbc7b2a9b272ba25f879b1b159c2d7ed7f5527e09059f16295697
+          # config with random service secrets, once; then the trust bundle: system roots plus the lab CA
+          command: ["/bin/sh", "-c", "test -s /etc/opencloud/opencloud.yaml || opencloud init --insecure=false --admin-password \"$(head -c 24 /dev/urandom | base64)\" >/dev/null; cat /etc/ssl/certs/ca-certificates.crt /lab-ca/ca.crt > /trust/bundle.pem"]
+          securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+          volumeMounts:
+            - {name: config, mountPath: /etc/opencloud}
+            - {name: lab-ca, mountPath: /lab-ca, readOnly: true}
+            - {name: trust, mountPath: /trust}
+      containers:
+        - name: opencloud
+          image: docker.io/opencloudeu/opencloud:7.2.4@sha256:6d992ccc5f1cbc7b2a9b272ba25f879b1b159c2d7ed7f5527e09059f16295697
+          command: ["opencloud", "server"]
+          env:
+            - {name: OC_URL, value: "https://cloud.${ring_domain:=lab.vdh.test}"}
+            - {name: OC_INSECURE, value: "false"}
+            - {name: OC_OIDC_ISSUER, value: "https://id.${ring_domain:=lab.vdh.test}/realms/vdh"}
+            - {name: OC_EXCLUDE_RUN_SERVICES, value: "idp"}
+            - {name: OC_LOG_LEVEL, value: "info"}
+            - {name: OC_LOG_PRETTY, value: "false"}
+            - {name: OC_LDAP_SERVER_WRITE_ENABLED, value: "true"}
+            - {name: OC_ADMIN_USER_ID, value: ""}
+            - {name: PROXY_TLS, value: "false"}
+            # OpenCloud's health check replaces a wildcard address with an "outbound IP" it looks for among IPv4
+            # addresses only (pkg/handlers/checker.go getOutBoundIP), and the proxy checks its own listen address, so on
+            # an IPv6-only pod a wildcard never reports ready. The helper treats any address containing "::" as a
+            # wildcard, which a compressed IPv6 pod address always does, so the proxy binds the pod's name: Kubernetes
+            # resolves it to the pod's own address in /etc/hosts. Internal services bind loopback.
+            - {name: POD_NAME, valueFrom: {fieldRef: {fieldPath: metadata.name}}}
+            - {name: PROXY_HTTP_ADDR, value: "$(POD_NAME):9200"}
+            - {name: WEB_HTTP_ADDR, value: "127.0.0.1:9100"}
+            - {name: PROXY_DEBUG_ADDR, value: "[::]:9205"}
+            - {name: PROXY_ENABLE_BASIC_AUTH, value: "false"}
+            - {name: PROXY_OIDC_REWRITE_WELLKNOWN, value: "true"}
+            - {name: PROXY_OIDC_ACCESS_TOKEN_VERIFY_METHOD, value: "jwt"}
+            - {name: PROXY_AUTOPROVISION_ACCOUNTS, value: "true"}
+            - {name: PROXY_USER_OIDC_CLAIM, value: "sub"}
+            - {name: PROXY_AUTOPROVISION_CLAIM_USERNAME, value: "sub"}
+            - {name: PROXY_USER_CS3_CLAIM, value: "username"}
+            - {name: GRAPH_USERNAME_MATCH, value: "none"}
+            # Federation design: Open Cloud Mesh, so a partner ring's user keeps one home account that shows what this ring shares;
+            # its trust list (ocmproviders.json in the config directory) is federation data, written at admission, and
+            # every call to a partner leaves through this ring's Harbor (gitops/lab/harbor, harbor-egress)
+            - {name: OC_ENABLE_OCM, value: "true"}
+            - {name: PROXY_ROLE_ASSIGNMENT_DRIVER, value: "oidc"}
+            - {name: PROXY_ROLE_ASSIGNMENT_OIDC_CLAIM, value: "roles"}
+            - {name: WEB_OIDC_CLIENT_ID, value: "opencloud-web"}
+            - {name: WEBFINGER_WEB_OIDC_CLIENT_ID, value: "opencloud-web"}
+            - {name: FRONTEND_CHECK_FOR_UPDATES, value: "false"}
+            - {name: PROXY_CSP_CONFIG_FILE_OVERRIDE_LOCATION, value: "/etc/opencloud-csp/csp.yaml"}
+            - {name: SSL_CERT_FILE, value: "/trust/bundle.pem"}
+          ports: [{name: http, containerPort: 9200}, {name: debug, containerPort: 9205}]
+          startupProbe: {httpGet: {path: /healthz, port: 9205}, periodSeconds: 5, failureThreshold: 60}
+          readinessProbe: {httpGet: {path: /readyz, port: 9205}, periodSeconds: 10}
+          livenessProbe: {httpGet: {path: /healthz, port: 9205}, periodSeconds: 20}
+          resources: {requests: {cpu: 500m, memory: 1Gi}, limits: {memory: 2Gi}}
+          securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+          volumeMounts:
+            - {name: config, mountPath: /etc/opencloud}
+            - {name: data, mountPath: /var/lib/opencloud}
+            - {name: trust, mountPath: /trust, readOnly: true}
+            - {name: csp, mountPath: /etc/opencloud-csp, readOnly: true}
+      volumes:
+        - {name: config, persistentVolumeClaim: {claimName: opencloud-config}}
+        - {name: data, persistentVolumeClaim: {claimName: opencloud-data}}
+        - {name: lab-ca, configMap: {name: lab-ca}}
+        - {name: trust, emptyDir: {}}
+        - {name: csp, configMap: {name: opencloud-csp}}

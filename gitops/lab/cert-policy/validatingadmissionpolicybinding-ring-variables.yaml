@@ -1,0 +1,6 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata: {name: vdh-ring-variables-substituted}
+spec:
+  policyName: vdh-ring-variables-substituted
+  validationActions: [Deny]

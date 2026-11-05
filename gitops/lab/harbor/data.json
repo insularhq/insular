@@ -1,0 +1,48 @@
+{
+ "vdh": {
+  "harbor": {
+   "_source": "Insular ADR-0151 (accepted 2026-10-16): classes open per FTEF ladder state; telephony and management stay open while a partner is restricted or suspended (crisis coordination, and the evidence that re-evaluates it), data only for member and watch at band medium or higher. This ring's identity provider and OpenCloud are data-plane hosts.",
+   "classes": {
+    "data-plane": {
+     "states": [
+      "member",
+      "watch"
+     ],
+     "min_band": "medium"
+    },
+    "telephony": {
+     "states": [
+      "member",
+      "watch",
+      "restricted",
+      "suspended"
+     ],
+     "min_band": "none"
+    },
+    "management": {
+     "states": [
+      "member",
+      "watch",
+      "restricted",
+      "suspended"
+     ],
+     "min_band": "none"
+    }
+   },
+   "partners": {},
+   "ring": {
+    "data_hosts": [
+     "id.${ring_domain:=lab.vdh.test}",
+     "cloud.${ring_domain:=lab.vdh.test}"
+    ]
+   },
+   "labels": {
+    "Internal": "federation",
+    "Sensitive": "tenant",
+    "Restricted": "site"
+   },
+   "_labels_source": "policies/packs/data-centric.yaml data-max-ring (DATA-RING-INTERNAL, -SENSITIVE, -RESTRICTED); a label not listed is unidentified: site (DATA-RING-UNIDENTIFIED)",
+   "releases": {}
+  }
+ }
+}

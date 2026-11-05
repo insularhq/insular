@@ -1,0 +1,2310 @@
+# Provenance and supportability of every component, alternate and toolchain item: who stewards it, under which
+# jurisdiction it is ultimately controlled, who can support it (and from where), and whether it is alive.
+# 'signals' are measured from the forges by tools/provenance.py refresh (GitHub API, Gitea/GitLab APIs, release pages),
+# last on 'checked'. 'steward', 'home', 'region' and 'support' are maintainer knowledge (point-in-time knowledge): verify before
+# a client commits to a support contract. Region: eu (steward controlled from an EU member state), europe (UK, CH, NO),
+# neutral (vendor-neutral foundation or community governance: protects against relicensing, not a support contract),
+# non-eu (a company outside Europe controls it), own (VDHome). Policy below is enforced by tools/provenance.py.
+checked: '2026-10-06'
+policy:
+  archived: an archived project is never used
+  stale_days: 365
+  stale: 'no release and no commit within stale_days: a runtime component is replaced; an alternate is no credible exit and is flagged'
+  bus_factor_min_authors: 5
+  bus_factor: 'fewer distinct authors than bus_factor_min_authors in the last 100 commits: accepted only with a compensating layer or self-support plan (bus_factor_accepted)'
+  eu_path: 'every runtime component has an EU or European path: an EU/European steward, named EU/European support, VDHome self-support, or an alternate in the same capability that has one; what has none
+    is a sovereignty gap, listed and accepted below with its mitigation, and new gaps fail the check'
+  relicence_risk: a non-EU single company controlling a project is shown as concentration risk in the RTOP
+eu_countries:
+- AT
+- BE
+- BG
+- CY
+- CZ
+- DE
+- DK
+- EE
+- ES
+- FI
+- FR
+- GR
+- HR
+- HU
+- IE
+- IT
+- LT
+- LU
+- LV
+- MT
+- NL
+- PL
+- PT
+- RO
+- SE
+- SI
+- SK
+europe_countries:
+- UK
+- CH
+- 'NO'
+- IS
+- LI
+self_supported:
+  Garage: small Rust codebase; S3 API; buckets copy out over S3
+  Forgejo: git and OCI are standards; Codeberg runs it at scale
+  Gammu: SMS fallback channel only; ntfy and voice alerting are the other channels
+  restic: documented repository format; restores do not need the server
+  rest-server: small Go server; restic can also write to S3
+  evaluator: own code
+  decision-inbox: own code
+  ipam-drift: own code (ADR-0171), standard-library Python; the rules are its data
+  ai-egress-gate: own code; the AI egress gate contract is the exit
+  enrolment-service: own code
+bus_factor_accepted:
+  cert-manager approver-policy: "three authors in the last hundred commits, inside the cert-manager project; if it stalls, the policies move to an admission check with the same rules (ADR-0172)"
+  ExifTool: "single maintainer since 2003 with frequent releases; output re-checked by Tika metadata extraction and Dangerzone flattening; mat2 alternate"
+  Tuwunel: "small team; since ADR-0114 Synapse (Element, UK) is the homeserver and Tuwunel only a telephony stand-in for the Harbor"
+  libosdp: "one maintainer (98 of the last 100 commits); used only at sites without a PACS; the protocol is a standard, so OSDP.Net (Apache-2.0) or our own fork takes over, and the controller logic is our own (tools/piam)"
+  Archivematica: "optional preservation module; BagIt packages stay readable without it"
+sovereignty_gaps_accepted:   # runtime components without an EU or European path, with their containment
+  vendor BMC firmware: {tier: non-eu-company, mitigation: "Redfish is a standard; firmware and BIOS settings are declared in git; the BMC network is isolated and the BMC is a protected lever (ADR-0083); OpenBMC is the open alternate where hardware allows"}
+  Metal3: {tier: neutral-foundation, mitigation: "CNCF; host images are signed OCI artefacts and Redfish is a standard, so Tinkerbell or another provisioner replaces it"}
+  NetBox: {tier: non-eu-company, mitigation: "site DCIM/IPAM data is exported to the git estate register on a schedule and mapped in inventory/schema.yaml, so any DCIM (Nautobot, or an EU tool) can take over; Apache-2.0 protects against relicensing of the current code (ADR-0077)"}
+  Valkey: {tier: neutral-foundation, mitigation: "Linux Foundation; the Redis protocol is the interface, and NetBox's tasks and cache are rebuilt, so any RESP server replaces it"}
+  Envoy: {tier: neutral-foundation, mitigation: "CNCF (Envoy project); the same proxy as under Envoy Gateway; kgateway and Istio also run Envoy, and the gateway routes regenerate from CALM"}
+  Envoy Gateway: {tier: neutral-foundation, mitigation: "CNCF (Envoy project); the alternate kgateway is also CNCF; Traefik (FR origin) was the EU exit but is on hold for its advisory record (ADR-0073); routes regenerate from CALM for any conformant implementation"}
+  cert-manager: {tier: neutral-foundation, mitigation: "CNCF; ACME is a standard, OpenBao's ACME endpoint is the in-house issuer"}
+  Apache Camel: {tier: neutral-foundation, mitigation: "Apache; routes are code"}
+  Apache Guacamole: {tier: neutral-foundation, mitigation: "Apache; desktops speak RDP, VNC, SSH"}
+  Apache Tika: {tier: neutral-foundation, mitigation: "Apache; one inspector among several in the release gateway"}
+  Argo Events: {tier: neutral-foundation, mitigation: "optional; CloudEvents triggers are engine-neutral"}
+  Argo Workflows: {tier: neutral-foundation, mitigation: "optional engine; runbooks are regenerated for Tekton"}
+  Cilium: {tier: neutral-foundation, mitigation: "CNCF graduated; standard NetworkPolicy fallback (Calico) keeps the exit; EU partner to be named"}
+  Barman Cloud plugin: {tier: neutral-foundation, mitigation: "CNCF (CloudNativePG); backups are plain barman-cloud objects in S3, restorable with barman-cloud alone or the in-tree recovery"}
+  CloudNativePG: {tier: neutral-foundation, mitigation: "PostgreSQL itself has EU support (Dalibo FR, CYBERTEC AT, credativ DE); the operator is thin"}
+  Coraza: {tier: neutral-foundation, mitigation: "OWASP; the Core Rule Set is portable to ModSecurity-compatible engines (CRS support: netnea, CH)"}
+  Dangerzone: {tier: neutral-foundation, mitigation: "non-profit; conversion to flat PDF can be rebuilt from its open container"}
+  Debezium: {tier: neutral-foundation, mitigation: "Commonhaus; change events are CloudEvents"}
+  Falco: {tier: neutral-foundation, mitigation: "Sigma detections and OCSF events; Suricata and Wazuh overlap"}
+  Kata Containers: {tier: neutral-foundation, mitigation: "RuntimeClass switch to gVisor or plain runc with stricter isolation per label"}
+  Keylime: {tier: neutral-foundation, mitigation: "TPM quotes are standard; attestation is one signal among several"}
+  llama.cpp: {tier: neutral-foundation, mitigation: "community; OpenAI-compatible API; vLLM and Ollama are exits"}
+  MLflow: {tier: neutral-foundation, mitigation: "models are OCI artefacts with ML-BOMs"}
+  NATS: {tier: neutral-foundation, mitigation: "CNCF after the 2025 dispute; CloudEvents bridge to Kafka is the exit; watch the steward"}
+  OpenBao: {tier: neutral-foundation, mitigation: "Linux Foundation fork; Vault-compatible API; secrets exportable; the KEK is tenant-held (PKI-01)"}
+  OpenTelemetry Collector: {tier: neutral-foundation, mitigation: "OTLP is the interface; any receiver replaces it"}
+  SPIRE: {tier: neutral-foundation, mitigation: "SPIFFE IDs are the interface"}
+  Trino: {tier: neutral-foundation, mitigation: "Iceberg tables are engine-neutral"}
+  vLLM: {tier: neutral-foundation, mitigation: "OpenAI-compatible API; llama.cpp covers S and M"}
+  WireGuard: {tier: neutral-foundation, mitigation: "Linux kernel mainline; supported through the host distribution"}
+  Apicurio Registry: {tier: non-eu-company, mitigation: "standard registry API; schemas live in git"}
+  Warpgate: {tier: non-eu-company, mitigation: "maintainer-led, home not yet established; standard protocols to every target and the WireGuard plus OpenBao SSH CA path stay as the fallback"}
+  Archivematica: {tier: non-eu-company, mitigation: "optional module; packages are BagIt"}
+  Asterisk: {tier: non-eu-company, mitigation: "optional voice alerting; SIP is the standard"}
+  ClamAV: {tier: non-eu-company, mitigation: "one inspector among several; signatures are open"}
+  ExifTool: {tier: non-eu-company, mitigation: "one layer of several: Dangerzone flattens, Tika re-checks metadata; mat2 (FR) is the alternate"}
+  Gatus: {tier: non-eu-company, mitigation: "checks are generated from the model; any HTTP checker replaces it"}
+  gitleaks: {tier: non-eu-company, mitigation: "one inspector among several; rules are regexes, portable"}
+  Grafana: {tier: non-eu-company, mitigation: "dashboards are generated from the model; Perses (CNCF) is the exit; AGPL keeps the code open"}
+  Great Expectations: {tier: non-eu-company, mitigation: "steward change (Fivetran): checks are code; Soda Core or SQL tests are exits"}
+  gVisor: {tier: non-eu-company, mitigation: "RuntimeClass switch to Kata"}
+  NeMo Guardrails: {tier: non-eu-company, mitigation: "optional guard layer behind the inference gateway; replaceable by policy in the gateway"}
+  ntfy: {tier: non-eu-company, mitigation: "one channel among several (SMS, voice, Matrix); single maintainer"}
+  OpenMetadata: {tier: non-eu-company, mitigation: "contracts and lineage live in git and as OpenLineage events; DataHub is the exit"}
+  OpenTDF: {tier: non-eu-company, mitigation: "ZTDF is a published format; the key access service decision converges on the focal point"}
+  step-ca: {tier: non-eu-company, mitigation: "deviation-only (RSA legacy CA)"}
+  VictoriaLogs: {tier: non-eu-company, mitigation: "OTLP logs in; export to another store"}
+  VictoriaMetrics: {tier: non-eu-company, mitigation: "Prometheus remote write and PromQL: Prometheus is a drop-in exit"}
+  Wazuh: {tier: non-eu-company, mitigation: "Sigma and OCSF; Falco and Suricata cover detection if Wazuh changes course"}
+  YARA-X: {tier: non-eu-company, mitigation: "rules are plain YARA syntax, portable across engines"}
+components:
+  cert-manager approver-policy:
+    role: toolchain   # a controller beside cert-manager deciding approval (ADR-0172); the capability is cert-manager's
+    steward: "CNCF (cert-manager project)"
+    kind: foundation
+    home: US
+    region: neutral
+    support: []
+    source: github.com/cert-manager/approver-policy
+    signals: {last_release: 'v0.28.0', release_date: '2026-09-16', last_activity: '2026-10-13', authors_last_100_commits: 3, days_for_last_100_commits: 51, archived: false}
+    note: "ADR-0172: certificate request policies per issuer; Apache-2.0"
+  Valkey:
+    role: runtime
+    steward: "Linux Foundation"
+    kind: foundation
+    home: US
+    region: neutral
+    support: []
+    source: github.com/valkey-io/valkey
+    signals: {last_release: '9.1.2', release_date: '2026-09-01', last_activity: '2026-10-20', authors_last_100_commits: 52, days_for_last_100_commits: 35, archived: false}
+    note: "NetBox's task queue and cache (ADR-0171); BSD-3-Clause; versions are taken after the two-week rule"
+  ipam-drift:
+    role: runtime
+    steward: VDHome
+    kind: own
+    home: BE
+    region: own
+    support:
+    - VDHome (BE)
+  KeyClerk:
+    role: runtime
+    steward: VDHome
+    kind: own
+    home: BE
+    region: own
+    support:
+    - VDHome (BE)
+    note: "EUPL-1.2 (ADR-0183); its own repository, pinned in frameworks/external-pins.yaml; the engine never imports Insular"
+  ReliKey agent:
+    role: runtime
+    steward: VDHome
+    kind: own
+    home: BE
+    region: own
+    support:
+    - VDHome (BE)
+    note: "EUPL-1.2; a static Go binary from its own repository (relikey, agent/build.py reproducible); drives Warpgate's admin API on the same host"
+  OWASP Dependency-Track:
+    role: toolchain
+    steward: "OWASP Foundation"
+    kind: foundation
+    home: US
+    region: neutral
+    support: []
+    source: github.com/DependencyTrack/dependency-track
+    signals: {last_release: '5.2.0', release_date: '2026-10-08', last_activity: '2026-10-09', authors_last_100_commits: 5, days_for_last_100_commits: 12, archived: false}
+    note: "keeps every SBOM and matches advisories against it continuously (ADR-0086)"
+  gocsaf:
+    role: toolchain
+    steward: "gocsaf project (developed for the German BSI by Intevation)"
+    kind: community
+    home: DE
+    region: eu
+    support: []
+    source: github.com/gocsaf/csaf
+    signals: {last_release: 'v3.6.0', release_date: '2026-07-29', last_activity: '2026-10-09', authors_last_100_commits: 8, days_for_last_100_commits: 103, archived: false}
+    note: "CSAF provider, aggregator and downloader for advisories and VEX (ADR-0086)"
+  vexctl:
+    role: toolchain
+    steward: "OpenVEX project (OpenSSF)"
+    kind: foundation
+    home: US
+    region: neutral
+    support: []
+    source: github.com/openvex/vexctl
+    signals: {last_release: 'v0.4.4', release_date: '2026-06-16', last_activity: '2026-10-09', authors_last_100_commits: 8, days_for_last_100_commits: 116, archived: false}
+    note: "creates and attests OpenVEX statements (ADR-0086)"
+  vendor BMC firmware:
+    role: runtime
+    steward: "the server vendor (per estate register)"
+    kind: company
+    home: to-establish
+    region: to-establish
+    support: ["the server vendor's hardware support contract"]
+    source: ""
+    signals: {last_release: null, release_date: null, last_activity: "2026-10-10", authors_last_100_commits: null, days_for_last_100_commits: null, archived: false}
+    note: "closed firmware per hardware model; measured per model by the Redfish validators, not by a forge (ADR-0083)"
+  OpenBMC:
+    role: alternate
+    steward: "OpenBMC project (Linux Foundation)"
+    kind: foundation
+    home: US
+    region: neutral
+    support: []
+    source: github.com/openbmc/openbmc
+    signals: {last_release: '2.18.0', release_date: '2025-05-30', last_activity: '2026-10-09', authors_last_100_commits: 15, days_for_last_100_commits: 11, archived: false}
+  Metal3:
+    role: runtime
+    steward: "CNCF (Metal3 project)"
+    kind: foundation
+    home: US
+    region: neutral
+    support: []
+    source: github.com/metal3-io/baremetal-operator
+    signals: {last_release: 'v0.14.1', release_date: '2026-09-22', last_activity: '2026-10-08', authors_last_100_commits: 17, days_for_last_100_commits: 31, archived: false}
+  Tinkerbell:
+    note: "the tinkerbell/tink repository was archived; the project continues as the tinkerbell/tinkerbell monorepo (measured 2026-10-10)"
+    role: alternate
+    steward: "CNCF (Tinkerbell project)"
+    kind: foundation
+    home: US
+    region: neutral
+    support: []
+    source: github.com/tinkerbell/tinkerbell
+    signals: {last_release: 'v0.25.0', release_date: '2026-07-31', last_activity: '2026-10-10', authors_last_100_commits: 7, days_for_last_100_commits: 22, archived: false}
+  NetBox:
+    role: runtime
+    steward: NetBox Labs
+    kind: company
+    home: US
+    region: non-eu
+    support: [NetBox Labs (US)]
+    source: github.com/netbox-community/netbox
+    signals: {last_release: 'v4.7.2', release_date: '2026-09-29', last_activity: '2026-10-10', authors_last_100_commits: 8, days_for_last_100_commits: 32, archived: false}
+    note: "site DCIM/IPAM (ADR-0077); signals to be refreshed by tools/provenance.py"
+  Nautobot:
+    role: alternate
+    steward: Network to Code
+    kind: company
+    home: US
+    region: non-eu
+    support: [Network to Code (US)]
+    source: github.com/nautobot/nautobot
+    signals: {last_release: 'v3.2.6', release_date: '2026-09-28', last_activity: '2026-10-10', authors_last_100_commits: 26, days_for_last_100_commits: 60, archived: false}
+    note: "DCIM/IPAM alternate (ADR-0077)"
+  Aerleon:
+    role: toolchain
+    steward: Aerleon community
+    kind: community
+    home: international
+    region: neutral
+    support: []
+    source: github.com/aerleon/aerleon
+    signals:
+      last_release: 1.18.0
+      release_date: '2026-09-30'
+      last_activity: '2026-10-04'
+      authors_last_100_commits: 18
+      days_for_last_100_commits: 1106
+      archived: false
+    note: fork of Google capirca
+  Ansible:
+    role: toolchain
+    steward: Red Hat
+    kind: company
+    home: US
+    region: non-eu
+    support:
+    - Red Hat (US)
+    source: github.com/ansible/ansible
+    signals:
+      last_release: v2.21.5
+      release_date: '2026-10-05'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 31
+      days_for_last_100_commits: 117
+      archived: false
+  Apache APISIX:
+    role: alternate
+    steward: Apache Software Foundation (API7)
+    kind: foundation
+    home: US
+    region: neutral
+    support:
+    - API7 (CN)
+    source: github.com/apache/apisix
+    signals:
+      last_release: 3.19.0
+      release_date: '2026-09-28'
+      last_activity: '2026-10-04'
+      authors_last_100_commits: 10
+      days_for_last_100_commits: 60
+      archived: false
+    note: 'commercial steward of Chinese origin: check per client'
+  Apache Camel:
+    role: runtime
+    steward: Apache Software Foundation (Red Hat)
+    kind: foundation
+    home: US
+    region: neutral
+    support:
+    - Red Hat (US)
+    source: github.com/apache/camel
+    signals:
+      last_release: camel-4.22.1
+      release_date: null
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 16
+      days_for_last_100_commits: 1
+      archived: false
+  Apache Guacamole:
+    role: runtime
+    steward: Apache Software Foundation
+    kind: foundation
+    home: US
+    region: neutral
+    support: []
+    source: github.com/apache/guacamole-server
+    signals:
+      last_release: 1.6.0
+      release_date: null
+      last_activity: '2026-09-14'
+      authors_last_100_commits: 12
+      days_for_last_100_commits: 166
+      archived: false
+  Apache Kafka:
+    role: alternate
+    steward: Apache Software Foundation
+    kind: foundation
+    home: US
+    region: neutral
+    support:
+    - Confluent (US)
+    source: github.com/apache/kafka
+    signals:
+      last_release: null
+      release_date: null
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 44
+      days_for_last_100_commits: 13
+      archived: false
+  Apache Tika:
+    role: runtime
+    steward: Apache Software Foundation
+    kind: foundation
+    home: US
+    region: neutral
+    support: []
+    source: github.com/apache/tika
+    signals:
+      last_release: null
+      release_date: null
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 6
+      days_for_last_100_commits: 17
+      archived: false
+  Apicurio Registry:
+    role: runtime
+    steward: Red Hat
+    kind: company
+    home: US
+    region: non-eu
+    support:
+    - Red Hat (US)
+    source: github.com/Apicurio/apicurio-registry
+    signals:
+      last_release: 3.3.3
+      release_date: '2026-09-08'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 29
+      days_for_last_100_commits: 13
+      archived: false
+  Archivematica:
+    role: runtime
+    steward: Artefactual Systems
+    kind: company
+    home: CA
+    region: non-eu
+    support:
+    - Artefactual (CA)
+    source: github.com/artefactual/archivematica
+    signals:
+      last_release: v1.18.0
+      release_date: '2025-09-26'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 4
+      days_for_last_100_commits: 101
+      archived: false
+  Argo CD:
+    role: alternate
+    steward: CNCF (Intuit, Akuity, Codefresh)
+    kind: foundation
+    home: US
+    region: neutral
+    support:
+    - Akuity (US)
+    source: github.com/argoproj/argo-cd
+    signals:
+      last_release: v3.5.3
+      release_date: '2026-09-14'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 32
+      days_for_last_100_commits: 15
+      archived: false
+  Argo Events:
+    role: runtime
+    steward: CNCF
+    kind: foundation
+    home: US
+    region: neutral
+    support: []
+    source: github.com/argoproj/argo-events
+    signals:
+      last_release: v1.9.11
+      release_date: '2026-07-13'
+      last_activity: '2026-10-03'
+      authors_last_100_commits: 18
+      days_for_last_100_commits: 158
+      archived: false
+  Argo Workflows:
+    role: runtime
+    steward: CNCF
+    kind: foundation
+    home: US
+    region: neutral
+    support: []
+    source: github.com/argoproj/argo-workflows
+    signals:
+      last_release: v4.1.4
+      release_date: '2026-09-18'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 12
+      days_for_last_100_commits: 23
+      archived: false
+  Asterisk:
+    role: runtime
+    steward: Sangoma
+    kind: company
+    home: CA
+    region: non-eu
+    support:
+    - Sangoma (CA)
+    source: github.com/asterisk/asterisk
+    signals:
+      last_release: 23.5.0
+      release_date: '2026-08-27'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 35
+      days_for_last_100_commits: 103
+      archived: false
+  Backstage:
+    role: runtime
+    steward: CNCF (Spotify)
+    kind: foundation
+    home: US
+    region: neutral
+    support:
+    - Spotify (SE)
+    source: github.com/backstage/backstage
+    signals:
+      last_release: v1.55.3
+      release_date: '2026-09-29'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 16
+      days_for_last_100_commits: 5
+      archived: false
+  Caddy:
+    role: alternate
+    steward: Caddy project (ZeroSSL sponsor)
+    kind: company
+    home: US
+    region: non-eu
+    support: []
+    source: github.com/caddyserver/caddy
+    signals:
+      last_release: v2.11.7
+      release_date: '2026-10-03'
+      last_activity: '2026-10-05'
+      authors_last_100_commits: 48
+      days_for_last_100_commits: 68
+      archived: false
+    note: retired as implementation; alternate only
+  Calico:
+    role: alternate
+    steward: Tigera
+    kind: company
+    home: US
+    region: non-eu
+    support:
+    - Tigera (US)
+    source: github.com/projectcalico/calico
+    signals:
+      last_release: v3.33.0
+      release_date: '2026-10-01'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 13
+      days_for_last_100_commits: 10
+      archived: false
+  Cerbos:
+    role: alternate
+    steward: Cerbos
+    kind: company
+    home: UK
+    region: europe
+    support:
+    - Cerbos (UK)
+    source: github.com/cerbos/cerbos
+    signals:
+      last_release: v0.56.0
+      release_date: '2026-09-30'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 8
+      days_for_last_100_commits: 71
+      archived: false
+  cert-manager:
+    role: runtime
+    steward: CNCF (CyberArk/Venafi, origin Jetstack UK)
+    kind: foundation
+    home: US
+    region: neutral
+    support:
+    - CyberArk (US)
+    source: github.com/cert-manager/cert-manager
+    signals:
+      last_release: v1.21.2
+      release_date: '2026-09-11'
+      last_activity: '2026-10-05'
+      authors_last_100_commits: 14
+      days_for_last_100_commits: 28
+      archived: false
+  Chainsaw:
+    role: toolchain
+    steward: Kyverno (CNCF, Nirmata)
+    kind: foundation
+    home: US
+    region: neutral
+    support: []
+    source: github.com/kyverno/chainsaw
+    signals:
+      last_release: v0.2.15
+      release_date: '2026-05-06'
+      last_activity: '2026-09-03'
+      authors_last_100_commits: 13
+      days_for_last_100_commits: 295
+      archived: false
+  Chaos Mesh:
+    role: toolchain
+    steward: CNCF
+    kind: foundation
+    home: US
+    region: neutral
+    support: []
+    source: github.com/chaos-mesh/chaos-mesh
+    signals:
+      last_release: v2.8.4
+      release_date: '2026-08-18'
+      last_activity: '2026-10-03'
+      authors_last_100_commits: 31
+      days_for_last_100_commits: 285
+      archived: false
+  Cilium:
+    role: runtime
+    steward: CNCF (Isovalent, part of Cisco)
+    kind: foundation
+    home: US
+    region: neutral
+    support:
+    - Isovalent (US)
+    source: github.com/cilium/cilium
+    signals:
+      last_release: v1.20.2
+      release_date: '2026-09-16'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 30
+      days_for_last_100_commits: 9
+      archived: false
+  CISO Assistant community:
+    role: toolchain
+    steward: intuitem
+    kind: company
+    home: FR
+    region: eu
+    support:
+    - intuitem (FR)
+    source: github.com/intuitem/ciso-assistant-community
+    signals:
+      last_release: v4.1.0
+      release_date: '2026-10-03'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 18
+      days_for_last_100_commits: 20
+      archived: false
+  ClamAV:
+    role: runtime
+    steward: Cisco Talos
+    kind: company
+    home: US
+    region: non-eu
+    support: []
+    source: github.com/Cisco-Talos/clamav
+    signals:
+      last_release: clamav-1.5.4
+      release_date: '2026-08-07'
+      last_activity: '2026-08-27'
+      authors_last_100_commits: 12
+      days_for_last_100_commits: 294
+      archived: false
+  Barman Cloud plugin:
+    role: runtime
+    steward: CNCF (CloudNativePG project)
+    kind: foundation
+    home: US
+    region: neutral
+    support:
+    - EDB (US)
+    source: github.com/cloudnative-pg/plugin-barman-cloud
+    signals:
+      last_release: v0.15.1
+      release_date: '2026-09-30'
+      last_activity: '2026-10-08'
+      authors_last_100_commits: 13
+      days_for_last_100_commits: 90
+      archived: false
+    note: CNPG-I plugin wrapping Barman Cloud; Apache-2.0; backups are plain S3 objects any barman-cloud restores
+  CloudNativePG:
+    role: runtime
+    steward: CNCF (EDB)
+    kind: foundation
+    home: US
+    region: neutral
+    support:
+    - EDB (US)
+    source: github.com/cloudnative-pg/cloudnative-pg
+    signals:
+      last_release: v1.30.1
+      release_date: '2026-09-23'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 16
+      days_for_last_100_commits: 32
+      archived: false
+    note: PostgreSQL itself has EU support; the operator is thin
+  compliance-trestle:
+    role: toolchain
+    steward: OSCAL Compass (CNCF)
+    kind: foundation
+    home: US
+    region: neutral
+    support: []
+    source: github.com/oscal-compass/compliance-trestle
+    signals:
+      last_release: v5.2.0
+      release_date: '2026-10-05'
+      last_activity: '2026-10-05'
+      authors_last_100_commits: 12
+      days_for_last_100_commits: 111
+      archived: false
+  Coraza:
+    role: runtime
+    steward: OWASP
+    kind: foundation
+    home: US
+    region: neutral
+    support: []
+    source: github.com/corazawaf/coraza
+    signals:
+      last_release: v3.8.1
+      release_date: '2026-10-02'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 13
+      days_for_last_100_commits: 188
+      archived: false
+  cosign:
+    role: toolchain
+    steward: OpenSSF (Sigstore)
+    kind: foundation
+    home: US
+    region: neutral
+    support: []
+    source: github.com/sigstore/cosign
+    signals:
+      last_release: v3.1.3
+      release_date: '2026-08-06'
+      last_activity: '2026-10-05'
+      authors_last_100_commits: 34
+      days_for_last_100_commits: 116
+      archived: false
+  CryptPad:
+    role: runtime
+    steward: XWiki SAS
+    kind: company
+    home: FR
+    region: eu
+    support:
+    - XWiki SAS (FR)
+    source: github.com/cryptpad/cryptpad
+    note: "bundles the OnlyOffice editors (Ascensio System SIA, Latvia; an ownership history to weigh) and draw.io client code: both run in users' browsers and are tracked as part of CryptPad's supply chain; no call goes to their vendors"
+    signals:
+      last_release: 2026.5.1
+      release_date: '2026-05-26'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 8
+      days_for_last_100_commits: 159
+      archived: false
+    note: NGI-funded
+  Dangerzone:
+    role: runtime
+    steward: Freedom of the Press Foundation
+    kind: foundation
+    home: US
+    region: neutral
+    support: []
+    source: github.com/freedomofpress/dangerzone
+    signals:
+      last_release: v0.11.0
+      release_date: '2026-07-02'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 7
+      days_for_last_100_commits: 125
+      archived: false
+  DataHub:
+    role: alternate
+    steward: DataHub (Acryl Data)
+    kind: company
+    home: US
+    region: non-eu
+    support:
+    - DataHub (US)
+    source: github.com/datahub-project/datahub
+    signals:
+      last_release: v1.7.0.1
+      release_date: '2026-09-03'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 37
+      days_for_last_100_commits: 7
+      archived: false
+  Debezium:
+    role: runtime
+    steward: Commonhaus Foundation (Red Hat)
+    kind: foundation
+    home: US
+    region: neutral
+    support:
+    - Red Hat (US)
+    source: github.com/debezium/debezium
+    signals:
+      last_release: v3.7.0.Final
+      release_date: null
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 20
+      days_for_last_100_commits: 8
+      archived: false
+  Warpgate:
+    role: runtime
+    steward: warp-tech (maintainer-led)
+    kind: individual
+    home: to-establish
+    region: to-establish
+    support: []
+    source: github.com/warp-tech/warpgate
+    signals: {last_release: v0.29.1, release_date: '2026-09-23', last_activity: '2026-10-07', authors_last_100_commits: 11, days_for_last_100_commits: 43, archived: false}
+    note: "one maintainer wrote 74 of the last 100 commits; RDP and VNC new since 0.28 (2026-08)"
+  hawkBit:
+    role: runtime
+    steward: Eclipse Foundation AISBL
+    kind: foundation
+    home: BE
+    region: eu
+    support: []
+    source: github.com/eclipse-hawkbit/hawkbit
+    signals: {last_release: null, release_date: null, last_activity: '2026-10-06', authors_last_100_commits: null, days_for_last_100_commits: null, archived: false}
+  Knot DNS:
+    role: runtime
+    steward: CZ.NIC
+    kind: foundation
+    home: CZ
+    region: eu
+    support: [CZ.NIC (CZ)]
+    source: github.com/CZ-NIC/knot
+    signals: {last_release: v3.6.0, release_date: '2026-09-08', last_activity: '2026-10-20', authors_last_100_commits: 6, days_for_last_100_commits: 42, archived: false}
+  Knot Resolver:
+    role: runtime
+    steward: CZ.NIC
+    kind: foundation
+    home: CZ
+    region: eu
+    support: [CZ.NIC (CZ)]
+    source: github.com/CZ-NIC/knot-resolver
+    signals: {last_release: v6.4.2, release_date: '2026-08-05', last_activity: '2026-10-19', authors_last_100_commits: 6, days_for_last_100_commits: 137, archived: false}
+    note: "ADR-0172 amendment: a part of Knot DNS in the S core"
+  session-agent:
+    role: runtime
+    steward: VDHome
+    kind: own
+    home: BE
+    region: own
+    support:
+    - VDHome (BE)
+  Neko:
+    role: runtime
+    steward: m1k1o (individual maintainer)
+    kind: individual
+    home: AT
+    region: eu
+    support: []
+    source: github.com/m1k1o/neko
+    signals: {last_release: v3.1.6, release_date: '2026-09-30', last_activity: '2026-10-07', authors_last_100_commits: 23, days_for_last_100_commits: null, archived: false}
+    note: "the maintainer made 83% of all contributions; advisories CVE-2026-39386 (high, privilege escalation, fixed 3.1.2) and GHSA-5cp7-fp4j-wwcv (medium, fixed 3.1.5): pin 3.1.6 or later, re-check advisories before every upgrade, never rely on Neko's own authorisation (the gateway authenticates, one user per room)"
+  neko-rooms:
+    role: runtime
+    steward: m1k1o (individual maintainer)
+    kind: individual
+    home: AT
+    region: eu
+    support: []
+    source: github.com/m1k1o/neko-rooms
+    signals: {last_release: null, release_date: null, last_activity: '2026-04-25', authors_last_100_commits: null, days_for_last_100_commits: null, archived: false}
+    note: "orchestrates one disposable Neko container per session; slower cadence than Neko itself"
+  Collabora Online:
+    role: runtime
+    steward: Collabora Productivity
+    kind: company
+    home: UK
+    region: europe
+    support: [Collabora Productivity (UK)]
+    source: github.com/CollaboraOnline/online
+    signals: {last_release: null, release_date: null, last_activity: '2026-10-06', authors_last_100_commits: 22, days_for_last_100_commits: null, archived: false}
+    note: "free public builds (CODE); supported builds need a subscription"
+  enrolment-service:
+    role: runtime
+    steward: VDHome
+    kind: own
+    home: BE
+    region: own
+    support:
+    - VDHome (BE)
+  decision-inbox:
+    role: runtime
+    steward: VDHome
+    kind: own
+    home: BE
+    region: own
+    support:
+    - VDHome (BE)
+  ai-egress-gate:
+    role: runtime
+    steward: VDHome
+    kind: own
+    home: BE
+    region: own
+    support:
+    - VDHome (BE)
+  Eclipse EDC:
+    role: runtime
+    steward: Eclipse Foundation AISBL
+    kind: foundation
+    home: BE
+    region: eu
+    support: []
+    source: github.com/eclipse-edc/Connector
+    signals:
+      last_release: v0.18.1
+      release_date: '2026-09-25'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 9
+      days_for_last_100_commits: 76
+      archived: false
+    note: EU foundation; Gaia-X/Catena-X ecosystem
+  Element Web:
+    role: runtime
+    steward: Element
+    kind: company
+    home: UK
+    region: europe
+    support:
+    - Element (UK)
+    source: github.com/element-hq/element-web
+    signals:
+      last_release: v1.12.30
+      release_date: '2026-09-29'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 19
+      days_for_last_100_commits: 13
+      archived: false
+  Envoy:
+    role: runtime
+    steward: CNCF (Envoy project)
+    kind: foundation
+    home: US
+    region: neutral
+    support:
+    - Tetrate (US)
+    source: github.com/envoyproxy/envoy
+    signals:
+      last_release: v1.39.3
+      release_date: '2026-10-06'
+      last_activity: '2026-10-12'
+      authors_last_100_commits: 32
+      days_for_last_100_commits: 7
+      archived: false
+  Envoy Gateway:
+    role: runtime
+    steward: CNCF (Envoy project)
+    kind: foundation
+    home: US
+    region: neutral
+    support:
+    - Tetrate (US)
+    source: github.com/envoyproxy/gateway
+    signals:
+      last_release: v1.9.2
+      release_date: '2026-09-28'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 28
+      days_for_last_100_commits: 33
+      archived: false
+  evaluator:
+    role: runtime
+    steward: VDHome
+    kind: own
+    home: BE
+    region: own
+    support:
+    - VDHome (BE)
+    note: reference model tools/authz.py
+  ExifTool:
+    role: runtime
+    steward: Phil Harvey
+    kind: individual
+    home: CA
+    region: non-eu
+    support: []
+    source: github.com/exiftool/exiftool
+    signals:
+      last_release: '13.59'
+      release_date: null
+      last_activity: '2026-05-27'
+      authors_last_100_commits: 1
+      days_for_last_100_commits: 1113
+      archived: false
+    note: single maintainer, releases since 2003
+  Falco:
+    role: runtime
+    steward: CNCF (Sysdig)
+    kind: foundation
+    home: US
+    region: neutral
+    support:
+    - Sysdig (US)
+    source: github.com/falcosecurity/falco
+    signals:
+      last_release: 0.45.0
+      release_date: '2026-09-21'
+      last_activity: '2026-10-05'
+      authors_last_100_commits: 20
+      days_for_last_100_commits: 139
+      archived: false
+  FINOS CALM:
+    role: toolchain
+    steward: FINOS (Linux Foundation)
+    kind: foundation
+    home: US
+    region: neutral
+    support: []
+    source: github.com/finos/architecture-as-code
+    signals:
+      last_release: cli-v1.60.1
+      release_date: '2026-09-16'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 12
+      days_for_last_100_commits: 6
+      archived: false
+  Flux:
+    role: runtime
+    steward: CNCF
+    kind: foundation
+    home: US
+    region: neutral
+    support:
+    - ControlPlane (UK)
+    source: github.com/fluxcd/flux2
+    signals:
+      last_release: v2.9.6
+      release_date: '2026-10-01'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 17
+      days_for_last_100_commits: 109
+      archived: false
+    note: Weaveworks closed in 2024; project continued in the CNCF
+  Forgejo:
+    role: runtime
+    steward: Codeberg e.V.
+    kind: community
+    home: DE
+    region: eu
+    support: []
+    source: codeberg.org/forgejo/forgejo
+    signals:
+      last_release: v16.0.5
+      release_date: '2026-09-17'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: null
+      days_for_last_100_commits: null
+      archived: false
+    note: self-supported
+  Gammu:
+    role: runtime
+    steward: Michal Cihar
+    kind: individual
+    home: CZ
+    region: eu
+    support: []
+    source: github.com/gammu/gammu
+    signals:
+      last_release: 1.45.0
+      release_date: '2026-09-16'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 5
+      days_for_last_100_commits: 68
+      archived: false
+    note: single maintainer
+  Garage:
+    role: runtime
+    steward: Deuxfleurs (association)
+    kind: community
+    home: FR
+    region: eu
+    support: []
+    source: git.deuxfleurs.fr/Deuxfleurs/garage
+    signals:
+      last_release: v2.4.1
+      release_date: '2026-09-08'
+      last_activity: '2026-10-02'
+      authors_last_100_commits: null
+      days_for_last_100_commits: null
+      archived: false
+    note: NGI-funded; self-supported (small Rust codebase)
+  Gatus:
+    role: runtime
+    steward: TwiN
+    kind: individual
+    home: CA
+    region: non-eu
+    support: []
+    source: github.com/TwiN/gatus
+    signals:
+      last_release: v5.37.0
+      release_date: '2026-09-24'
+      last_activity: '2026-10-05'
+      authors_last_100_commits: 32
+      days_for_last_100_commits: 320
+      archived: false
+    note: single maintainer
+  GitLab:
+    role: alternate
+    steward: GitLab Inc.
+    kind: company
+    home: US
+    region: non-eu
+    support:
+    - GitLab (US)
+    source: github.com/gitlabhq/gitlabhq
+    signals:
+      last_release: v42.2.0-rc42
+      release_date: null
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 1
+      days_for_last_100_commits: 14
+      archived: false
+    note: signals from a mirror; not meaningful
+  gitleaks:
+    role: runtime
+    steward: Gitleaks LLC (Zachary Rice)
+    kind: company
+    home: US
+    region: non-eu
+    support: []
+    source: github.com/gitleaks/gitleaks
+    signals:
+      last_release: v8.30.1
+      release_date: '2026-03-21'
+      last_activity: '2026-09-30'
+      authors_last_100_commits: 28
+      days_for_last_100_commits: 574
+      archived: false
+  GLPI:
+    role: runtime
+    steward: Teclib'
+    kind: company
+    home: FR
+    region: eu
+    support:
+    - Teclib' (FR)
+    source: github.com/glpi-project/glpi
+    signals:
+      last_release: 11.0.11
+      release_date: '2026-10-01'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 22
+      days_for_last_100_commits: 13
+      archived: false
+  Grafana:
+    role: runtime
+    steward: Grafana Labs
+    kind: company
+    home: US
+    region: non-eu
+    support:
+    - Grafana Labs (US)
+    source: github.com/grafana/grafana
+    signals:
+      last_release: v13.2.3
+      release_date: '2026-09-29'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 52
+      days_for_last_100_commits: 1
+      archived: false
+    note: Swedish origin; AGPL
+  Great Expectations:
+    role: runtime
+    steward: GX (repository now under the Fivetran organisation)
+    kind: company
+    home: US
+    region: non-eu
+    support: []
+    source: github.com/fivetran/great_expectations
+    signals:
+      last_release: 1.23.2
+      release_date: '2026-09-28'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 30
+      days_for_last_100_commits: 41
+      archived: false
+    note: 'steward change: watch licence and roadmap'
+  Grype:
+    role: toolchain
+    steward: Anchore
+    kind: company
+    home: US
+    region: non-eu
+    support: []
+    source: github.com/anchore/grype
+    signals:
+      last_release: v0.120.0
+      release_date: '2026-10-02'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 21
+      days_for_last_100_commits: 83
+      archived: false
+  gVisor:
+    role: runtime
+    steward: Google
+    kind: company
+    home: US
+    region: non-eu
+    support: []
+    source: github.com/google/gvisor
+    signals:
+      last_release: release-20260928.0
+      release_date: '2026-09-30'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 14
+      days_for_last_100_commits: 3
+      archived: false
+    note: single-company project
+  Headscale:
+    role: alternate
+    steward: Headscale community
+    kind: community
+    home: international
+    region: neutral
+    support: []
+    source: github.com/juanfont/headscale
+    signals:
+      last_release: v0.29.4
+      release_date: '2026-09-23'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 9
+      days_for_last_100_commits: 13
+      archived: false
+  iTop:
+    role: alternate
+    steward: Combodo
+    kind: company
+    home: FR
+    region: eu
+    support:
+    - Combodo (FR)
+    source: github.com/Combodo/iTop
+    signals:
+      last_release: 3.3.0
+      release_date: '2026-09-15'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 12
+      days_for_last_100_commits: 45
+      archived: false
+  k3d:
+    role: toolchain
+    steward: k3d community
+    kind: community
+    home: international
+    region: neutral
+    support: []
+    source: github.com/k3d-io/k3d
+    signals:
+      last_release: v5.9.0
+      release_date: '2026-06-02'
+      last_activity: '2026-10-05'
+      authors_last_100_commits: 22
+      days_for_last_100_commits: 691
+      archived: false
+  K3s:
+    role: runtime
+    steward: CNCF (SUSE)
+    kind: foundation
+    home: US/DE
+    region: neutral
+    support:
+    - SUSE (DE)
+    source: github.com/k3s-io/k3s
+    signals:
+      last_release: v1.37.1+k3s1
+      release_date: '2026-09-30'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 27
+      days_for_last_100_commits: 77
+      archived: false
+  Kata Containers:
+    role: runtime
+    steward: OpenInfra Foundation (Linux Foundation)
+    kind: foundation
+    home: US
+    region: neutral
+    support: []
+    source: github.com/kata-containers/kata-containers
+    signals:
+      last_release: 4.2.0
+      release_date: '2026-09-15'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 12
+      days_for_last_100_commits: 11
+      archived: false
+  Keycloak:
+    role: runtime
+    steward: CNCF (Red Hat)
+    kind: foundation
+    home: US
+    region: neutral
+    support:
+    - Red Hat build of Keycloak (US)
+    - codecentric (DE)
+    source: github.com/keycloak/keycloak
+    signals:
+      last_release: 26.8.0
+      release_date: '2026-10-01'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 45
+      days_for_last_100_commits: 6
+      archived: false
+  libosdp:
+    role: runtime
+    steward: Siddharth Chandrasekaran (goToMain), Germany
+    kind: individual
+    home: DE
+    region: eu
+    support: []
+    source: github.com/goToMain/libosdp
+    signals: {last_release: v3.2.7, release_date: '2026-08-25', last_activity: '2026-10-20', authors_last_100_commits: 3, days_for_last_100_commits: 70, archived: false}
+    note: "one maintainer wrote 98 of the last 100 commits (bus factor one); Apache-2.0; implements the SIA OSDP standard, so a fork or OSDP.Net (Apache-2.0) is the fallback"
+  keycloak-config-cli:
+    role: toolchain   # applies configuration to Keycloak, runs as a job; the capability is Keycloak's
+    steward: adorsys (DE)
+    kind: company
+    home: DE
+    region: EU
+    support:
+    - adorsys (DE)
+    source: github.com/adorsys/keycloak-config-cli
+    signals:
+      last_release: 6.5.1
+      release_date: '2026-05-22'
+  Keylime:
+    role: runtime
+    steward: CNCF (Red Hat)
+    kind: foundation
+    home: US
+    region: neutral
+    support: []
+    source: github.com/keylime/keylime
+    signals:
+      last_release: v7.14.3
+      release_date: '2026-07-06'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 11
+      days_for_last_100_commits: 229
+      archived: false
+  llama.cpp:
+    role: runtime
+    steward: ggml-org
+    kind: community
+    home: international
+    region: neutral
+    support: []
+    source: github.com/ggml-org/llama.cpp
+    signals:
+      last_release: v0.6.0
+      release_date: '2026-10-05'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 43
+      days_for_last_100_commits: 4
+      archived: false
+    note: origin Bulgaria
+  Loki:
+    role: alternate
+    steward: Grafana Labs
+    kind: company
+    home: US
+    region: non-eu
+    support:
+    - Grafana Labs (US)
+    source: github.com/grafana/loki
+    signals:
+      last_release: v3.7.8
+      release_date: '2026-09-17'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 18
+      days_for_last_100_commits: 5
+      archived: false
+    note: retired as implementation; alternate only
+  mat2:
+    role: alternate
+    steward: jvoisin
+    kind: individual
+    home: FR
+    region: eu
+    support: []
+    source: 0xacab.org/jvoisin/mat2
+    signals:
+      last_release: 0.13.5
+      release_date: '2025-01-09'
+      last_activity: '2025-09-04'
+      authors_last_100_commits: null
+      days_for_last_100_commits: null
+      archived: false
+    note: no release since 2025-01; single maintainer
+  mkosi:
+    role: toolchain
+    steward: systemd project
+    kind: community
+    home: international
+    region: neutral
+    support: []
+    source: github.com/systemd/mkosi
+    signals:
+      last_release: v27.1
+      release_date: '2026-09-28'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 25
+      days_for_last_100_commits: 103
+      archived: false
+  MLflow:
+    role: runtime
+    steward: Linux Foundation AI (Databricks)
+    kind: foundation
+    home: US
+    region: neutral
+    support:
+    - Databricks (US)
+    source: github.com/mlflow/mlflow
+    signals:
+      last_release: v3.16.1
+      release_date: '2026-09-17'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 31
+      days_for_last_100_commits: 5
+      archived: false
+  NATS:
+    role: runtime
+    steward: CNCF (Synadia)
+    kind: foundation
+    home: US
+    region: neutral
+    support:
+    - Synadia (US)
+    source: github.com/nats-io/nats-server
+    signals:
+      last_release: v2.15.0
+      release_date: '2026-09-17'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 8
+      days_for_last_100_commits: 6
+      archived: false
+    note: '2025: Synadia sought to withdraw NATS from the CNCF and relicense; resolved, NATS stayed Apache-2.0 in the CNCF'
+  NeMo Guardrails:
+    role: runtime
+    steward: NVIDIA
+    kind: company
+    home: US
+    region: non-eu
+    support: []
+    source: github.com/NVIDIA-NeMo/Guardrails
+    signals:
+      last_release: v0.24.1
+      release_date: '2026-09-16'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 10
+      days_for_last_100_commits: 81
+      archived: false
+  NetBird:
+    role: runtime
+    steward: NetBird GmbH
+    kind: company
+    home: DE
+    region: eu
+    support:
+    - NetBird (DE)
+    source: github.com/netbirdio/netbird
+    signals:
+      last_release: v0.80.0
+      release_date: '2026-10-01'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 19
+      days_for_last_100_commits: 25
+      archived: false
+  Nextcloud:
+    role: runtime
+    steward: Nextcloud GmbH
+    kind: company
+    home: DE
+    region: eu
+    support:
+    - Nextcloud (DE)
+    source: github.com/nextcloud/server
+    signals:
+      last_release: v35.0.1
+      release_date: '2026-09-24'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 20
+      days_for_last_100_commits: 4
+      archived: false
+  OpenCloud:
+    role: runtime
+    steward: OpenCloud GmbH
+    kind: company
+    home: DE
+    region: eu
+    support:
+    - OpenCloud GmbH (DE)
+    source: github.com/opencloud-eu/opencloud
+    signals:
+      last_release: v8.1.0
+      release_date: '2026-10-05'
+      last_activity: '2026-10-12'
+      authors_last_100_commits: 13
+      days_for_last_100_commits: 9
+      archived: false
+    note: 'Apache-2.0 file sharing (Go, fork lineage of ownCloud Infinite Scale); steward and support are maintainer knowledge, verify before a support contract; the deployed version is pinned'
+  ntfy:
+    role: runtime
+    steward: Philipp Heckel
+    kind: individual
+    home: US
+    region: non-eu
+    support: []
+    source: github.com/binwiederhier/ntfy
+    signals:
+      last_release: v2.28.0
+      release_date: '2026-08-27'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 18
+      days_for_last_100_commits: 81
+      archived: false
+    note: single maintainer; hosted service offered
+  Ollama:
+    role: alternate
+    steward: Ollama Inc.
+    kind: company
+    home: US
+    region: non-eu
+    support: []
+    source: github.com/ollama/ollama
+    signals:
+      last_release: v0.40.0
+      release_date: '2026-09-25'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 10
+      days_for_last_100_commits: 26
+      archived: false
+  OPA:
+    role: runtime
+    steward: CNCF
+    kind: foundation
+    home: US
+    region: neutral
+    support: []
+    source: github.com/open-policy-agent/opa
+    signals:
+      last_release: v1.21.1
+      release_date: '2026-09-29'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 9
+      days_for_last_100_commits: 19
+      archived: false
+    note: 'commercial steward Styra''s maintainers moved to Apple in 2025: verify vendor support'
+  OpenBao:
+    role: runtime
+    steward: Linux Foundation (LF Edge)
+    kind: foundation
+    home: US
+    region: neutral
+    support: []
+    source: github.com/openbao/openbao
+    signals:
+      last_release: v2.7.1
+      release_date: '2026-10-01'
+      last_activity: '2026-10-05'
+      authors_last_100_commits: 20
+      days_for_last_100_commits: 26
+      archived: false
+    note: community fork of Vault after the BSL change; no vendor
+  OpenMetadata:
+    role: runtime
+    steward: Collate
+    kind: company
+    home: US
+    region: non-eu
+    support:
+    - Collate (US)
+    source: github.com/open-metadata/OpenMetadata
+    signals:
+      last_release: 2.0.4-release
+      release_date: '2026-10-06'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 24
+      days_for_last_100_commits: 3
+      archived: false
+  OpenTDF:
+    role: runtime
+    steward: OpenTDF (Virtru)
+    kind: company
+    home: US
+    region: non-eu
+    support:
+    - Virtru (US)
+    source: github.com/opentdf/platform
+    signals:
+      last_release: service/v0.28.0
+      release_date: '2026-10-02'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 11
+      days_for_last_100_commits: 39
+      archived: false
+  ClickHouse:
+    role: alternate
+    steward: ClickHouse, Inc.
+    kind: company
+    home: US
+    region: us
+    support:
+    - ClickHouse, Inc. (US)
+    source: github.com/ClickHouse/ClickHouse
+    signals:
+      last_release: v26.8.29.10-lts
+      release_date: '2026-10-16'
+      last_activity: '2026-10-16'
+      archived: false
+    note: "Apache-2.0 (the licence file has long been unchanged); contributors sign a CLA with ClickHouse, Inc., so future versions can be relicensed (as Elastic, HashiCorp and Redis did): released versions stay Apache-2.0, exit by OTLP in and Parquet out (ADR-0152). The default configuration sends crash reports to crash.clickhouse.com: disabled in the tree (gitops/lab/telemetry). The model pins an LTS line."
+  OpenTelemetry Collector:
+    role: runtime
+    steward: CNCF
+    kind: foundation
+    home: US
+    region: neutral
+    support: []
+    source: github.com/open-telemetry/opentelemetry-collector
+    signals:
+      last_release: v0.162.0
+      release_date: '2026-09-28'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 36
+      days_for_last_100_commits: 21
+      archived: false
+  OpenTofu:
+    role: toolchain
+    steward: Linux Foundation
+    kind: foundation
+    home: US
+    region: neutral
+    support: []
+    source: github.com/opentofu/opentofu
+    signals:
+      last_release: v1.13.1
+      release_date: '2026-10-01'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 9
+      days_for_last_100_commits: 47
+      archived: false
+  OWASP CRS:
+    role: runtime
+    steward: OWASP
+    kind: foundation
+    home: US
+    region: neutral
+    support:
+    - netnea (CH)
+    source: github.com/coreruleset/coreruleset
+    signals:
+      last_release: v4.30.0
+      release_date: '2026-10-02'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 13
+      days_for_last_100_commits: 170
+      archived: false
+  OWASP ZAP:
+    role: toolchain
+    steward: ZAP (Checkmarx sponsorship)
+    kind: company
+    home: IL/US
+    region: non-eu
+    support: []
+    source: github.com/zaproxy/zaproxy
+    signals:
+      last_release: v2.17.0
+      release_date: '2025-12-15'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 9
+      days_for_last_100_commits: 91
+      archived: false
+  Perses:
+    role: alternate
+    steward: CNCF (origin Amadeus)
+    kind: foundation
+    home: US
+    region: neutral
+    support: []
+    source: github.com/perses/perses
+    signals:
+      last_release: v0.54.0
+      release_date: '2026-07-29'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 22
+      days_for_last_100_commits: 36
+      archived: false
+  Playwright:
+    role: toolchain
+    steward: Microsoft
+    kind: company
+    home: US
+    region: non-eu
+    support: []
+    source: github.com/microsoft/playwright
+    signals:
+      last_release: v1.63.0
+      release_date: '2026-09-04'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 15
+      days_for_last_100_commits: 10
+      archived: false
+  Podman:
+    role: toolchain
+    steward: Red Hat (containers community)
+    kind: company
+    home: US
+    region: non-eu
+    support:
+    - Red Hat (US)
+    source: github.com/podman-container-tools/podman
+    signals:
+      last_release: v6.1.3
+      release_date: '2026-09-29'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 32
+      days_for_last_100_commits: 14
+      archived: false
+  PostgreSQL:
+    role: runtime
+    steward: PostgreSQL Global Development Group
+    kind: community
+    home: international
+    region: neutral
+    support:
+    - Dalibo (FR)
+    - CYBERTEC (AT)
+    - credativ (DE)
+    source: github.com/postgres/postgres
+    signals:
+      last_release: release-6-3
+      release_date: null
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 16
+      days_for_last_100_commits: 12
+      archived: false
+  Presidio:
+    role: toolchain
+    steward: data-privacy-stack (origin Microsoft)
+    kind: community
+    home: international
+    region: neutral
+    support: []
+    source: github.com/data-privacy-stack/presidio
+    signals:
+      last_release: 2.2.364
+      release_date: '2026-07-22'
+      last_activity: '2026-10-04'
+      authors_last_100_commits: 35
+      days_for_last_100_commits: 105
+      archived: false
+  Prometheus:
+    role: alternate
+    steward: CNCF
+    kind: foundation
+    home: US
+    region: neutral
+    support: []
+    source: github.com/prometheus/prometheus
+    signals:
+      last_release: v3.15.0
+      release_date: '2026-09-25'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 27
+      days_for_last_100_commits: 14
+      archived: false
+  Proxmox Backup Server:
+    role: runtime
+    steward: Proxmox Server Solutions GmbH
+    kind: company
+    home: AT
+    region: eu
+    support:
+    - Proxmox (AT)
+    source: git.proxmox.com (proxmox-backup)
+    signals:
+      last_release: '4.2'
+      release_date: '2026-04-29'
+      last_activity: '2026-04-29'
+      authors_last_100_commits: null
+      days_for_last_100_commits: null
+      archived: false
+  Proxmox VE:
+    role: runtime
+    steward: Proxmox Server Solutions GmbH
+    kind: company
+    home: AT
+    region: eu
+    support:
+    - Proxmox (AT)
+    source: git.proxmox.com (pve-manager)
+    signals:
+      last_release: '9.2'
+      release_date: '2026-05-21'
+      last_activity: '2026-08-05'
+      authors_last_100_commits: null
+      days_for_last_100_commits: null
+      archived: false
+  RAUC:
+    role: runtime
+    steward: Pengutronix
+    kind: company
+    home: DE
+    region: eu
+    support:
+    - Pengutronix (DE)
+    source: github.com/rauc/rauc
+    signals:
+      last_release: v1.15.2
+      release_date: '2026-03-27'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 7
+      days_for_last_100_commits: 84
+      archived: false
+  Renovate:
+    role: toolchain
+    steward: Mend
+    kind: company
+    home: IL/US
+    region: non-eu
+    support: []
+    source: github.com/renovatebot/renovate
+    signals:
+      last_release: 44.141.0
+      release_date: '2026-10-06'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 12
+      days_for_last_100_commits: 6
+      archived: false
+  rest-server:
+    role: runtime
+    steward: restic community
+    kind: community
+    home: international
+    region: neutral
+    support: []
+    source: github.com/restic/rest-server
+    signals:
+      last_release: v0.14.0
+      release_date: '2025-05-31'
+      last_activity: '2026-09-20'
+      authors_last_100_commits: 11
+      days_for_last_100_commits: 911
+      archived: false
+  restic:
+    role: runtime
+    steward: restic community
+    kind: community
+    home: international
+    region: neutral
+    support: []
+    source: github.com/restic/restic
+    signals:
+      last_release: v0.19.1
+      release_date: '2026-07-05'
+      last_activity: '2026-10-01'
+      authors_last_100_commits: 20
+      days_for_last_100_commits: 105
+      archived: false
+    note: maintainers in Germany; documented repository format
+  RKE2:
+    role: alternate
+    steward: SUSE
+    kind: company
+    home: DE
+    region: eu
+    support:
+    - SUSE (DE)
+    source: github.com/rancher/rke2
+    signals:
+      last_release: v1.37.1+rke2r1
+      release_date: '2026-09-30'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 20
+      days_for_last_100_commits: 47
+      archived: false
+  Schemathesis:
+    role: toolchain
+    steward: Schemathesis community
+    kind: community
+    home: international
+    region: neutral
+    support: []
+    source: github.com/schemathesis/schemathesis
+    signals:
+      last_release: v4.29.4
+      release_date: '2026-10-06'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 2
+      days_for_last_100_commits: 2
+      archived: false
+    note: very small maintainer team
+  SeaweedFS:
+    role: alternate
+    steward: Chris Lu
+    kind: individual
+    home: US
+    region: non-eu
+    support: []
+    source: github.com/seaweedfs/seaweedfs
+    signals:
+      last_release: '4.48'
+      release_date: '2026-09-28'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 25
+      days_for_last_100_commits: 7
+      archived: false
+  Sigma:
+    role: toolchain
+    steward: SigmaHQ (Nextron Systems)
+    kind: community
+    home: DE
+    region: eu
+    support: []
+    source: github.com/SigmaHQ/sigma
+    signals:
+      last_release: r2026-07-01
+      release_date: '2026-07-09'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 48
+      days_for_last_100_commits: 117
+      archived: false
+    note: rules under DRL-1.1
+  Snipe-IT:
+    role: toolchain
+    steward: Grokability
+    kind: company
+    home: US
+    region: non-eu
+    support: []
+    source: github.com/grokability/snipe-it
+    signals:
+      last_release: v8.8.0
+      release_date: '2026-09-30'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 3
+      days_for_last_100_commits: 7
+      archived: false
+  sphinx-needs:
+    role: toolchain
+    steward: useblocks GmbH
+    kind: company
+    home: DE
+    region: eu
+    support:
+    - useblocks (DE)
+    source: github.com/useblocks/sphinx-needs
+    signals:
+      last_release: ub-test-reports-v1.0.0
+      release_date: '2026-10-01'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 11
+      days_for_last_100_commits: 29
+      archived: false
+  SPIRE:
+    role: runtime
+    steward: CNCF (SPIFFE)
+    kind: foundation
+    home: US
+    region: neutral
+    support: []
+    source: github.com/spiffe/spire
+    signals:
+      last_release: v1.15.3
+      release_date: '2026-08-21'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 29
+      days_for_last_100_commits: 68
+      archived: false
+  step-ca:
+    role: runtime
+    steward: Smallstep
+    kind: company
+    home: US
+    region: non-eu
+    support:
+    - Smallstep (US)
+    source: github.com/smallstep/certificates
+    signals:
+      last_release: v0.30.2
+      release_date: '2026-03-23'
+      last_activity: '2026-10-05'
+      authors_last_100_commits: 6
+      days_for_last_100_commits: 77
+      archived: false
+    note: deviation-only (RSA legacy CA)
+  Suricata:
+    role: runtime
+    steward: OISF
+    kind: foundation
+    home: US
+    region: neutral
+    support:
+    - Stamus Networks (FR)
+    source: github.com/OISF/suricata
+    signals:
+      last_release: suricata-8.0.7
+      release_date: '2026-09-15'
+      last_activity: '2026-10-04'
+      authors_last_100_commits: 14
+      days_for_last_100_commits: 25
+      archived: false
+  Syft:
+    role: toolchain
+    steward: Anchore
+    kind: company
+    home: US
+    region: non-eu
+    support: []
+    source: github.com/anchore/syft
+    signals:
+      last_release: v1.54.1
+      release_date: '2026-10-06'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 26
+      days_for_last_100_commits: 39
+      archived: false
+  Synapse:
+    role: runtime
+    steward: Element
+    kind: company
+    home: UK
+    region: europe
+    support:
+    - Element (UK)
+    source: github.com/element-hq/synapse
+    signals:
+      last_release: v1.162.0
+      release_date: '2026-09-29'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 24
+      days_for_last_100_commits: 28
+      archived: false
+    note: AGPL since 2023; the Matrix homeserver from ADR-0114, community edition run from upstream images, ESS Pro as the support option
+  strongSwan:
+    role: alternate
+    steward: strongSwan project (OST Eastern Switzerland University of Applied Sciences)
+    kind: community
+    home: CH
+    region: europe
+    support: []
+    source: github.com/strongswan/strongswan
+    signals:
+      last_release: 6.1.0
+      release_date: '2026-09-07'
+      last_activity: '2026-10-09'
+      authors_last_100_commits: 4
+      days_for_last_100_commits: 1609
+      archived: false
+    note: 'optional, federation only (ADR-0118): IKEv2 with X.509 from the site PKI towards partners and other information domains, terminating at the Harbor; GPL-2.0-or-later; a small core team (bus factor), Libreswan is the other IKEv2 implementation; steward and commercial support to verify before a support contract'
+  SUSE Micro:
+    role: runtime
+    steward: SUSE
+    kind: company
+    home: DE
+    region: eu
+    support: [SUSE (DE)]
+    source: build.opensuse.org (Leap Micro)
+    signals: {last_release: '6.2', release_date: null, last_activity: '2026-10-06', authors_last_100_commits: null, days_for_last_100_commits: null, archived: false}
+    note: "distribution: signals are release-level, not repository-level"
+  system-upgrade-controller:
+    role: runtime
+    steward: SUSE (Rancher)
+    kind: company
+    home: DE
+    region: eu
+    support: [SUSE (DE)]
+    source: github.com/rancher/system-upgrade-controller
+    signals: {last_release: null, release_date: null, last_activity: '2026-10-05', authors_last_100_commits: null, days_for_last_100_commits: null, archived: false}
+  Uyuni:
+    role: runtime
+    steward: SUSE (Uyuni project)
+    kind: company
+    home: DE
+    region: eu
+    support: [SUSE (DE)]
+    source: github.com/uyuni-project/uyuni
+    signals: {last_release: null, release_date: null, last_activity: '2026-10-06', authors_last_100_commits: null, days_for_last_100_commits: null, archived: false}
+  Flatcar:
+    role: alternate
+    steward: CNCF (origin Kinvolk, Berlin)
+    kind: foundation
+    home: US
+    region: neutral
+    support: []
+    source: github.com/flatcar/scripts
+    signals: {last_release: stable-4757.2.1, release_date: '2026-10-01', last_activity: '2026-10-06', authors_last_100_commits: null, days_for_last_100_commits: null, archived: false}
+  Kured:
+    role: alternate
+    steward: CNCF
+    kind: foundation
+    home: US
+    region: neutral
+    support: []
+    source: github.com/kubereboot/kured
+    signals: {last_release: null, release_date: null, last_activity: '2026-10-05', authors_last_100_commits: null, days_for_last_100_commits: null, archived: false}
+  kgateway:
+    role: alternate
+    steward: CNCF (origin Solo.io)
+    kind: foundation
+    home: US
+    region: neutral
+    support: []
+    source: github.com/kgateway-dev/kgateway
+    signals: {last_release: v2.4.6, release_date: '2026-10-06', last_activity: '2026-10-06', authors_last_100_commits: 24, days_for_last_100_commits: null, archived: false}
+  Talos:
+    role: alternate
+    steward: Sidero Labs
+    kind: company
+    home: US
+    region: non-eu
+    support:
+    - Sidero Labs (US)
+    source: github.com/siderolabs/talos
+    signals:
+      last_release: v1.14.2
+      release_date: '2026-09-29'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 13
+      days_for_last_100_commits: 19
+      archived: false
+  Tekton:
+    role: alternate
+    steward: CD Foundation (Linux Foundation)
+    kind: foundation
+    home: US
+    region: neutral
+    support: []
+    source: github.com/tektoncd/pipeline
+    signals:
+      last_release: v1.17.0
+      release_date: '2026-10-01'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 20
+      days_for_last_100_commits: 42
+      archived: false
+  Traefik:
+    role: alternate
+    steward: Traefik Labs
+    kind: company
+    home: FR/US
+    region: europe
+    support:
+    - Traefik Labs (FR)
+    source: github.com/traefik/traefik
+    signals:
+      last_release: v3.7.14
+      release_date: '2026-10-06'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 28
+      days_for_last_100_commits: 32
+      archived: false
+    note: French origin; verify the contracting entity
+  Trino:
+    role: runtime
+    steward: Trino Software Foundation (Starburst)
+    kind: foundation
+    home: US
+    region: neutral
+    support:
+    - Starburst (US)
+    source: github.com/trinodb/trino
+    signals:
+      last_release: '483'
+      release_date: '2026-07-18'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 34
+      days_for_last_100_commits: 6
+      archived: false
+  Trivy:
+    role: toolchain
+    steward: Aqua Security
+    kind: company
+    home: IL
+    region: non-eu
+    support: []
+    source: github.com/aquasecurity/trivy
+    signals:
+      last_release: v0.75.0
+      release_date: '2026-10-01'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 23
+      days_for_last_100_commits: 61
+      archived: false
+  Tuwunel:
+    role: alternate
+    steward: matrix-construct (community)
+    kind: community
+    home: international
+    region: neutral
+    support: []
+    source: github.com/matrix-construct/tuwunel
+    signals:
+      last_release: v1.9.3
+      release_date: '2026-09-25'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 4
+      days_for_last_100_commits: 7
+      archived: false
+    note: fork line of conduwuit; small team
+  VictoriaLogs:
+    role: runtime
+    steward: VictoriaMetrics Inc.
+    kind: company
+    home: US
+    region: non-eu
+    support:
+    - VictoriaMetrics (US)
+    source: github.com/VictoriaMetrics/VictoriaLogs
+    signals:
+      last_release: v1.53.0
+      release_date: '2026-10-01'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 17
+      days_for_last_100_commits: 41
+      archived: false
+  VictoriaMetrics:
+    role: runtime
+    steward: VictoriaMetrics Inc.
+    kind: company
+    home: US
+    region: non-eu
+    support:
+    - VictoriaMetrics (US)
+    source: github.com/VictoriaMetrics/VictoriaMetrics
+    signals:
+      last_release: v1.153.0
+      release_date: '2026-09-28'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 26
+      days_for_last_100_commits: 20
+      archived: false
+    note: engineering largely in Europe
+  vLLM:
+    role: runtime
+    steward: PyTorch Foundation (Linux Foundation)
+    kind: foundation
+    home: US
+    region: neutral
+    support: []
+    source: github.com/vllm-project/vllm
+    signals:
+      last_release: v0.31.0
+      release_date: '2026-10-05'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 77
+      days_for_last_100_commits: 1
+      archived: false
+  Wazuh:
+    role: runtime
+    steward: Wazuh Inc.
+    kind: company
+    home: US
+    region: non-eu
+    support:
+    - Wazuh (US)
+    source: github.com/wazuh/wazuh
+    signals:
+      last_release: v4.14.8
+      release_date: '2026-09-25'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 19
+      days_for_last_100_commits: 5
+      archived: false
+    note: engineering largely in Spain
+  WireGuard:
+    role: runtime
+    steward: Linux kernel (mainline); Jason Donenfeld
+    kind: community
+    home: international
+    region: neutral
+    support: []
+    source: github.com/WireGuard/wireguard-tools
+    signals:
+      last_release: v1.0.20260223
+      release_date: null
+      last_activity: '2026-05-06'
+      authors_last_100_commits: 17
+      days_for_last_100_commits: 2391
+      archived: false
+    note: in-kernel; supported by the host distribution
+  YARA:
+    role: alternate
+    steward: VirusTotal (Google)
+    kind: company
+    home: US
+    region: non-eu
+    support: []
+    source: github.com/VirusTotal/yara
+    signals:
+      last_release: v4.5.8
+      release_date: '2026-07-28'
+      last_activity: '2026-09-23'
+      authors_last_100_commits: 27
+      days_for_last_100_commits: 796
+      archived: false
+    note: maintenance mode; successor YARA-X
+  YARA-X:
+    role: runtime
+    steward: VirusTotal (Google)
+    kind: company
+    home: US
+    region: non-eu
+    support: []
+    source: github.com/VirusTotal/yara-x
+    signals:
+      last_release: v1.21.0
+      release_date: '2026-09-29'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 12
+      days_for_last_100_commits: 68
+      archived: false
+    note: rule-compatible successor of YARA; team in Spain
+  Zammad:
+    role: toolchain
+    steward: Zammad GmbH
+    kind: company
+    home: DE
+    region: eu
+    support:
+    - Zammad (DE)
+    source: github.com/zammad/zammad
+    signals:
+      last_release: 7.3.0-alpha
+      release_date: null
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 11
+      days_for_last_100_commits: 7
+      archived: false
+  ZITADEL:
+    role: alternate
+    steward: ZITADEL AG
+    kind: company
+    home: CH
+    region: europe
+    support:
+    - ZITADEL (CH)
+    source: github.com/zitadel/zitadel
+    signals:
+      last_release: v4.19.4
+      release_date: '2026-10-01'
+      last_activity: '2026-10-06'
+      authors_last_100_commits: 20
+      days_for_last_100_commits: 81
+      archived: false
+    note: AGPL since v3

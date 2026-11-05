@@ -1,0 +1,28 @@
+# The Harbor's PDP: OPA with the class rule (harbor.rego, data.json); the partners' state and band are pushed into its
+# data by the ring-side evaluator (the FTEF reference evaluator); each partner's CA comes from harbor-partners.
+# Its REST API needs the evaluator's token and allows only the evaluator's calls (authz.rego);
+# Envoy's ext_authz port and the health port are not that API.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: harbor-pdp, namespace: vdh-harbor, annotations: {vdh.component: "OPA", vdh.app-version: "v1.21.1"}}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: harbor-pdp}}
+  template:
+    metadata: {labels: {app: harbor-pdp}}
+    spec:
+      securityContext: {runAsNonRoot: true, runAsUser: 65532, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: opa
+          image: docker.io/openpolicyagent/opa:1.21.1-envoy-static@sha256:b4a8bbe87c9405419d03d1a8b6b9f4b540e7ea8ff8832248d6339b30594b344b
+          # files, not the mount: its ..data copies would load twice
+          args: ["run", "--server", "--addr=[::]:8181", "--diagnostic-addr=[::]:8282", "--disable-telemetry", "--authentication=token", "--authorization=basic", "--config-file=/config/opa-config.yaml", "/policy/data.json", "/policy/harbor.rego", "/policy/mask.rego", "/policy/authz.rego", "/partners/partners.json", "/api/api.json"]
+          ports: [{containerPort: 8181}, {containerPort: 9191}]
+          readinessProbe: {httpGet: {path: /health, port: 8282}}
+          securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}, readOnlyRootFilesystem: true}
+          resources: {requests: {cpu: 20m, memory: 64Mi}, limits: {memory: 256Mi}}
+          volumeMounts: [{name: policy, mountPath: /policy, readOnly: true}, {name: config, mountPath: /config, readOnly: true}, {name: partners, mountPath: /partners, readOnly: true}, {name: api, mountPath: /api, readOnly: true}]
+      # harbor-partners (principal to its CA certificate) is made at admission, like partner-ca: until a partner is
+      # admitted the PDP does not start, and the gateway refuses every client anyway (no CA to validate against).
+      # harbor-pdp-api (the SHA-256 of the evaluator's token) is made at the same admission.
+      volumes: [{name: policy, configMap: {name: harbor-policy}}, {name: config, configMap: {name: harbor-opa-config}}, {name: partners, configMap: {name: harbor-partners}}, {name: api, secret: {secretName: harbor-pdp-api}}]

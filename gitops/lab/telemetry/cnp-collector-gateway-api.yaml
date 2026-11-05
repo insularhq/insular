@@ -1,0 +1,8 @@
+# The gateway collector alone reaches the Kubernetes API, to watch events; the namespace's other pods do not.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata: {name: collector-gateway-to-api, namespace: vdh-telemetry}
+spec:
+  endpointSelector: {matchLabels: {app: collector-gateway}}
+  egress:
+    - toEntities: [kube-apiserver]

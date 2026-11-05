@@ -1,0 +1,55 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# The ring's Harbor (ADR-0111, ADR-0151, federation design stages 4 to 6): the policy enforcement point at the federation seam.
+# Every ring runs one. What belongs to a federation, not to the ring, is made when a partner is admitted
+# (by the lab tooling): the partner's CA certificate (ConfigMap partner-ca, exchanged out of band, stage 2,
+# every admitted partner's CA), the binding of each partner to its own CA (ConfigMap harbor-partners), the
+# hash of the evaluator's token for the PDP's API (Secret harbor-pdp-api), the
+# partner record and its lease. Until then the Harbor refuses every client (no CA to validate against) and the PDP
+# does not start.
+# The ring's domain is substituted by Flux from flux-system/ring-settings (the lab default without it).
+resources:
+  - certificate.yaml
+  - networkpolicy.yaml
+  - deployment-harbor-pdp.yaml
+  - service-harbor-pdp.yaml
+  - deployment-harbor-intake.yaml
+  - service-harbor-intake.yaml
+  - deployment-shared-docs.yaml
+  - service-shared-docs.yaml
+  - deployment-matrix.yaml
+  - service-matrix.yaml
+  - gateway-harbor-gw.yaml
+  - clienttrafficpolicy-harbor-mtls.yaml
+  - securitypolicy-harbor-authz.yaml
+  - httproute-harbor-classes.yaml
+  - httproute-harbor-identity.yaml
+  - httproute-harbor-cloud.yaml
+  - httproute-harbor-matrix.yaml
+  - service-harbor-edge.yaml
+  - configmap-harbor-egress-dyn.yaml
+  - deployment-harbor-egress.yaml
+  - service-harbor-egress.yaml
+  - ciliumnetworkpolicy-harbor-from-ring-front.yaml
+  - referencegrant-harbor-to-keycloak.yaml
+  - referencegrant-harbor-to-opencloud.yaml
+  - referencegrant-harbor-to-synapse.yaml
+configMapGenerator:
+  - name: harbor-policy
+    namespace: vdh-harbor
+    files: [harbor.rego, data.json, mask.rego, authz.rego]
+  - name: harbor-opa-config
+    namespace: vdh-harbor
+    files: [opa-config.yaml]
+  - name: harbor-intake-code
+    namespace: vdh-harbor
+    files: [intake.py]
+  - name: shared-docs
+    namespace: vdh-harbor
+    files: [joint-plan.md]
+  - name: tuwunel-config
+    namespace: vdh-harbor
+    files: [tuwunel.toml]
+  - name: harbor-egress-bootstrap
+    namespace: vdh-harbor
+    files: [egress-bootstrap.yaml]

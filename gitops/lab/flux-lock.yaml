@@ -1,0 +1,11 @@
+# Flux lock (ADR-0126): the Flux release the lab installs and the digest of every controller
+# image, recorded on the lab and verified with cosign against Flux's own release signatures (keyless,
+# certificate identity ^https://github.com/fluxcd/, issuer https://token.actions.githubusercontent.com). The layer
+# script installs Flux from `flux install --export` with these digests and refuses a controller without one. This file
+# is not a Kubernetes resource and is not listed in any kustomization.
+flux_version: "2.9.6"
+controllers:
+  - {name: source-controller, image: ghcr.io/fluxcd/source-controller, tag: "v1.9.6", digest: "sha256:6a6693172589f8ff26123a231d5fa6ceb194a6efb4dc647cdf057c959f76a2e3", upstream_signature: verified}
+  - {name: kustomize-controller, image: ghcr.io/fluxcd/kustomize-controller, tag: "v1.9.6", digest: "sha256:2ebeaa341da77d52b6abbbba5efcee0450d47f8b42f0e6f33b08f9020262d606", upstream_signature: verified}
+  - {name: helm-controller, image: ghcr.io/fluxcd/helm-controller, tag: "v1.6.5", digest: "sha256:0d52fff5c4d476277b8fcb6beb9041e269adb5db943fe69f5a806ea0c92b1511", upstream_signature: verified}
+  - {name: notification-controller, image: ghcr.io/fluxcd/notification-controller, tag: "v1.9.4", digest: "sha256:840f318265ee26f0d2c48a158bf7896b22aa4e998e320a18646309f0e40b15da", upstream_signature: verified}

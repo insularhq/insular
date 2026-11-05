@@ -1,0 +1,20 @@
+# Example change record (ADR-0084, ADR-0087): raising the per-master read quota. A loosening change on a fleet-scope
+# master; the test op carries the old value so the direction is computed from the field's meaning (limit-max).
+id: 0192ff3a-6c1e-7b2a-9d4e-1f2a3b4c5d6e
+intent: {why: "the estate audit job needs 400 single reads per hour on the DCIM during the quarterly review", goal: G-2, decision: "", requested_by: "person:op-7f3a"}
+target: {master: git, entities: ["policies/master-protection.yaml#/read_side/quotas"], scope: site, site: "", tenant: ""}
+change:
+  kind: declare
+  document: policies/master-protection.yaml
+  base_revision: 528883a6547811dd626ca3145f010b7d4e93cd3a
+  patch:
+    - {op: test, path: /read_side/quotas/single_reads_per_hour_per_master, value: 200}
+    - {op: replace, path: /read_side/quotas/single_reads_per_hour_per_master, value: 400}
+state: planned
+events:
+  - {state: draft, at: "2026-10-10T03:39:00Z", by: "person:op-7f3a"}
+  - {state: planned, at: "2026-10-10T03:40:00Z", by: "spiffe://vdh.example/adapter-git"}
+approvals: []
+decisions:
+  - {decision_id: 0192ff3a-7a10-7c3d-8e4f-2a3b4c5d6e7f, change_id: 0192ff3a-6c1e-7b2a-9d4e-1f2a3b4c5d6e, step: plan, outcome: planned, reason: "plan computed by the adapter", policy: "baseline", inputs_digest: "sha256:4f1c", at: "2026-10-10T03:40:00Z", signature: "sig:adapter-git:example",
+     taker: {type: automated, spiffe_id: "spiffe://vdh.example/adapter-git", code_digest: "sha256:9a0e", policy_version: "baseline"}}

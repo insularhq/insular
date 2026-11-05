@@ -1,0 +1,4 @@
+Vendored from https://github.com/ftef-spec/spec at commit c50b2fae4cb8ef6f4582416b33f74a7b6cadfd8e (FTEF 0.1 pre-draft).
+Copyright 2026 FTEF contributors. Licensed under the Apache License 2.0 (https://www.apache.org/licenses/LICENSE-2.0).
+Files: schemas/0.1/partner-record.schema.json, schemas/0.1/policy.schema.json, examples/valid/policy-defaults.json, tools/evaluate.py; unmodified.
+Refresh: copy them again and update the commit above; tests/test_model.py checks the model against them.

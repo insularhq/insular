@@ -1,0 +1,26 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# Pharos (ADR-0115): Keycloak with its database and the realm generated from the model (tools/pharos.py).
+resources:
+  - postgres-keycloak.yaml
+  - objectstore-ring-store.yaml
+  - scheduledbackup-kc-db.yaml
+  - deployment-keycloak.yaml
+  - service-keycloak.yaml
+  - httproute-id.yaml
+  - networkpolicy-default-deny-ingress.yaml
+  - job-realm-apply.yaml   # the realm from the model, applied on every change (generated)
+  # KeyClerk beside Keycloak; its configuration rendered from the registers (tools/keyclerk_config.py)
+  - certificate-keycloak-internal.yaml
+  - pvc-keyclerk-desk.yaml
+  - pvc-keyclerk-state.yaml
+  - deployment-keyclerk.yaml
+  - service-keyclerk.yaml
+  - httproute-access.yaml
+configMapGenerator:
+  - name: realm-vdh
+    namespace: vdh-identity
+    files: [realm-vdh.json]
+  - name: keyclerk-config
+    namespace: vdh-identity
+    files: [keyclerk.yaml, keyclerk-seed.yaml]

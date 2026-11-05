@@ -1,0 +1,36 @@
+# Environments: the same signed bundles promoted unchanged (same digest, never rebuilt) through separate instances,
+# each its own trust domain. No environment shares trust with another; real or pseudonymised content only under production controls.
+# Two separate axes per environment (ADR-0016): FIDELITY (schema, volume, distribution, traffic and bandwidth
+# profile, metadata) must be representative of production wherever results or training must transfer; CONTENT
+# (real, pseudonymised, synthetic) decides the controls. Real or pseudonymised content (pseudonymised data is still
+# personal data) makes the environment inherit production's controls for that label (high-water mark, ADR-0007).
+environments:
+  development: {size: S, fidelity: {schema: same, volume: reduced, traffic: none}, content: synthetic, max_label: Internal, controls: own, trust_domain: own, lifetime: persistent, promotes_to: test}
+  test:        {size: S, fidelity: {schema: same, volume: representative, traffic: replayed-profile}, content: synthetic, max_label: Internal, controls: own, trust_domain: own, lifetime: per-pipeline, promotes_to: acceptance, note: "volumes, sizes and bandwidth follow the production profile; payloads are meaningless"}
+  acceptance:  {size: M, fidelity: {schema: same, volume: representative, traffic: replayed-profile}, content: pseudonymised, max_label: Sensitive, controls: production-equivalent, trust_domain: own, lifetime: persistent, promotes_to: production, note: "production-shaped data through the AI egress gate, or real data where the client accepts it under the same controls; onboarding screenshot capture uses a synthetic tenant"}
+  production:  {size: per-client, fidelity: {schema: same, volume: real, traffic: real}, content: real, max_label: per-client, controls: production, trust_domain: own, lifetime: persistent, promotes_to: null}
+  education:   {size: M, fidelity: {schema: same, volume: representative, traffic: replayed-profile}, content: synthetic, max_label: Internal, controls: own, trust_domain: own, lifetime: persistent, promotes_to: null, release: same-as-production, note: "synthetic data generated from production profiles so exercises behave like the real thing; pseudonymised sets only with production-equivalent controls"}
+  sandbox:     {size: S, fidelity: {schema: same, volume: reduced, traffic: none}, content: synthetic, max_label: Internal, controls: own, trust_domain: own, lifetime: "ephemeral, 72 h", promotes_to: null, budget_eur_per_day: 5, note: "one per learner, self-service; destroyed automatically"}
+
+profiles:   # how representativeness is obtained without moving content
+  extraction: "a profile job runs inside the production tenant: schema, record counts, size and value distributions, traffic and bandwidth patterns; no content"
+  labelling: "a profile is itself labelled (volumes can reveal business information) and leaves the tenant only through the ai-egress-gate"
+  generation: "synthetic generators and traffic replay use the profile; pseudonymisation uses the AI egress gate and its re-identification stays in production"
+  refresh: "profiles are refreshed per release so test, acceptance and education stay representative"
+
+rules:
+  - "promotion moves the signed bundle by digest; a rebuild is a new release that starts again at development"
+  - "no credential, key or trust anchor is shared between environments; each has its own roots and realm"
+  - "synthetic content uses fictional fixtures (vdh-prefixed firms, neutral places) shaped by production profiles"
+  - "an environment holding real or pseudonymised content meets production's controls for its label"
+  - "education runs the production release; a sandbox may run any released version"
+
+publication:   # Kerckhoffs: security rests on keys and tokens, not on secrecy of the design
+  publishable:
+    - architecture model, packs, policies, patterns, intent and decision records
+    - code, bundles, SBOMs and the evidence format
+    - platform IP addresses and hostnames (an address conveys no trust)
+  never_published:
+    - tenant identities, client lists and contact persons (client confidentiality, not security by obscurity)
+    - tenant deviations, evidence and incident details
+    - secrets, tokens, keys and break-glass material

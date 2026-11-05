@@ -1,0 +1,188 @@
+# Layers and seam classes (ADR-0076): the one definition of the platform stack and of the standard interfaces
+# between its parts, so contracts can be standardised and implementations swapped. Checked by tools/layers.py.
+#
+# Two axes, never mixed:
+#   stack layers (this file): what a component IS in the platform, bottom-up; the SPOG panes use the same ids.
+#   protocol layers (OSI L7/L6/L4/L3 per seam): how a seam is BUILT; designed per seam in platform/seams.yaml and
+#     questioned by the interrogator.
+# A contract (catalog/contracts.yaml) sits on one stack sub-layer and lists the seam classes it must speak; every seam
+# (platform/seams.yaml) carries one seam class. Swapping an implementation means: another implementation that speaks
+# the same classes and passes their conformance. A seam whose class is own-api or proprietary is a named lock-in
+# point with an exit (below).
+
+layers:   # bottom-up; ids equal platform/spog.yaml layers
+  - id: substrate
+    sub: {facility: "power, cooling, rack, physical access", hardware-and-firmware: "servers, TPM, BMC, NICs, measured boot",
+          host-os: "immutable host OS, transactional updates, SELinux, host baseline", orchestration-and-runtime: "Kubernetes, container and sandboxed runtimes, CSI"}
+  - id: network
+    sub: {fabric-and-addressing: "underlay, address register, routing, site links", segmentation: "network policy, host firewall, zones",
+          overlay-and-access: "WireGuard and NetBird overlays, VPN posture", edge-and-exchange: "gateway cells, WAF, internet exchange gateway (IEG)",
+          name-and-time: "DNS, DNSSEC, NTP with NTS"}
+  - id: identity-and-trust
+    sub: {human-identity: "identity broker, federation, provisioning", device-identity: "enrolment, device certificates, posture",
+          workload-identity: "SPIFFE, service accounts", secrets-and-pki: "secrets, internal CAs, ACME", attestation: "TPM attestation, trust signals",
+          authorization: "policy decision, AuthZEN", privileged-access: "bastion, just-in-time access"}
+  - id: platform-services
+    sub: {delivery-and-gitops: "forge, registry, reconciliation, release, updates", messaging: "event backbone, schema registry",
+          data-services: "databases, object storage", storage-and-backup: "backup repositories, restore", observability: "telemetry, metrics, logs, dashboards, status, alerting"}
+  - id: workloads
+    sub: {tenant-applications: "the tenant's own services", collaboration: "documents, chat, office", isolated-access: "remote browser, VDI, clientless gateways",
+          communication: "voice, SMS"}
+  - id: data-and-ai
+    sub: {data-platform: "query, lakehouse, quality, metadata", ai-serving: "inference, guardrails, model registry", data-exchange: "dataspace connectors, usage policies"}
+  - id: security-and-compliance
+    sub: {detection-and-response: "runtime detection, IDS, SIEM", content-safety: "AV, CDR, metadata removal, secret scanning", assurance-and-audit: "evaluator, audit chain, archive"}
+  - id: business
+    sub: {governance: "decision inbox, policy model, interrogation", service-management: "ITSM, CMDB", portal: "developer and tenant portal"}
+
+facets:   # orthogonal views: every capability is seen through each of these; tools/facets.py resolves them (ADR-0082)
+  - {id: layer, question: "where does it sit in the stack?", source: platform/layers.yaml}
+  - {id: interfaces, question: "which seam classes does it provide and consume?", source: catalog/contracts.yaml}
+  - {id: owner, question: "who is accountable for it?", source: platform/facets.yaml}
+  - {id: supply, question: "who stewards it, from which jurisdiction?", source: catalog/provenance.yaml}
+  - {id: support, question: "can a client buy support, or do we self-support?", source: catalog/enterprise-support.yaml}
+  - {id: security_posture, question: "what is its advisory record?", source: catalog/security-posture.yaml}
+  - {id: lifecycle, question: "which version is pinned and patched?", source: platform/stack.lock.yaml}
+  - {id: protection, question: "who may change it and how?", source: policies/master-protection.yaml}
+  - {id: observability, question: "how is it observed?", source: platform/observability.yaml}
+  - {id: audit, question: "where is its audit trail?", source: platform/observability.yaml}
+  - {id: risk, question: "which risks does it carry or treat?", source: "policies/infra-bindings.yaml and risk registers"}
+  - {id: trust, question: "what does its trust rest on?", source: "policies/infra-bindings.yaml anchors"}
+  - {id: federation, question: "does it run HA, parent-child, peer and alone?", source: platform/layers.yaml topology}
+  - {id: resilience, question: "what are its recovery targets and drills?", source: "platform/resops.yaml, platform/facets.yaml"}
+
+planes:   # cross-cutting: not a stack layer, present in every layer (ADR-0081)
+  observability: {model: platform/observability.yaml, covers: "every layer, master and lever: signals, audit, access tiers, alarms and actions"}
+
+no_contract:   # sub-layers that hold no swappable software component, and what governs them instead
+  substrate/facility: "procured space, power and cooling: platform/placement.yaml and platform/dependencies.yaml"
+  workloads/tenant-applications: "the tenant's own services: bound by the platform baseline app contract, not swapped by VDHome"
+  workloads/communication: "SMS sits in the alerting contract (Gammu); voice (Asterisk) is optional and has no contract yet"
+
+interrogation_groups:   # platform/interrogation.yaml question groups -> the stack layers they question
+  governance: [business]
+  service-management: [business]
+  identity-and-access: [identity-and-trust]
+  platform-operations: [platform-services, security-and-compliance]
+  application-and-data: [workloads, data-and-ai]
+  runtime: [substrate]
+  network-osi: [network]
+  placement-and-ddil: [network, platform-services]
+  hosting-and-physical: [substrate]
+
+seam_classes:
+  # kind: open-standard (a published, versioned specification) | de-facto (a dominant API with several independent
+  # implementations) | own (VDHome publishes the OpenAPI) | proprietary (one implementation: a lock-in point)
+  web-access:        {kind: open-standard, specs: ["TLS 1.3 (RFC 8446)", "HTTP/1.1, HTTP/2, HTTP/3 (RFC 9110-9114)", "WebAuthn Level 3 for people"], conformance: "testssl.sh profile per label; WebAuthn conformance tools"}
+  service-mtls:      {kind: open-standard, specs: ["HTTP or gRPC over mutual TLS 1.3, instance CA"], conformance: "evaluator synthetic calls with and without a client certificate"}
+  authn-federation:  {kind: open-standard, specs: ["OpenID Connect Core 1.0 and Discovery", "OAuth 2.1 with DPoP (RFC 9449)", "SCIM 2.0 (RFC 7643/7644)", "CIBA", "Token Exchange (RFC 8693)", "SAML 2.0 for legacy partners only"], conformance: "OpenID Foundation certification profiles; scripted login and SCIM round trips"}
+  authz-decision:    {kind: open-standard, specs: ["OpenID AuthZEN Authorization API 1.0", "Envoy ext_authz (gRPC) as the proxy binding", "OPA bundle API with signed bundles for policy distribution"], conformance: "AuthZEN interop test suite; decision replay from the decision log"}
+  security-signals:  {kind: open-standard, specs: ["OpenID Shared Signals Framework with CAEP and RISC", "RATS architecture (RFC 9334) attestation results, EAT (RFC 9711)"], conformance: "SSF transmitter and receiver interop; signed, timestamped results"}
+  secrets:           {kind: de-facto, specs: ["Vault-compatible HTTP API (KV v2, transit, database, SSH)", "Kubernetes Secrets Store CSI driver"], conformance: "the same client calls against OpenBao and the alternate in the lab"}
+  pki:               {kind: open-standard, specs: ["ACME (RFC 8555)", "EST (RFC 7030)", "X.509 profile (RFC 5280)", "Vault PKI issuer API (de facto) for cert-manager"], conformance: "issuance and renewal round trips; certificate profile lint"}
+  workload-identity: {kind: open-standard, specs: ["SPIFFE ID and X.509-SVID", "SPIFFE federation (bundle endpoint)", "Kubernetes bound service-account tokens"], conformance: "SVID validation across two trust domains"}
+  orchestration-api: {kind: open-standard, specs: ["Kubernetes API (CNCF certified conformance)", "RuntimeClass and the OCI runtime spec", "CRDs with OpenAPI v3 schemas"], conformance: "Sonobuoy or Hydrophone conformance run"}
+  artefact-supply:   {kind: open-standard, specs: ["OCI distribution spec 1.1", "Sigstore bundle (cosign) signatures", "in-toto and SLSA provenance", "CycloneDX SBOM", "signed git commits for desired state"], conformance: "pull, verify and admission test against the release root"}
+  host-update:       {kind: open-standard, specs: ["rpm-md repositories with signed metadata", "Eclipse hawkBit DDI API", "RAUC bundles (signed, verified)"], conformance: "update and rollback drill on a lab host and a lab device"}
+  telemetry:         {kind: open-standard, specs: ["OTLP 1.x (traces, metrics, logs)", "Prometheus remote write 2.0"], conformance: "the OpenTelemetry Collector forwards to the alternate backend unchanged"}
+  events:            {kind: open-standard, specs: ["CloudEvents 1.0 (NATS and HTTP bindings)", "NATS protocol with JetStream and leaf nodes", "webhooks carrying CloudEvents", "schema registry compatible REST API"], conformance: "publish and consume round trip with schema validation"}
+  object-storage:    {kind: de-facto, specs: ["Amazon S3 API (the subset in the contract)", "Apache Iceberg REST catalog for tables"], conformance: "a reduced s3-tests run per implementation"}
+  backup-repository: {kind: de-facto, specs: ["restic repository format", "restic REST server protocol (append-only)", "S3 for the repository backend"], conformance: "restore drill from the alternate backend"}
+  sql-data:          {kind: open-standard, specs: ["PostgreSQL frontend/backend protocol v3", "ANSI SQL over the Trino HTTP protocol", "PostgreSQL logical replication"], conformance: "application test suite against the alternate database"}
+  name-and-time:     {kind: open-standard, specs: ["DNS (RFC 1035), DNSSEC validation", "DNS64 (RFC 6147) at the IEG", "NTP with NTS (RFC 8915)"], conformance: "resolver and time checks from the evaluator"}
+  overlay-access:    {kind: open-standard, path: true, specs: ["WireGuard", "SSH with certificates", "Kubernetes API", "RDP through the bastion"], conformance: "access drill per role through the overlay"}
+  realtime-media:    {kind: open-standard, specs: ["WebRTC (RFC 8825 family)", "SIP over TLS with SRTP"], conformance: "media session through the VPN and the gateway"}
+  collaboration:     {kind: open-standard, specs: ["WOPI", "Matrix client-server API", "Matrix server-server (federation) API"], conformance: "Matrix Complement suite; WOPI validator"}
+  data-exchange:     {kind: open-standard, specs: ["Eclipse Dataspace Protocol", "ODRL 2.2 usage policies"], conformance: "Dataspace Protocol TCK"}
+  ai-inference:      {kind: de-facto, specs: ["OpenAI-compatible chat and completions HTTP API"], conformance: "the same prompt suite through the inference gateway against each server"}
+  content-inspection: {kind: open-standard, specs: ["ICAP (RFC 3507) as the target binding", "Proxy-Wasm ABI for in-proxy filters", "until migrated: clamd protocol and per-tool calls behind the release gateway's own adapter"], conformance: "the EICAR and corpus suite through the release gateway"}
+  oob-management:    {kind: open-standard, specs: ["DMTF Redfish (DSP0266): event, telemetry and update services", "DMTF SPDM (DSP0274) for component attestation", "IPMI disabled"], conformance: "DMTF Redfish Service Validator and Protocol Validator"}
+  own-api:           {kind: own, specs: ["OpenAPI 3.1 published by VDHome per service"], conformance: "contract tests generated from the OpenAPI document"}
+  proprietary:       {kind: proprietary, specs: ["one implementation's own protocol"], conformance: "none: the exit below is the plan"}
+
+federation:   # HA, parent-child and peer-to-peer federation must stay possible everywhere; a site
+  # can always CHOOSE to deploy capacity and run locally through a WAN failure. Central-only is never the default.
+  principle: "every seam class states how it runs HA inside a site, how a child site federates with a parent, how peers federate, and what a site does alone when the WAN is down; capacity per site is a deployment choice, never ruled out by the architecture"
+  modes: [ha, parent_child, peer, wan_down]
+
+
+temporary_isle:   # ADR-0117: what a temporary Isle may do for the other PoPs, per seam class. It relays, caches,
+  # aggregates, serves locally and passes on revocations; it never creates trust for others (no grants, no issuing, no
+  # signing, no authoring, no accepting releases, no electing a writer). Each PoP's own wan_down behaviour is unchanged.
+  # Enforced by the baseline rule TEMP-ISLE-NO-TRUST (risk RI-19) and bounded by TEMP-ISLE-LEASE (risk RI-20).
+  allowed: [relay, cache, aggregate, serve-local, revoke, none]
+  forbidden: [grant, renew, issue, sign, author, mint, accept-release, elect-writer]
+  roles:
+    web-access:        {may: [serve-local], note: "its own gateway for its own apps; never publishes routes for other PoPs"}
+    service-mtls:      {may: [none], note: "each PoP's own CA keeps its wan_down behaviour; the temporary Isle issues nothing for others"}
+    authn-federation:  {may: [serve-local], note: "verifies tokens and passkeys already issued, within their validity; issues no identities"}
+    authz-decision:    {may: [relay, serve-local], note: "passes on the last signed bundles; never writes or signs policy"}
+    security-signals:  {may: [relay, aggregate, revoke], note: "forwards signals and passes revocations on, so they land sooner"}
+    secrets:           {may: [revoke], note: "passes on suspend and revoke; grants and renews no lease and makes no key"}
+    pki:               {may: [relay, revoke], note: "relays revocation lists it holds; signs nothing"}
+    workload-identity: {may: [relay], note: "relays trust bundles already signed; mints no SVIDs for others"}
+    orchestration-api: {may: [none], note: "each PoP runs its own cluster; the temporary Isle orchestrates nobody"}
+    artefact-supply:   {may: [cache], note: "a read-only mirror of signed artefacts; accepts no new release"}
+    host-update:       {may: [cache], note: "serves already signed updates; never a new one"}
+    telemetry:         {may: [aggregate, relay], note: "collects PoP signals and forwards them when an Isle returns"}
+    events:            {may: [relay], note: "relays events between PoPs"}
+    object-storage:    {may: [cache], note: "holds ciphertext copies; keys stay with the key access service"}
+    backup-repository: {may: [cache], note: "an extra ciphertext copy; the backup classes still count only real copies"}
+    sql-data:          {may: [cache], note: "read replicas only; a product's writer never moves to a temporary Isle"}
+    name-and-time:     {may: [serve-local], note: "DNS from its cache; time from holdover, marked as drifting"}
+    overlay-access:    {may: [relay], note: "relays over existing tunnels and keeps its NetBird relay serving any Skiff of the ring; may run a NetBird signal stand-in under the ring's signal name, which forwards end-to-end encrypted connection offers between peers already known (ADR-0124); never NetBird management, admits no new peer"}
+    realtime-media:    {may: [relay], note: "relays media between PoPs"}
+    collaboration:     {may: [none], note: "Matrix homeservers federate peer to peer without a centre"}
+    data-exchange:     {may: [none], note: "releases to partners need the owner; a PoP's own Harbor follows its own rules"}
+    ai-inference:      {may: [serve-local], note: "its own models for its own users"}
+    content-inspection: {may: [serve-local], note: "inspects with the last signed rules; their age raises the band"}
+    oob-management:    {may: [none], note: "never reaches another PoP's BMCs"}
+    own-api:           {may: [serve-local], note: "its own services"}
+    proprietary:       {may: [none], note: "no role"}
+topology:   # per seam class; gap: what the chosen implementation cannot do yet, with its mitigation
+  web-access:        {ha: "two or more gateway cells, virtual IP announced by Cilium", parent_child: "each site runs its own gateway for its own apps; the parent publishes routes to child apps", peer: "gateway-to-gateway mTLS between cells (L08)", wan_down: "local users reach local apps through the site gateway"}
+  service-mtls:      {ha: "replicas behind the service", parent_child: "the site CA is an intermediate under the parent root", peer: "federated trust bundles between sites", wan_down: "the site CA keeps issuing; existing certificates stay valid"}
+  authn-federation:  {ha: "Keycloak cluster per site", parent_child: "the child realm brokers to the parent (OIDC) and receives users by SCIM; passkeys registered at the child work locally", peer: "mutual OIDC brokering between site realms", wan_down: "the site IdP authenticates synced users with local passkeys and issues tokens locally"}
+  authz-decision:    {ha: "an OPA next to every gateway cell", parent_child: "the parent signs policy bundles; children cache and verify them", peer: "every site verifies the same signed bundles from any mirror", wan_down: "the last signed bundle keeps deciding (fail-static); bundle age raises the risk band"}
+  security-signals:  {ha: "several receivers per site", parent_child: "SSF streams up and down; children forward CAEP events to the parent", peer: "SSF streams between peers", wan_down: "local evaluation continues; events queue for later delivery"}
+  secrets:           {ha: "OpenBao Raft cluster of three or five per site", parent_child: "per-site clusters provisioned from git and the parent's sealed artefacts", peer: "independent per-site clusters", wan_down: "the site cluster serves alone", gap: "OpenBao has no native cross-cluster replication (a Vault Enterprise feature): federation is by provisioning, not replication; secrets that must exist at several sites are issued per site"}
+  pki:               {ha: "two issuers per site", parent_child: "the offline parent root signs a site intermediate", peer: "a shared root or cross-certification", wan_down: "the site intermediate issues locally; revocation data is served locally"}
+  workload-identity: {ha: "SPIRE server HA per site", parent_child: "nested SPIRE (native)", peer: "SPIFFE federation through bundle endpoints (native, L02)", wan_down: "the site SPIRE server keeps issuing SVIDs"}
+  orchestration-api: {ha: "K3s with embedded etcd, three servers per site", parent_child: "Flux at the child pulls from the parent's git and registry mirrors", peer: "one cluster per site, never a stretched cluster", wan_down: "the site cluster runs fully on its own"}
+  artefact-supply:   {ha: "registry replicas", parent_child: "in-site mirror at the child, filled only by the release loader from TUF-verified media or the parent (ADR-0129), signatures carried along", peer: "any peer can serve as a mirror; verification is against the release root, not the source", wan_down: "the local mirror serves; signatures verify offline"}
+  host-update:       {ha: "two repository mirrors", parent_child: "rpm-md mirror and hawkBit at the child, fed from the parent", peer: "mirrors from any peer", wan_down: "updates come from the local mirror or pause; nothing breaks"}
+  telemetry:         {ha: "a collector per node", parent_child: "the child stores locally and forwards to the parent through a persistent queue", peer: "not needed; dashboards query peers when reachable", wan_down: "local storage, dashboards and alerting keep working; the queue drains after the WAN returns"}
+  events:            {ha: "NATS cluster per site", parent_child: "leaf nodes with their own JetStream domain (native, M09)", peer: "NATS gateways between site clusters (native)", wan_down: "the local JetStream domain buffers; streams resync on reconnect"}
+  object-storage:    {ha: "Garage with three nodes per zone", parent_child: "copies to the parent with versioning", peer: "a Garage cluster spanning sites as zones (native)", wan_down: "the local zone serves"}
+  backup-repository: {ha: "two repositories", parent_child: "site repository plus an append-only copy at the parent", peer: "cross-site append-only copies", wan_down: "local backups continue; copies catch up later"}
+  sql-data:          {ha: "CloudNativePG primary and replicas per site", parent_child: "a replica cluster at the parent (native)", peer: "logical replication for chosen tables", wan_down: "the site primary keeps serving"}
+  name-and-time:     {ha: "two resolvers and two time sources per site", parent_child: "the child is authoritative for its own zones and forwards the rest", peer: "conditional forwarding between sites", wan_down: "local zones and cache keep answering; time from a local source (GNSS or a local stratum)"}
+  overlay-access:    {ha: "one active NetBird management and signal per ring with a warm standby on another Isle, sharing the ring's PostgreSQL (ADR-0124); WireGuard peers are static; a NetBird relay on every Isle and Islet, so a Skiff reaches the overlay through any of them when its own Islet is down (ADR-0118)", parent_child: "the ring's management serves its children; a child reaches it through any relay of the ring", peer: "WireGuard site-to-site tunnels; optionally, and only for federation with partners and other information domains, strongSwan IKEv2 with X.509 certificates from the site PKI, terminating at the site's Harbor (ADR-0118)", wan_down: "established tunnels and the bastion inside the site keep working", gap: "active-active NetBird management and signal is Enterprise-only, so the open build runs one active instance: while it is unreachable, traffic in flight continues but new connections, enrolments and policy changes wait until the warm standby takes over (ADR-0124)"}
+  realtime-media:    {ha: "two media relays per site", parent_child: "local relays; calls to the parent route through the gateway", peer: "SIP trunks or WebRTC between sites", wan_down: "local sessions continue"}
+  collaboration:     {ha: "two instances behind the gateway", parent_child: "Matrix: each site homeserver federates with the parent (native)", peer: "Matrix federation (native, O13)", wan_down: "the local homeserver keeps local rooms; federation catches up", gap: "CryptPad and the office suite do not federate: one instance per site, documents shared across sites through the release gateway"}
+  data-exchange:     {ha: "two connectors", parent_child: "the parent connector brokers catalogues", peer: "Dataspace Protocol between connectors (native)", wan_down: "local exchange only"}
+  ai-inference:      {ha: "two inference servers behind the inference gateway", parent_child: "models mirrored from the parent", peer: "a peer's gateway as overflow when reachable", wan_down: "local models keep serving"}
+  content-inspection: {ha: "the release gateway's inspectors run per site", parent_child: "signatures and rules mirrored from the parent", peer: "mirrors from any peer", wan_down: "inspection continues on the last signed rules; their age raises the risk band"}
+  oob-management:    {ha: "two management paths per site (two bastions, two switches for the management network)", parent_child: "each site manages its own BMCs; desired firmware and BIOS settings come from the parent's git", peer: "not federated: a BMC is managed only by its own site", wan_down: "the site manages its BMCs alone with the last approved settings"}
+  own-api:           {ha: "per component", parent_child: "per component", peer: "per component", wan_down: "per component; see proprietary_exits"}
+  proprietary:       {ha: "per component", parent_child: "per component", peer: "per component", wan_down: "per component; see proprietary_exits"}
+
+seam_aliases:   # contract implementation name -> the names it carries as a seam end
+  CloudNativePG: [PostgreSQL]
+  SUSE Micro: [SUSE Micro, hosts, managed hosts]
+
+proprietary_exits:   # every proprietary or own-api seam names how it is left; reviewed with the contracts
+  O08: "Gammu GSM modem: an EU SMS API with an HTTP contract, or SIP SMS through the voice trunk"
+  O09: "CloudNativePG instance manager: internal to the operator; the exit is the database contract (PostgreSQL wire), not this seam"
+  O16: "Garage RPC: internal replication of one implementation; the exit is the object-storage contract (S3)"
+  O23: "Wazuh agent protocol: agents replaced by OpenTelemetry and osquery feeding the SIEM over OTLP"
+  O24: "Salt: Uyuni stays optional; hosts update through rpm-md and upgrade plans, which need no Salt"
+  O26: "Proxmox Backup Server protocol: VM backups are not the restore path for stateful services (resilience.yaml); restic covers data"
+  O27: "Proxmox API: the hypervisor is replaceable under Kubernetes; Proxmox is only the L-size substrate"
+  O37: "NetBox to Valkey (RESP): tasks and cache are rebuilt; any RESP server replaces Valkey"
+  O39: "ipam-drift reads NetBox's REST API: the rules are data in the reconciler; another DCIM's API is a new reader, the findings stay"
+  S15: "evaluator to parent: VDHome's own signed protocol, OpenAPI published"
+  M23: "ReliKey agent to KeyClerk: KeyClerk's published edge contract (bundle format, signed requests, conformance set); another agent that passes the set replaces ReliKey"
+  M24: "ReliKey agent to Warpgate's admin API: only the agent's bastion adapter knows it; another bastion is another adapter behind the same port"
+  M06: "GLPI inventory import: generated from the model; another ITSM gets the same generated data"
+  M07: "Backstage entities: generated from the model; the model is the source"

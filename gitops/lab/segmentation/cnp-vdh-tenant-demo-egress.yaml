@@ -1,0 +1,26 @@
+# ADR-0153, ADR-0152: the tenant's egress floor, owned by the platform (this unit), not the tenant: a
+# tenant workload reaches the ring's resolver, the ring's own names (the ring's edge DNS rewrite sends *.<ring domain> to the gateway) and partners only through the Harbor's way out (harbor-egress); nothing else, the
+# internet included.
+# Without the floor a tenant admin could trust any Open Cloud
+# Mesh server and share around the Harbor. A tenant that needs another destination asks for it as a reviewed change
+# here (time-boxed, one destination, catalog/authority.yaml), never by its own configuration.
+# Inside the tenant's own namespace everything may talk (an app to its database: Synapse, ADR-0114); the database
+# operator's instances also reach the Kubernetes API, by the separate policy cnp-vdh-tenant-demo-database.yaml.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata: {name: egress-floor, namespace: vdh-tenant-demo}
+spec:
+  endpointSelector: {}
+  egress:
+    - toEndpoints: [{matchLabels: {k8s:io.kubernetes.pod.namespace: kube-system, k8s-app: kube-dns}}]
+      toPorts: [{ports: [{port: "53", protocol: UDP}, {port: "53", protocol: TCP}]}]
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: envoy-gateway-system
+            gateway.envoyproxy.io/owning-gateway-name: pharos-gw
+      toPorts: [{ports: [{port: "10443", protocol: TCP}]}]
+    - toEndpoints: [{matchLabels: {k8s:io.kubernetes.pod.namespace: vdh-harbor, app: harbor-egress}}]
+      toPorts: [{ports: [{port: "10443", protocol: TCP}]}]
+    - toEndpoints: [{matchLabels: {k8s:io.kubernetes.pod.namespace: vdh-tenant-demo}}]
+    - toEndpoints: [{matchLabels: {k8s:io.kubernetes.pod.namespace: vdh-backup, app: garage}}]
+      toPorts: [{ports: [{port: "3900", protocol: TCP}]}]   # the database's backups to the ring's Garage

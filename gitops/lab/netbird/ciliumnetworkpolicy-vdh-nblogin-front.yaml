@@ -1,0 +1,13 @@
+# ADR-0122 and ADR-0134: NetBird the login network: devices' machine peers and the login entry in front of Keycloak, nothing else. Server config with its keys is a Secret made inside the ring
+# (by the lab tooling); TLS from the ring CA (ClusterIssuer ring-ca); trust for Keycloak's TLS through the
+# same CA bundle as OpenCloud.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata: {name: from-ring-front, namespace: vdh-nblogin}
+spec:
+  # the ring front runs on the nodes' host network: Cilium sees it as host or remote-node, which a namespace selector
+  # does not cover; only the server's TLS port, only from the nodes
+  endpointSelector: {matchLabels: {app: netbird}}
+  ingress:
+    - fromEntities: [host, remote-node]
+      toPorts: [{ports: [{port: "443", protocol: TCP}]}]

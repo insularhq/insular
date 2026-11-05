@@ -1,0 +1,40 @@
+# Incident, breach notification and kill switches as code. Clocks are public legal deadlines; the playbook runs
+# them automatically from the moment an incident is classified, and every step is logged in the audit chain.
+severities:
+  SEV-1: {meaning: "confirmed or likely compromise of tenant data or platform keys", page: [operator, second-custodian], client_notice_hours: 4}
+  SEV-2: {meaning: "compromise of a platform component without evidence of data access", page: [operator], client_notice_hours: 24}
+  SEV-3: {meaning: "policy violation, drift or failed control without compromise", page: [], client_notice_hours: 72}
+  SEV-4: {meaning: "anomaly under investigation", page: [], client_notice_hours: null}
+
+clocks:   # started at awareness; owner per raci.yaml
+  gdpr-processor-to-controller: {basis: "GDPR art. 33(2)", deadline: "without undue delay", vdhome_target_hours: 24}
+  gdpr-controller-to-authority: {basis: "GDPR art. 33(1)", deadline_hours: 72, owner: client, authority: "lead supervisory authority (BE: Gegevensbeschermingsautoriteit)"}
+  gdpr-data-subjects:           {basis: "GDPR art. 34", deadline: "without undue delay when high risk", owner: client}
+  nis2-early-warning:           {basis: "NIS2 art. 23(4)(a)", deadline_hours: 24, owner: "client if in scope; VDHome if it is itself in scope", authority: "BE: CCB (Safeonweb@work)"}
+  nis2-incident-notification:   {basis: "NIS2 art. 23(4)(b)", deadline_hours: 72}
+  nis2-final-report:            {basis: "NIS2 art. 23(4)(d)", deadline: "one month after the notification"}
+
+channels:   # out-of-band first: the platform under attack is not trusted to carry its own incident traffic
+  primary: "pre-agreed out-of-band contact per tenant (phone of two named contacts, separate e-mail domain)"
+  secondary: "Matrix incident room on a separate homeserver instance (not the tenant's)"
+  record: "signed notification letter (PDF, sealed) with timeline, scope, data categories, measures; copy in the tenant's audit view"
+  public_status: "Gatus status page, factual, no tenant names"
+
+notification_content:   # mirrors GDPR art. 33(3), so the client can forward it to the authority unchanged
+  - nature of the breach, categories and approximate number of data subjects and records
+  - likely consequences
+  - measures taken or proposed, including mitigation
+  - contact point
+  - what is not yet known and when the next update follows
+
+kill_switches:   # graded, scoped, reversible where possible; level per tier in autonomy.yaml
+  - {id: KS-1, scope: user,     action: "revoke sessions and credentials of one user",                 reversible: true}
+  - {id: KS-2, scope: tenant,   action: "freeze tenant: read-only, block new sessions, keep data",    reversible: true}
+  - {id: KS-3, scope: service,  action: "take one service offline behind a maintenance page",        reversible: true}
+  - {id: KS-4, scope: site,     action: "isolate a site: drop all non-management flows at the edge",  reversible: true}
+  - {id: KS-5, scope: platform, action: "platform-wide: block ingress, revoke all sessions, stop data-plane services, keep evidence", reversible: true}
+  - {id: KS-6, scope: keys,     action: "revoke intermediate CA or signing key, rotate KEKs",         reversible: false}
+kill_switch_rules:
+  - evidence first: forensic snapshot (memory where possible, disk, logs) before destructive steps, unless that worsens the harm
+  - KS-1..KS-4 may be autonomous for reduce-exposure in medium/high appetite tiers; KS-5 human; KS-6 human with two persons
+  - every kill switch must be rehearsed (game day) at least yearly and its runbook generated from this file

@@ -1,0 +1,9 @@
+# ADR-0122 amended: the ring front, the one published door of a ring for endpoints. Envoy on the nodes' host
+# network, IPv4 and IPv6 on 443, routing by TLS server name to the two NetBird servers (TLS passes through; the
+# servers keep their own certificates). It needs nothing from the cloud but an address: no load balancer, no
+# provider API. The node's host baseline admits endpoints by an expiring set (a lease), made inside the ring.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: vdh-front
+  labels: {vdh.component: netbird, pod-security.kubernetes.io/enforce: privileged}

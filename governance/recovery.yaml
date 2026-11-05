@@ -1,0 +1,75 @@
+# Recovery matrix: what happens when a client (or VDHome) loses keys or secrets. Rules:
+# - recovery never gives the operator access to tenant content (operator blindness, separation.yaml);
+# - no paper and no show-once recovery codes;
+# - where content is cryptographically gone, the design says so up front and prevents it by redundancy.
+min_tenant_admins: 2
+min_fido_keys_per_user: 2
+engagement_data_location: team-drive   # a member's loss never loses team data
+
+scenarios:
+  - id: RC-1
+    lost: one FIDO2 key of a user
+    path: user continues with the second key; key revoked within 1 hour; replacement enrolled by the tenant-admin
+    content_access: unchanged
+    operator_sees_content: false
+
+  - id: RC-2
+    lost: all FIDO2 keys of a user (CryptPad password still known)
+    path: tenant-admin verifies the user and re-enrols new keys; user logs in with new keys and their own CryptPad password
+    content_access: unchanged
+    operator_sees_content: false
+
+  - id: RC-3
+    lost: a user's CryptPad password
+    path: personal drive is unrecoverable by design; engagement data is in the Team drive, so a tenant-admin re-adds the user with a new account
+    content_access: team data unchanged; personal drive content lost
+    operator_sees_content: false
+
+  - id: RC-4
+    lost: one of the tenant-admins entirely
+    path: the second tenant-admin re-enrols or replaces them
+    content_access: unchanged
+    operator_sees_content: false
+
+  - id: RC-5
+    lost: all tenant-admins at once
+    path: >-
+      deliberate, slow recovery: written request by the client's legal representative, identity and authority verified
+      against the company register, call-back to a register or website number, a waiting period with notification to
+      all tenant users; VDHome then enrols new tenant-admins; content keys are not touched (they stay with the users and
+      the tenant's key shares)
+    cosign: "at least two existing tenant users or key-share holders confirm in the platform with their own keys; the legal representative's letter alone is never enough"
+    cool_off_days: 14
+    cool_off_limits: [approve-access-request, reset-own-users, issue-unwrap-grant, manage-own-identity-providers]
+    content_access: unchanged for users who still hold their own credentials
+    operator_sees_content: false
+
+  - id: RC-6
+    lost: one share of the tenant key-encryption key
+    path: remaining shares meet the threshold; rotate the KEK, re-wrap the per-object data keys, issue new shares
+    content_access: unchanged
+    operator_sees_content: false
+
+  - id: RC-7
+    lost: tenant KEK shares below the threshold
+    path: content under that KEK is unrecoverable by design; prevention is the default 2-of-3 with separate custody and a yearly check that all shares still open
+    content_access: lost for data under that KEK
+    operator_sees_content: false
+
+  - id: RC-8
+    lost: client keys stolen (suspected compromise)
+    path: revoke credentials and sessions, rotate the KEK, re-wrap data keys, review the audit chain for the exposure window, notify per the DPA
+    content_access: restored to the legitimate holders
+    operator_sees_content: false
+
+  - id: RC-9
+    lost: VDHome primary root HSM
+    path: restore from the second HSM using the DKEK shares (2 of 3 custodians); no reissue needed
+    content_access: unaffected (roots never touch tenant content)
+    operator_sees_content: false
+
+  - id: RC-10
+    lost: VDHome root key compromised
+    path: "planned root rollover; new root ceremony, re-issue intermediates and leaves, TUF root rotation (old root signs the new one), clients re-verify fingerprints out of band"
+    content_access: unaffected
+    operator_sees_content: false

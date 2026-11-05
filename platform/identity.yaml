@@ -1,0 +1,121 @@
+# Holistic identity: one model for every kind of subject. An identity is not a card: it is a stable identifier,
+# bound credentials, and attributes, each from a named authority, with an assurance level and a freshness limit.
+# Policy decides on subject + actor chain + resource + action + context, in one request shape for all kinds
+# (OpenID AuthZEN Authorization API 1.0), evaluated by the policy engine and enforced at every enforcement point.
+# Standards: NIST SP 800-63-4 (persons), NIST SP 800-162 (ABAC), SPIFFE and IETF WIMSE (workloads), IETF RATS
+# RFC 9334 and EAT RFC 9711 (devices and infrastructure), RFC 8693 actor claims (delegation, agents), SCIM
+# RFC 7643/7644 (lifecycle), SD-JWT RFC 9901 and the EU Digital Identity Wallet (selective disclosure of attributes).
+
+subject_kinds:
+  person:
+    identifier: "pairwise subject per tenant from the broker"
+    credentials: [passkey or FIDO2 key, SSH certificate after login]
+    assurance: "NIST 800-63-4 IAL/AAL; acr claim"
+    lifecycle: "SCIM joiner-mover-leaver from the tenant's source"
+  workload:
+    identifier: "SPIFFE ID spiffe://<trust-domain>/<tenant>/<app>"
+    credentials: [X.509 SVID (max 1 h), JWT SVID]
+    assurance: "issued only to attested nodes and signed images"
+    lifecycle: "created and removed with its app intent"
+  device:
+    identifier: "TPM endorsement key fingerprint, registered in the inventory"
+    credentials: [device certificate (max 30 d), attestation token]
+    assurance: "measured boot verified by Keylime against published image hashes"
+    lifecycle: "inventory states: ordered, enrolled, active, quarantined, retired"
+  infrastructure:
+    identifier: "host and site ids from the inventory; SPIFFE trust domain per site"
+    credentials: [host certificate, attestation token, signed light]
+    assurance: "attested boot; evidence freshness"
+    lifecycle: "OpenTofu creates, attestation admits, inventory retires"
+  agent:
+    identifier: "SPIFFE ID of the agent runtime plus agent descriptor (owner, model, version, tool grants)"
+    credentials: [workload SVID, delegated token with actor chain (RFC 8693)]
+    assurance: "acts only on behalf of a named person or workload; never more than its delegator; bounded by the autonomy matrix"
+    lifecycle: "registered by an owner; grants expire; every action logged with the full actor chain"
+
+# Attribute registry: an attribute exists for policy only if it is registered here with its authority, freshness and
+# lawful basis. Data minimisation: policies may only reference registered attributes; special categories are never
+# usable for access decisions.
+attributes:
+  role:              {provided_by: [Keycloak], authority: tenant-admin via broker, ttl_hours: 24, basis: contract, note: "a carrier hint only: decisions take roles from the grant records"}
+  tenant:            {provided_by: [Keycloak], authority: broker, ttl_hours: 24, basis: contract}
+  clearance_internal: {provided_by: [Keycloak], authority: tenant security officer, ttl_hours: 720, basis: legitimate-interest, note: "the tenant's own vetting level, not a government clearance"}
+  certification:     {provided_by: [Keycloak], authority: issuing body via verifiable credential, ttl_hours: 720, basis: contract}
+  acr:               {provided_by: [Keycloak], authority: broker, ttl_hours: 1, basis: contract}
+  device_posture:    {provided_by: [NetBird, Keylime], authority: attestation (Keylime) and NetBird posture, ttl_hours: 1, basis: legitimate-interest}
+  evidence_state:    {provided_by: [evaluator], authority: green light evaluator, ttl_hours: 1, basis: legitimate-interest}
+  location_class:    {provided_by: [NetBird], authority: network and device, ttl_hours: 1, basis: legitimate-interest}
+  unit: {provided_by: [HR source, SCIM], authority: "the tenant's HR source", ttl_hours: 24, basis: contract, self_write: false, pedigree: authoritative, may_widen: true, offline: absent, note: "organisational unit; may grant membership through a section 23 attribute rule (AZ-6)"}
+  function: {provided_by: [HR source, SCIM], authority: "the tenant's HR source", ttl_hours: 24, basis: contract, self_write: false, pedigree: authoritative, may_widen: true, offline: absent, note: "job function or job code; may grant membership through a section 23 attribute rule"}
+  upstream_group: {provided_by: [corporate IdP], authority: "the owner of that group in the corporate directory, an external authority outside KeyClerk's tree", ttl_hours: 24, basis: contract, self_write: false, pedigree: derived, may_widen: true, offline: absent, note: "a group claim from the tenant's IdP; a rule on it delegates membership to whoever manages that group upstream (section 23 attribute_rules)"}
+  stakeholder_level: {provided_by: [Keycloak], authority: tenant service owner, ttl_hours: 720, basis: contract, note: "mission-critical, key-user or user; drives communication, not access"}
+  break_glass_unlock: {provided_by: [hardware], authority: break-glass tokens (2-of-3), ttl_hours: 4, basis: legitimate-interest, note: "set only when two of the three tokens unlocked the break-glass CA"}
+  release_officer_qualified: {provided_by: [Keycloak], authority: curriculum credential, ttl_hours: 720, basis: contract}
+  tenant_unwrap_grant: {provided_by: [OpenBao], authority: "tenant key-share holders (signed, time-boxed)", ttl_hours: 1, basis: contract, note: "without it no server-side unwrap of tenant data keys"}
+  agent_model:       {provided_by: [Keycloak], authority: agent owner, ttl_hours: 720, basis: contract}
+forbidden_attributes: [marital_status, health, religion, political_opinion, ethnicity, sexual_orientation, trade_union, biometric_template]
+
+decision:
+  engine: "OPA (Rego) in production; tools/authz.py is the reference model the tests pin"
+  combine: "deny overrides: role grants (RBAC), attribute conditions (ABAC) and context conditions (adaptive) must all pass"
+  stale_attribute: "treated as absent (never as its last value)"
+  delegation: "effective rights = intersection over the actor chain; max chain depth 2; agents never perform irreversible actions"
+
+# Accounts (ADR-0156): no new subject kinds; rules for the accounts that are not a person signing in for themselves.
+accounts:
+  shared_secrets: "none: every action traces to one person or one workload; a credential is never handed between people"
+  functional_roles:
+    meaning: "a duty (on-call, duty officer, release officer, tenant administrator) is a role a named person holds, not an account"
+    grant: "a time-boxed group membership in the broker, requested and approved as a change in git (Forgejo), applied by automation"
+    max_hours: {on-call: 168, duty-officer: 24, release-officer: 8, tenant-admin: 720}
+    record: "who held which role at any moment, from the grant history and the broker's events"
+    roster: "a roster is a list of grants prepared ahead; a handover is one grant ending and the next starting"
+  non_person:
+    kinds: [workload, device, infrastructure, agent]
+    rule: "every non-person credential has an owner (the unit in git that declares it), an issuer and an expiry"
+    self_expiring: "SVIDs, OpenBao leases, projected Kubernetes tokens and access tokens expire on their own: their issuer is the inventory"
+    long_lived: "anything else is declared in platform/credentials.yaml as static (an exception with a reason, a replacement and an end date) or sealed (break-glass)"
+    app_local_users: "applications sign people in through the broker; a local user is a declared static exception, and one sealed break-glass account at most"
+    kubernetes: "projected, audience-bound service-account tokens only; a legacy token Secret is a finding"
+  group_ownership:
+    tenant: "the tenant's groups come from its own identity provider through the broker (SCIM) and are the tenant's"
+    platform: "platform roles and groups are declared in git and owned by the unit that declares them"
+    never: "the platform never edits a tenant's groups; a tenant never holds a platform role through its own groups"
+  inventory:
+    declared: platform/credentials.yaml
+    discover: [keycloak users clients and service accounts, kubernetes service accounts and token secrets, openbao auth roles and leases,
+               netbird users and access tokens, grafana users and service-account tokens, clickhouse users, forgejo users and tokens,
+               spire registration entries]
+    compare: "found and not declared: finding; declared and past review_by: finding; declared and not found: stale entry removed"
+    severity: {sealed_used: critical, undeclared_static: high, past_review: medium, undeclared_self_expiring: info}
+  events: {authentication: "OCSF 3002", account_change: "OCSF 3001", role_grant: "OCSF 3001 with the approving change", store: "event store (ADR-0152)"}
+  checklist: "OWASP Non-Human Identities Top 10 (2025) per release"
+  operations:   # ADR-0156 amendment 1: the four identity jobs beside joiner-mover-leaver; no identity-governance suite yet
+    self_service:
+      where: "the broker's account console, signed in with a passkey"
+      may: [register a passkey, remove a passkey, see and end own sessions, see linked identities]
+      floor: "two passkeys per person; removing the last but one is refused"
+    recovery:   # NIST SP 800-63B-4 account recovery: saved codes, issued codes, recovery contacts, repeated proofing
+      order: [second passkey, saved recovery code plus recovery contact, repeated identity proofing]
+      saved_code: "issued once at enrolment, at least 64 random bits, shown to the person only, stored hashed, throttled; used once; a new one is issued with every recovery"
+      recovery_contact: "a named person who confirms the request out of band (the tenant administrator, or the person's manager); never the person who runs the ceremony"
+      repeated_proofing: "for a person proofed before: eID authentication (boot-stick.yaml eid), or an in-person check by two officers where no eID exists"
+      two_people: "every recovery needs two people besides the subject: the one who confirms and the one who runs it; OPA refuses one person in both roles"
+      helpdesk: "the helpdesk opens and tracks the ticket and never sets, resets or reads a credential; a request by phone alone starts nothing"
+      enrolment_link: "after both confirmations, automation issues a one-time passkey enrolment action for that person, valid 10 minutes, used at the person's own endpoint (ADR-0055)"
+      after: [revoke every session and refresh token, notify every address on file, issue a new saved code, record the ticket and both people]
+      high_privilege: "platform administrators and tenant administrators are recovered only by repeated proofing, never by a delegated administrator"
+      lost_stick: "boot-stick.yaml recovery order applies to the stick's home; the account follows this recovery"
+    access_requests:
+      channels: {tenant_roles: "a request form in the ITSM tool", platform_roles: "a merge request in Forgejo"}
+      approve: "the owner of the role or resource; OPA refuses the requester as approver"
+      grant: "automation grants the role in the broker with an end; a timer (or a broker workflow) removes it at the end"
+      reviews: "every quarter a review per owner is generated from the inventory as a merge request; unconfirmed grants end at the review deadline"
+    delegated_admin:
+      who: "a tenant administrator, inside the tenant's organization in the broker"
+      may: [manage the tenant's users and groups, start a recovery as recovery contact, request roles for the tenant's people]
+      may_not: [touch another tenant, grant a platform role, recover an administrator, change the broker's flows]
+      how: "broker organizations and fine-grained admin permissions, scoped to one organization; checked by a test against the realm export"
+    adopt_governance_suite_when: "more than three connected systems beyond the broker, or an auditor or customer requires certification campaigns with evidence: then midPoint (Evolveum, EUPL or Apache-2.0)"
+    events: {self_service: "OCSF 3001", recovery: "OCSF 3001 and 3002, with the ticket and both people", access_grant: "OCSF 3005", group_change: "OCSF 3006", delegated_admin: "OCSF 3001 and 3006"}
+    pharos: [people with fewer than two passkeys, recoveries per tenant and week with time to complete, recoveries without a second person (must be 0), grants ending within a week, overdue reviews, delegated administrator actions per tenant]

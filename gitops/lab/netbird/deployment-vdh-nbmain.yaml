@@ -1,0 +1,46 @@
+# ADR-0122 and ADR-0134: NetBird the main network: people's devices as user peers signed in through Keycloak, and the app entry. Server config with its keys is a Secret made inside the ring
+# (by the lab tooling); TLS from the ring CA (ClusterIssuer ring-ca); trust for Keycloak's TLS through the
+# same CA bundle as OpenCloud.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: netbird
+  namespace: vdh-nbmain
+  labels: {app: netbird}
+  annotations: {vdh.component: "NetBird", vdh.app-version: "v0.80.0"}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector: {matchLabels: {app: netbird}}
+  template:
+    metadata: {labels: {app: netbird}}
+    spec:
+      automountServiceAccountToken: false
+      securityContext: {seLinuxOptions: {level: "s0:c20,c21"}}   # its volume's fixed level, shared with its state backup (platform/state.yaml)
+      initContainers:
+        - name: trust
+          image: docker.io/curlimages/curl:8.16.0@sha256:463eaf6072688fe96ac64fa623fe73e1dbe25d8ad6c34404a669ad3ce1f104b6
+          command: ["/bin/sh", "-c", "cat /etc/ssl/certs/ca-certificates.crt /ring-ca/ca.crt > /trust/bundle.pem"]
+          securityContext: {runAsNonRoot: true, runAsUser: 100, allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+          volumeMounts: [{name: ring-ca, mountPath: /ring-ca, readOnly: true}, {name: trust, mountPath: /trust}]
+      containers:
+        - name: server
+          image: docker.io/netbirdio/netbird-server:0.80.0@sha256:05b3d8d6d056e5062a2965d4d6e5d6d83f09f2bf9133947a8e5972e0e0e7a261
+          args: ["--config", "/etc/netbird/config.yaml"]
+          env:
+            - {name: NB_SETUP_PAT_ENABLED, value: "true"}   # the bootstrap owner's one-day API token
+            - {name: SSL_CERT_FILE, value: /trust/bundle.pem}
+          ports: [{name: https, containerPort: 443}, {name: stun, containerPort: 3478, protocol: UDP}]
+          readinessProbe: {tcpSocket: {port: 443}, periodSeconds: 5}
+          resources: {requests: {cpu: 100m, memory: 128Mi}, limits: {memory: 512Mi}}
+          volumeMounts:
+            - {name: config, mountPath: /etc/netbird/config.yaml, subPath: config.yaml, readOnly: true}
+            - {name: tls, mountPath: /etc/netbird/tls, readOnly: true}
+            - {name: data, mountPath: /var/lib/netbird}
+            - {name: trust, mountPath: /trust, readOnly: true}
+      volumes:
+        - {name: config, secret: {secretName: nb-config}}
+        - {name: tls, secret: {secretName: netbird-tls}}
+        - {name: data, persistentVolumeClaim: {claimName: netbird-data}}
+        - {name: ring-ca, configMap: {name: ring-ca}}
+        - {name: trust, emptyDir: {}}

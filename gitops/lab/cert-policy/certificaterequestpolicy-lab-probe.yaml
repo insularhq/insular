@@ -1,0 +1,13 @@
+# The self-signed issuer also signs the lab's probe certificate in vdh-test, for at most a day
+apiVersion: policy.cert-manager.io/v1alpha1
+kind: CertificateRequestPolicy
+metadata: {name: lab-probe}
+spec:
+  allowed:
+    dnsNames: {values: ["probe.vdh-test.svc.cluster.local"], required: true}
+    usages: ["digital signature", "key encipherment", "server auth"]
+  constraints:
+    maxDuration: 24h
+  selector:
+    issuerRef: {name: lab-selfsigned, kind: ClusterIssuer, group: cert-manager.io}
+    namespace: {matchNames: [vdh-test]}

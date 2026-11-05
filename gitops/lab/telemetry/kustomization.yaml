@@ -1,0 +1,30 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# The ring's event pipeline (ADR-0152): OpenTelemetry Collector agents on every node read Hubble's flow export,
+# the Harbor's decision log and the gateways' access logs; a gateway collector with a persistent queue writes them to
+# ClickHouse as events. Pharos's Prometheus scrapes the live signals ClickHouse computes from them (FORMAT Prometheus),
+# each bound to the risk it raises. The ring secret telemetry-users (three passwords) is made in the ring by
+# the lab tooling; nothing here is secret.
+resources:
+  - clickhouse.yaml
+  - serviceaccount-collector-gateway.yaml
+  - clusterrole-collector-gateway.yaml
+  - clusterrolebinding-collector-gateway.yaml
+  - cnp-collector-gateway-api.yaml
+  - collector-gateway.yaml
+  - collector-agent.yaml
+  - service-clickhouse.yaml
+  - pvc-collector-queue.yaml
+  - service-collector-gateway.yaml
+  - networkpolicy.yaml
+  - cronjob-telemetry-backup.yaml
+configMapGenerator:
+  - name: clickhouse-config
+    namespace: vdh-telemetry
+    files: [clickhouse-vdh.xml, clickhouse-users.xml]
+  - name: collector-gateway
+    namespace: vdh-telemetry
+    files: [gateway.yaml=collector-gateway.conf]
+  - name: collector-agent
+    namespace: vdh-telemetry
+    files: [agent.yaml=collector-agent.conf]

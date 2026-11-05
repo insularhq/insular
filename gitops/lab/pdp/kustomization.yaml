@@ -1,0 +1,34 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# The policy decision point on the lab (ADR-0101): OPA with the bundle compiled from the model's packs
+# (tools/policy_compile.py --gitops writes bundle/; a check fails when it is stale). The ConfigMap name carries a
+# content hash, so a new bundle rolls the PDP.
+resources:
+  - deployment-pdp.yaml
+  - service-pdp.yaml
+  - pdb-pdp.yaml
+  - referencegrant-authz.yaml
+configMapGenerator:
+  - name: opa-bundle
+    namespace: vdh-pdp
+    files:
+      - bundle/data.json
+      - bundle/decide.rego
+      - bundle/authz.rego
+      - bundle/inbox.rego
+      - bundle/access.rego
+      - bundle/delegation.rego
+      - bundle/second_key.rego
+      - bundle/view.rego
+      - bundle/tree.rego
+      - bundle/visits.rego
+      - bundle/identity.rego
+      - bundle/fallback.rego
+      - bundle/ceiling.rego
+      - bundle/edge.rego
+      - bundle/revision.txt
+      - ring.json   # the ring's own pane host and issuer (Flux substitutes the ring's domain)
+  - name: opa-config
+    namespace: vdh-pdp
+    files:
+      - opa-config.yaml

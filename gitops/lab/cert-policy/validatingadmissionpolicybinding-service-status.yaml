@@ -1,0 +1,6 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata: {name: vdh-service-status}
+spec:
+  policyName: vdh-service-status
+  validationActions: [Audit, Warn]

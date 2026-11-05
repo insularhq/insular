@@ -1,0 +1,18 @@
+# Governance scaffold, governed actions (ADR-0133): the actions the policy decision point rules on with role,
+# attribute and risk together. The requester signs the request and must hold the role and its competencies; approvers
+# sign the same request digest, are other people, hold an approving role and a valid competency for it. The quorum is
+# k-of-n signers including the requester: the tier's root_quorum or action_signers, never below min_signers (taken from
+# governance/autonomy.yaml min_approvers where that register names the action, tested), plus one in the red and black
+# bands. Direction comes from governance/autonomy.yaml (one source, tested): in the black band only restore and
+# reduce pass (policies/model.yaml band_enforcement). RASCI: golden-paths.yaml rasci.
+governed_actions:
+  actions:
+    root-ceremony: {role: pki_custodian, approver_roles: [pki_custodian], quorum: root_quorum, min_signers: 2, competencies: [key-custody], direction: increase}
+    register-signing-chain: {role: pki_custodian, approver_roles: [owner, pki_custodian], quorum: root_quorum, min_signers: 2, competencies: [key-custody], direction: increase}
+    revoke-or-rotate-key: {role: pki_custodian, approver_roles: [owner, pki_custodian, security_officer], quorum: action_signers, min_signers: 1, competencies: [key-custody], direction: reduce, autonomy: rotate-certificate}
+    release-sign: {role: release_manager, approver_roles: [owner, security_officer], quorum: action_signers, min_signers: 1, competencies: [release-officer], direction: increase}
+    grant-role: {role: security_officer, approver_roles: [owner], quorum: action_signers, min_signers: 1, competencies: [policy-authoring], direction: increase, autonomy: grant-access}
+    accept-risk: {role: owner, approver_roles: [security_officer], quorum: action_signers, min_signers: 1, competencies: [risk-acceptance], direction: increase}
+    change-mandate-or-profile: {role: security_officer, approver_roles: [owner], quorum: action_signers, min_signers: 1, competencies: [policy-authoring], direction: increase}
+    restore-production: {role: platform_operator, approver_roles: [owner, security_officer], quorum: action_signers, min_signers: 1, competencies: [database-recovery], direction: restore, autonomy: restore-from-backup}
+    break-glass: {role: platform_operator, approver_roles: [owner, security_officer], quorum: action_signers, min_signers: 2, competencies: [platform-security], direction: increase, autonomy: break-glass}

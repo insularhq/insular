@@ -1,0 +1,255 @@
+# Lineage of the trust, risk and policy model (ADR-0150): what each part is, which public sources it takes from, what
+# exactly it takes, why, what is our own, and when to look again. Every source is an entry in frameworks/register.yaml
+# with a public URL. Checked by tools/lineage.py; test_every_part_of_the_trust_model_names_its_public_sources_and_why.
+# Amend here first: a change to a part's sources or reasons is an amendment to its ADR.
+
+model: "Insular trust, risk and policy model"
+summary: >-
+  Risk is assessed per scenario and kept within appetite by decided, dated policy rules. Every request, host, site and
+  federation partner gets a trust band from fresh evidence, never better than its weakest input. Trust is a lease that
+  evidence renews and events cut. The situation (world state, place, time) moves risk and trust both ways. Only defined
+  events become loud, and every exception is a decided, time-gated risk acceptance shown on the pane.
+
+elements:
+  - id: risk-register
+    element: "Risks as scenarios with inherent and residual likelihood times impact (1-5 each), an appetite, an owner, a treatment and a review date; never deleted, only superseded"
+    where: a private register
+    adr: ADR-0089
+    takes:
+      - {from: iso-31000, what: "the process: identify, analyse, evaluate, treat, monitor and review, communicate"}
+      - {from: ebios-rm, what: "risk as a scenario (a source reaching a target by a path), and treatment chosen per scenario"}
+      - {from: nist-800-37, what: "the risk owner accepts residual risk; ongoing authorisation instead of a one-off"}
+      - {from: nist-800-53, what: "control identifiers that a risk's controls name"}
+    why: "scenarios make the measures traceable to what they stop; a public method and a public control catalogue let auditors and partners read the register without our vocabulary"
+    ours: "the 1-5 by 1-5 scale with a numeric appetite per class, and the rule that a risk without a mitigating rule or acceptance fails the build"
+    amend_when: "a certification or a client prescribes another risk method (ISO/IEC 27005 when the text is bought)"
+
+  - id: trust-band-per-request
+    element: "A risk score from live signals per request, mapped to a band (green, amber, red, black) that sets what the request may do; hard rules first; failing loudly"
+    where: platform/adaptive-policy.yaml
+    adr: ADR-0064
+    takes:
+      - {from: nist-800-207, what: "per-request access decided by a policy engine from dynamic attributes of subject, device and environment"}
+      - {from: cisa-ztmm-2, what: "maturity stages per pillar towards dynamic, automated policy"}
+    why: "the zero-trust tenet that trust is evaluated per request, not per network location, is the public consensus our partners and auditors expect"
+    ours: "the band vocabulary, the weights, the sticky deny and the user-facing reason codes"
+    amend_when: "NIST revises SP 800-207, or measured false denials show the weights are wrong"
+
+  - id: weakest-link-and-anchor-ceilings
+    element: "A decision is never more trusted than its least-trusted input, nor above that input's trust-anchor ceiling; stale counts one band lower; missing counts as risk"
+    where: policies/infra-bindings.yaml
+    adr: ADR-0078
+    takes:
+      - {from: nist-800-63, what: "assurance along a federation path is the minimum of its hops; levels per assertion"}
+      - {from: rfc-9334, what: "an appraisal of evidence by a verifier, with the relying party deciding"}
+    why: "an attacker goes for the weakest input; minimum-over-path is how the public identity guidance already treats federation"
+    ours: "applying the minimum to every fact class of the sources of truth (hosts, sites, custody, bundles), not only to identity"
+    amend_when: "a fact class proves too coarse, or attestation formats change (EAT profiles)"
+
+  - id: trust-is-a-lease
+    element: "Every assertion and token is time-gated: a clock, a validity scaled by band, renewal by fresh evidence, and triggers that cut it early; expiry only tightens"
+    where: policies/time-gating.yaml
+    adr: ADR-0093
+    takes:
+      - {from: nist-800-63, what: "reauthentication intervals by assurance level"}
+      - {from: rfc-9700, what: "short-lived, sender-constrained tokens"}
+      - {from: openid-caep, what: "events that end a session before its token expires"}
+      - {from: spiffe, what: "short-lived workload identities renewed automatically"}
+    why: "a long validity is a standing risk; leases make trust decay unless evidence keeps it up, and events cut it at once"
+    ours: "one lease model for people, workloads, hosts, data and partners, with validity scaled by the band"
+    amend_when: "the Token Status List leaves draft, or measured renewal load forces longer leases"
+
+  - id: decided-rules
+    element: "Every measure is a dated policy rule with an owner, a status, a review date and, with a decision (by, date, record); rules are superseded, never deleted"
+    where: policies/packs/baseline.yaml
+    adr: ADR-0145
+    takes:
+      - {from: nist-800-53, what: "control identifiers and parameters that rules implement"}
+      - {from: oscal, what: "controls, parameters and assessment results as data"}
+    why: "a measure nobody decided cannot be defended in an audit; a decision record makes who, when and why visible on the pane"
+    ours: "decision required by date (DECISION_REQUIRED_FROM), checked against the decision record's existence and ordering"
+    amend_when: "OSCAL adds a decision or authorisation construct we can map to directly"
+
+  - id: staged-rollout
+    element: "A decided rule reaches the estate by a signed rollout: announce, observe, warn, enforce, with milestones, owners and targets known by check, attestation or not at all"
+    where: "a register not in this copy (ADR-0146)"
+    adr: ADR-0146
+    takes:
+      - {from: oscal, what: "plan of action and milestones as data"}
+      - {from: nist-800-37, what: "continuous monitoring of progress against the authorisation"}
+    why: "a rule switched on at once breaks what was not ready; observe and warn stages show the impact before enforcement"
+    ours: "the four stages, the band floor that can pull a stage forward, and targets whose state may be unknown"
+    amend_when: "rollouts show stages missing (for example a canary per site)"
+
+  - id: risk-outlook
+    element: "A risk carries an outlook: a date, the expected inherent level and the level with the planned measure, with its source"
+    where: a private register
+    adr: ADR-0146
+    takes:
+      - {from: mozilla-root-policy, what: "a dated change announced ahead of enforcement"}
+    why: "a decision taken today for a threat expected later must show the expected risk, not only today's"
+    ours: "outlook as a field on the risk with inherent and with-measure levels; the pane shows both"
+    amend_when: "situation records (ADR-0147) derive outlooks instead of typing them"
+
+  - id: situation-in-time-and-place
+    element: "Dated, sourced, scoped situation records and place profiles move risk and trust per part of the topology, both ways; the band per part selects what may still run there"
+    where: platform/adaptive-policy.yaml
+    adr: ADR-0147
+    takes:
+      - {from: nist-800-137, what: "continuous monitoring feeding risk decisions"}
+      - {from: iec-62443-3-2, what: "risk assessed per zone and conduit, with a target and an achieved level"}
+      - {from: icao-usoap, what: "an evidence-based score per domain and area, refreshed continuously"}
+    why: "risk differs by place and time; a single global residual hides the part that is weakest"
+    ours: "place profiles, relocation as a record, and the asymmetry: tightening is automatic, loosening that widens access is decided"
+    amend_when: "per-part measured residuals become available and are compared with the global ones"
+
+  - id: loud-only-when-it-matters
+    element: "Only event classes defined by policy, the security teams or the CISO become loud, past a threshold; each needs a named acknowledgement and shows its risks, measures and trust impact per part"
+    where: platform/observability.yaml
+    adr: ADR-0148
+    takes:
+      - {from: cloudevents, what: "one event envelope with source, type and extensions for risk ids and trust impact"}
+      - {from: nist-800-61, what: "incident handling integrated with risk management"}
+      - {from: tlp-2, what: "labels on what may be shared about an event"}
+    why: "alert fatigue hides the events that matter; defining loudness by policy keeps the pane quiet and accountable"
+    ours: "the loud threshold per class, acknowledgement as an audit record, and trust impact per part"
+    amend_when: "acknowledgement times become measurable"
+
+  - id: identity-federation
+    element: "Authentication federates broker to broker, attributes and signals at the PIP; decisions and enforcement stay local"
+    where: policies/federation.yaml
+    adr: ADR-0078
+    takes:
+      - {from: nist-800-63, what: "federation proxy semantics and federation assurance"}
+      - {from: rfc-8693, what: "token exchange, audience-restricted and scope-reduced"}
+      - {from: openid-federation, what: "trust anchors, entity statements and trust marks"}
+      - {from: openid-ssf, what: "shared security events, advisory at the PIP"}
+      - {from: spiffe, what: "workload identity federation by trust bundles"}
+    why: "a domain that hands its decisions to another loses control of its own risk; standards keep partners interoperable"
+    ours: "the layer table (what federates where) and the WAN-down profile per resource class"
+    amend_when: "OpenID Federation 1.1 or the EUDI wallet changes the broker's role"
+
+  - id: partner-contract
+    element: "One federation contract for every partner, whoever runs it: outcomes and evidence, never the partner's policy text or risk register; recourse as a term"
+    where: "policies/federation.yaml#partner_trust.contract"
+    adr: ADR-0149
+    takes:
+      - {from: nist-800-47, what: "an agreement per information exchange, protection commensurate with the risk on both sides"}
+      - {from: refeds-sirtfi, what: "incident contacts and response commitments as a federation term"}
+    why: "a contract that depends on who runs the partner breaks when ownership changes; outcomes can be checked, policy texts cannot"
+    ours: "no exchange of risk registers: a band with its evidence instead"
+    amend_when: "a partner needs a sector contract (for example a dataspace agreement)"
+
+  - id: partner-evidence-classes
+    element: "A partner's band is earned by evidence described on six axes (source, assessor, time basis, binding, scope, liability); six named classes are presets with a maximum ceiling and a freshness (FTEF 0.1, decision 0001)"
+    where: "policies/federation.yaml#partner_trust.classes"
+    adr: ADR-0149
+    takes:
+      - {from: iso-17000, what: "first-, second- and third-party conformity assessment, and declaration as first-party attestation (the source axis)"}
+      - {from: refeds-sirtfi, what: "self-declaration as the lowest class"}
+      - {from: csa-star, what: "self-assessment versus third-party audit as distinct levels"}
+      - {from: fedramp-20x, what: "continuous, machine-readable indicators (the time-basis axis)"}
+      - {from: rfc-9334, what: "verifier appraisal of the enforcing component, and freshness by nonce, timestamp or epoch"}
+      - {from: rfc-9711, what: "a token format for attestation claims"}
+      - {from: slsa, what: "unsigned, signed and hardened as grades of binding (the binding axis)"}
+      - {from: ietf-scitt, what: "transparency as a property that raises the value of signed evidence"}
+      - {from: coco-trustee, what: "release on attestation at the moment of access, now a release condition rather than a class"}
+    why: "one ladder mixed who asserts, over what time and how bound; multi-axis assurance (NIST 800-63-4, AR4SI) is where mature practice went, and scope against the seam decides whether evidence counts at all"
+    ours: "the relying party's own observation and assessment as classes (no framework formalises them), scope against the seam, and presets with maximum ceilings"
+    amend_when: "AR4SI becomes an RFC, or FTEF 0.2 adds corroboration between independent items"
+
+  - id: partner-acceptance
+    element: "Trust above the evidence is a decided risk acceptance: at most 90 days, at most medium, loud, void at its end, on a downgrade or a world-state rise, with limits"
+    where: "policies/federation.yaml#partner_trust.acceptance"
+    adr: ADR-0149
+    takes:
+      - {from: nist-800-37, what: "the authorising official accepts residual risk explicitly"}
+      - {from: eucc, what: "a certificate restricted or suspended rather than only granted or withdrawn"}
+    why: "business sometimes needs a partner before its evidence exists; making that a visible, bounded decision keeps the risk owned"
+    ours: "the bounds (90 days, medium), the four limits, and voiding by world-state level at decision time"
+    amend_when: "acceptances are renewed often, which would show the bounds are wrong"
+
+  - id: partner-ladder
+    element: "Member, watch, restricted, suspended, withdrawn: down at once on events, up one state at a time on evidence and a named decision"
+    where: "policies/federation.yaml#partner_trust.ladder"
+    adr: ADR-0149
+    takes:
+      - {from: paris-mou, what: "a tighter re-check interval for a higher risk profile, and overriding triggers"}
+      - {from: mozilla-root-policy, what: "incident, remediation plan, restriction, removal; failing to report is itself a reason"}
+      - {from: ietf-token-status-list, what: "a reversible SUSPENDED state distinct from INVALID"}
+      - {from: eucc, what: "suspension and withdrawal as distinct states"}
+    why: "a switch over-reacts or under-reacts; a ladder lets trust fall fast and rise only when earned"
+    ours: "the asymmetry (down automatic, up decided) and the binding to what a partner may do at our seam within minutes"
+    amend_when: "a federation runs a ladder in practice and shows states missing"
+
+  - id: partner-status-and-exchange
+    element: "A partner's status is read at the moment of use from a signed status with history; what is exchanged is a level with scope, outlook and watch; equivalence is a named profile or an owned mapping"
+    where: "policies/federation.yaml#partner_trust.status_carrier"
+    adr: ADR-0149
+    takes:
+      - {from: openid-federation, what: "trust mark status endpoint"}
+      - {from: ietf-token-status-list, what: "status lists with a ttl"}
+      - {from: etsi-ts-119612, what: "current and previous status with start times"}
+      - {from: tisax, what: "a shared catalogue with assessment levels and a label exchange"}
+      - {from: iec-62443-3-2, what: "target, achieved and capability levels per zone"}
+      - {from: adatp-4774, what: "a label names its governing policy; an alternative label maps it into the receiver's policy"}
+      - {from: nist-800-47, what: "equivalence written per exchange"}
+      - {from: dif-trust-establishment, what: "a dated, authored trust document whose entries follow a topic schema: a possible envelope for a partner record (optional profile)"}
+      - {from: toip-trqp, what: "recognition queries between ecosystems: a possible way to ask for a partner's status (optional profile)"}
+    why: "nobody compares policy texts across organisations; levels, profiles and owned mappings can be checked"
+    ours: "combining status, level and mapping in one partner record read at the seam"
+    amend_when: "a standard for exchanging an organisational posture appears"
+
+  - id: both-ways
+    element: "Trust and risk move both ways: evidence lifts a band at once within its cap; a world-state fall restores freshness; loosening that widens access is a decided increase action"
+    where: "policies/federation.yaml#partner_trust.directions"
+    adr: ADR-0149
+    takes:
+      - {from: nist-800-207, what: "trust re-evaluated continuously in both directions"}
+      - {from: nist-800-137, what: "monitoring results that can lower as well as raise risk"}
+    why: "a model that only tightens ends with everything denied; one that loosens on its own invites manipulation"
+    ours: "the asymmetry, enforced by governance/autonomy.yaml (increase actions need a person)"
+    amend_when: "measured time-to-restore after a calm period is too long"
+
+  - id: common-mode
+    element: "Partners that share our policy source or release count as one for quorum, two-person and independence checks"
+    where: "policies/federation.yaml#partner_trust.common_mode"
+    adr: ADR-0149
+    takes: []
+    why: "two approvals from systems that fail together are one approval"
+    ours: "entirely our own; no public federation standard models shared failure between partners"
+    amend_when: "a public source on correlated trust between federation partners is found"
+
+  - id: isle-ca-hierarchy
+    element: "Every organisation holds its own offline roots; partners install a federation root that vouches only for federation; constrained per-Isle issuing CAs; revocation by short leaves, denial on notice and a standby root"
+    where: "a register not in this copy (ADR-0189)"
+    adr: ADR-0189
+    takes:
+      - {from: rfc-5280, what: "name constraints per name type, pathLen, URI constraints on the host only"}
+      - {from: cabf-sc081, what: "leaves short enough to need no revocation information (7 days or less)"}
+      - {from: nist-ir-8547, what: "no quantum-vulnerable root that outlives 2035"}
+      - {from: rfc-9881, what: "ML-DSA in X.509 for the first post-quantum campaign"}
+      - {from: rfc-9773, what: "renewal information to drive re-issue campaigns"}
+      - {from: spiffe, what: "trust bundles per trust domain, refreshed with a freshness"}
+      - {from: openid-federation, what: "trust anchors held as sets with expiry"}
+    why: "separate roots for the Isle and for federation, and one issuing CA per Isle, let a rotation or a partner change proceed without touching the rest"
+    ours: "the separate federation root because partners must install a root, admission by root signature with denial on notice, custody as an attested attribute that caps the trust band, the yearly ceremony that signs ahead"
+    amend_when: "Envoy and the partner stacks validate ML-DSA, NIST IR 8547 is final, or a stack in use fails the name-constraint negative tests"
+
+  - id: label-ceilings
+    element: "All data on the platform is labelled by construction: signed ceilings on every container, item labels at boundaries and for chosen objects, labels only from bounded signers, fixed-label LLM sessions"
+    where: "a decision record not in this copy (ADR-0190)"
+    adr: ADR-0190
+    takes:
+      - {from: adatp-4774, what: "the label syntax, categories and succession for end dates"}
+      - {from: adatp-4778, what: "binding a label to the data's digest"}
+      - {from: opentdf, what: "a signed assertion bound to the payload for items that cross a boundary"}
+      - {from: rfc-7444, what: "labels on mail, signed so they cannot be stripped"}
+      - {from: mcp-authorization, what: "token audience, no passthrough, consent against the confused deputy"}
+      - {from: owasp-llm-2025, what: "sensitive information disclosure as the risk the gateway answers"}
+      - {from: arxiv-fides, what: "information-flow labels on an agent's context"}
+      - {from: arxiv-camel, what: "a quarantined model that returns typed values, so lower outputs need no trust in the planner"}
+    why: "per-item labels left disks, WAL, etcd, swap, snapshots and caches unlabelled, and labels taken from headers or callers could not vouch for themselves"
+    ours: "ceilings on containers with lower-is-a-release, signer certificates bound to a label range, provisional state instead of a quarantine level, a tenant approver or delayed revocable release for one operator, receiver-signed federation mappings"
+    amend_when: "OpenTDF assertions change, MCP's authorization revision is adopted, or a lab write path is found that no ceiling covers"
+

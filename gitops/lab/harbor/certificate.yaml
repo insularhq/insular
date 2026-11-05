@@ -1,0 +1,11 @@
+# The Harbor's names from this ring's CA: its own, and this ring's identity provider and OpenCloud as a partner's users
+# reach them through the Harbor (federation design, stages 5 and 6)
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata: {name: harbor-tls, namespace: vdh-harbor}
+spec:
+  secretName: harbor-tls
+  dnsNames: ["harbor.${ring_domain:=lab.vdh.test}", "id.${ring_domain:=lab.vdh.test}", "cloud.${ring_domain:=lab.vdh.test}", "matrix.${ring_domain:=lab.vdh.test}"]
+  issuerRef: {name: ring-ca, kind: ClusterIssuer}
+  duration: 720h   # ADR-0172: the ring CA's request policy allows at most 30 days (cert-manager's default is 90)
+  privateKey: {algorithm: ECDSA, size: 256}

@@ -1,0 +1,66 @@
+# Release gateway (DLP): the only way data leaves a higher-labelled enclave for a lower one. The original never
+# leaves; only a sanitised rendition does, after automated inspection, a human releasing decision and a signed
+# re-label. The low side can never reach back into the high side (one-way transfer).
+# Use case: an administrator works in a Restricted enclave from an Internal workstation, creates data there,
+# requests its release as Internal, and downloads the released rendition back to the workstation.
+
+access:   # how the administrator reaches the Restricted enclave without bringing data home
+  - "workstation: the managed device in the secure room (Restricted endpoint floor), booted and attested"
+  - "login: Keycloak with a phishing-resistant FIDO2 key; step-up; device posture compliant; evidence GREEN"
+  - "session: Apache Guacamole into a micro-VM desktop (Kata) in the Restricted enclave; clipboard, file transfer, printing and drive mapping disabled; session recorded"
+  - "the workstation only ever receives pixels; nothing Restricted lands on it"
+
+labels_order: [Internal, Sensitive, Restricted]
+
+pipeline:
+  - {stage: request,    tool: "release request in the enclave (decision inbox)", does: "requester, object, original label, target label, destination, justification"}
+  - {stage: identify,   tool: "Apache Tika (Apache-2.0)", does: "true file type from content, not the extension; only allow-listed types continue"}
+  - {stage: malware,    tool: "ClamAV (GPL-2.0) and YARA rules run by YARA-X (BSD-3-Clause)", does: "known malware and rule matches block"}
+  - {stage: disarm,     tool: "Dangerzone (AGPL-3.0) for documents and images; plain text normalised", does: "content disarm and reconstruction: the document is rendered to pixels in a sandbox and rebuilt as a flat PDF; macros, scripts, embedded objects and hidden layers do not survive"}
+  - {stage: metadata,   tool: "ExifTool (GPL-1.0-or-later or Artistic), result re-checked by Tika metadata extraction", does: "removes author, paths, revision history and device metadata"}
+  - {stage: content,    tool: "classification-marking scan, Presidio, gitleaks, AI egress gate", does: "markings above the target label, personal data, secrets and client identifiers block or are flagged for the reviewer"}
+  - {stage: volume,     tool: "release gateway quota", does: "per-person volume and count limits per period against aggregation; exceeding them needs an aggregation review"}
+  - {stage: review,     tool: "decision card for the releasing officer(s)", does: "side-by-side view of the sanitised rendition and the inspection results; signed decision"}
+  - {stage: relabel,    tool: "release manifest signed (Ed25519)", does: "hash of original and rendition, old and new label, rules passed, approvers; the original stays in the enclave"}
+  - {stage: transfer,   tool: "one-way push to the low-side drop", does: "the enclave pushes; the low side has no route back (egress-only policy, ideally a hardware data diode at L)"}
+  - {stage: download,   tool: "low-side portal behind Keycloak over the secure channel", does: "the administrator downloads the rendition and verifies the manifest signature and label"}
+
+allowed_types: [application/pdf, text/plain, text/csv, image/png]
+
+approvals:   # releasing officers, never the requester; more steps down need more people
+  one_step: 1       # e.g. Restricted -> Sensitive
+  two_or_more: 2    # e.g. Restricted -> Internal
+  role: release_officer
+  certification: release-officer-qualified
+  expiry: "24h"     # ADR-0093: an approval is bound to one release digest and must be used within a day
+
+quota: {max_releases_per_day: 10, max_bytes_per_day: 50000000}
+
+# Prior art (checked 2026-10-06). The gateway is a cross-domain solution (CDS) in the export (downgrade) direction.
+prior_art:
+  guidance:
+    - "UK NCSC, Cross domain solutions: principles (public collection, 13 principles, mapped below)"
+    - "UK NCSC, Pattern: Safely importing data (transformation of complex formats into simple ones, syntactic and semantic verification, uni-directional flow control with a data diode, protocol break)"
+  open_source:
+    - {name: "Dangerzone", status: "active, AGPL-3.0 (Freedom of the Press Foundation)", use: "content disarm and reconstruction (in the pipeline)"}
+    - {name: "Qubes PDF Converter", status: "active (Qubes OS)", use: "the original disposable-VM pixel conversion that Dangerzone follows"}
+    - {name: "Open Source Data Diode (OSDD)", status: "Apache-2.0, hardware and software design from the Cyber Innovation Hub (Netherlands); last update 2022, so a reference design rather than a maintained product", use: "one-way transfer at L"}
+    - {name: "Glass Box OpenCDS", status: "MIT, research project, inactive since 2015", use: "design reference only"}
+    - {name: "OpenTDF", status: "BSD-3-Clause-Clear, active", use: "binding labels and policy to the object itself (deferred)"}
+  commercial_note: "certified guards and data diodes exist from EU vendors; when a client needs a certified one-way device, the gateway's software stays the same and the diode is swapped in"
+  gap: "no maintained, complete open-source export guard exists: the gateway assembles maintained components and adds its own policy, review and manifest layer"
+
+ncsc_cds_principles:   # each NCSC principle -> what in this gateway meets it
+  network-protocol-attack-protection: "protocol break: the enclave pushes files over a one-way channel; no session from the low side reaches the high side"
+  content-based-attack-protection: "type by content (Tika) and allow-list, malware and YARA rules run by YARA-X, content disarm and reconstruction to flat PDF, metadata removal"
+  protect-against-unauthorised-export: "release officers (not the requester), two for two label steps, content scan for markings, fingerprints, personal data and secrets, quota against aggregation"
+  session-isolation: "Guacamole sessions into micro-VM desktops; the workstation only receives pixels; disposable sandboxes for conversion"
+  persistent-compromise-protection: "conversion sandboxes are disposable per file; gateway nodes rebuilt from signed images; attestation"
+  people-and-the-cds: "release officers hold the release-officer-qualified credential (curriculum); decision cards in plain language"
+  management: "managed only from ring R2; configuration from the signed bundle; changes are normal or major changes"
+  audit-and-accounting: "signed manifest per release, run records in the hash-chained audit, tenant-visible"
+  authentication: "FIDO2 with step-up for requesters and officers; Ed25519-signed approvals against the approver registry"
+  data-in-transit-protection: "TLS 1.3 and WireGuard on every link; the one-way push is signed and verified on arrival"
+  data-at-rest-protection: "originals encrypted under the tenant-held key in the enclave; staging areas encrypted and wiped after each release"
+  patching: "updates within the tier's patch days through the signed release pipeline; Trivy SBOM scanning"
+  component-integrity: "signed images admitted by digest, reproducible builds, SBOM and provenance per component"

@@ -1,0 +1,23 @@
+# ADR-0153 (intent): the forge's egress floor. Forgejo reaches the ring's
+# resolver, the ring's own names through the gateway (sign-in at id.<ring>), the event store's webhook receiver, and
+# its own namespace (its database); nothing else. A push mirror or a migration to an internet host is dropped here
+# and shows in Pharos as a dropped flow, whatever Forgejo's settings say. Backups off the ring add one
+# destination here by a reviewed change.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata: {name: egress-floor, namespace: vdh-forge}
+spec:
+  endpointSelector: {}
+  egress:
+    - toEndpoints: [{matchLabels: {k8s:io.kubernetes.pod.namespace: kube-system, k8s-app: kube-dns}}]
+      toPorts: [{ports: [{port: "53", protocol: UDP}, {port: "53", protocol: TCP}]}]
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: envoy-gateway-system
+            gateway.envoyproxy.io/owning-gateway-name: pharos-gw
+      toPorts: [{ports: [{port: "10443", protocol: TCP}]}]
+    - toEndpoints: [{matchLabels: {k8s:io.kubernetes.pod.namespace: vdh-telemetry, app: collector-gateway}}]
+      toPorts: [{ports: [{port: "8088", protocol: TCP}]}]
+    - toEndpoints: [{matchLabels: {k8s:io.kubernetes.pod.namespace: vdh-forge}}]
+    - toEndpoints: [{matchLabels: {k8s:io.kubernetes.pod.namespace: vdh-backup, app: garage}}]
+      toPorts: [{ports: [{port: "3900", protocol: TCP}]}]   # the database's backups to the ring's Garage

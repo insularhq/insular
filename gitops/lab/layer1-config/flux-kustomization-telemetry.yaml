@@ -1,0 +1,13 @@
+# The ring's event pipeline (ADR-0152): node agents, a gateway collector with a persistent queue, ClickHouse. Its
+# ring secret (telemetry-users) is made in the ring; no ring-specific value in the tree, so nothing is substituted.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: telemetry, namespace: flux-system}
+spec:
+  interval: 10m
+  dependsOn: [{name: segmentation}]   # no workload before its policy
+  sourceRef: {kind: OCIRepository, name: lab-gitops}
+  path: ./telemetry
+  prune: true
+  wait: false
+  timeout: 10m

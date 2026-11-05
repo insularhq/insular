@@ -1,0 +1,12 @@
+# ADR-0122 amended: the ring front, the one published door of a ring for endpoints. Envoy on the nodes' host
+# network, IPv4 and IPv6 on 443, routing by TLS server name to the two NetBird servers (TLS passes through; the
+# servers keep their own certificates). It needs nothing from the cloud but an address: no load balancer, no
+# provider API. The node's host baseline admits endpoints by an expiring set (a lease), made inside the ring.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: default-deny-ingress, namespace: vdh-front}
+spec:
+  # the front runs on the host network, where the node's host baseline decides; nothing in this namespace takes
+  # traffic as a pod
+  podSelector: {}
+  policyTypes: [Ingress]

@@ -1,0 +1,16 @@
+# The Harbor's services are reached only by the gateway's proxies (the Harbor's Envoy: routes and ext_authz), and its
+# way out only by this ring's OpenCloud (Open Cloud Mesh); the evaluator reaches the PDP and the intake through the API
+# server (port-forward, exec), not the pod network
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: default-deny-ingress, namespace: vdh-harbor}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    - from: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: envoy-gateway-system}}}]
+      ports: [{port: 80, protocol: TCP}, {port: 8008, protocol: TCP}, {port: 8080, protocol: TCP}, {port: 9191, protocol: TCP}]
+    - from: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: vdh-tenant-demo}}, podSelector: {matchLabels: {app: opencloud}}}]
+      ports: [{port: 10443, protocol: TCP}]
+    - from: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: vdh-tenant-demo}}, podSelector: {matchLabels: {app: synapse}}}]
+      ports: [{port: 10443, protocol: TCP}]   # Matrix federation to the partner's homeserver (ADR-0114)

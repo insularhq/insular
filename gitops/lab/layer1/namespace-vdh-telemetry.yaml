@@ -1,0 +1,9 @@
+# created in layer 1, before any child Kustomization, so segmentation's policies and the
+# workloads always find their namespace; never pruned, so moving it here cannot delete it on a running ring.
+# The agents read host logs (Hubble's export, /var/log/pods): privileged pod security for this namespace only.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: vdh-telemetry
+  annotations: {kustomize.toolkit.fluxcd.io/prune: disabled}
+  labels: {pod-security.kubernetes.io/enforce: privileged, vdh.io/role: telemetry}

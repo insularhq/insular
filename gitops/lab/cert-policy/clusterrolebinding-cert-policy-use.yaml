@@ -1,0 +1,5 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: {name: vdh-cert-policy-use}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: vdh-cert-policy-use}
+subjects: [{kind: ServiceAccount, name: cert-manager, namespace: cert-manager}]

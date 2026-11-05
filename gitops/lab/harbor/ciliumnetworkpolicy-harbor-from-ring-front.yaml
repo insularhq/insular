@@ -1,0 +1,11 @@
+# The Harbor's proxy is reached by the ring front (the host and the other nodes, tcp 10443) and by Pharos's Prometheus
+# on its stats port (without this rule the scrape is denied and the Harbor's own metrics are blind).
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata: {name: harbor-from-ring-front, namespace: envoy-gateway-system}
+spec:
+  endpointSelector: {matchLabels: {gateway.envoyproxy.io/owning-gateway-name: harbor-gw}}
+  ingress:
+    - {fromEntities: [host, remote-node], toPorts: [{ports: [{port: "10443", protocol: TCP}]}]}
+    - fromEndpoints: [{matchLabels: {k8s:io.kubernetes.pod.namespace: vdh-pharos, app: prometheus}}]
+      toPorts: [{ports: [{port: "19001", protocol: TCP}]}]

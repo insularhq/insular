@@ -1,0 +1,98 @@
+# Detection and response per component (ADR-0085): how drift is detected and observed, what it does to trust and risk,
+# where it sits in time and in cyberspace, and which responses are recommended, each with whether the system acts or
+# informs. Per-capability cards are derived by tools/detection_response.py from this file and the registers it names;
+# only what no register says is written here.
+
+drift_methods:   # how a deviation from the declared or approved state is detected
+  adapter-verify: {for: "masters and levers", how: "the change-contract adapter's verify operation compares live state with the last applied, signed plan, including extras (users, tokens, policies, webhooks)", detector: "a read-only identity per master (policies/master-protection.yaml drift)", interval_min: {tier0: 15, tier1: 60}}
+  gitops-reconcile: {for: "workloads and platform services deployed by GitOps", how: "Flux drift detection between the cluster and git; a manual change is reported, then reverted", detector: "the Flux controller identity", interval_min: {tier0: 5, tier1: 5}}
+  host-checks: {for: "hosts and runtimes", how: "Keylime attestation plus host checks of the lab-check kind (baseline, SELinux, pending snapshots, AVC triage)", detector: "Keylime verifier and the host check job", interval_min: {tier0: 15, tier1: 60}}
+  flow-baseline: {for: "network and access paths", how: "Hubble flows compared with the modelled seams; an unmodelled flow is drift (platform/interrogation.yaml discovery)", detector: "the evaluator", interval_min: {tier0: 1, tier1: 5}}
+  posture: {for: "endpoints and enrolled devices", how: "posture reports and enrolment state against the enrolment master", detector: "the posture service", interval_min: {tier0: 15, tier1: 60}}
+  redfish: {for: "BMCs and firmware", how: "Redfish settings, firmware inventory and the system event log against the firmware-and-bios master", detector: "a read-only Redfish account", interval_min: {tier0: 60, tier1: 240}}
+
+method_by_profile:   # observability profile (platform/observability.yaml) -> drift method, used when the capability is not a master or lever
+  workload: gitops-reconcile
+  host: host-checks
+  network: flow-baseline
+  gateway: flow-baseline
+  identity: adapter-verify
+  secrets: adapter-verify
+  pki: adapter-verify
+  policy: adapter-verify
+  delivery: gitops-reconcile
+  data: gitops-reconcile
+  oob: redfish
+  device: posture
+
+trust_impact:
+  tier0: "drift on a Tier 0 component drops its trust to none until two clean verifications in a row; everything that depends on it is capped at its band (weakest link)"
+  tier1: "drift lowers trust one band until one clean verification"
+  unobservable: "a detector that cannot read counts as drift (policies/master-protection.yaml drift)"
+
+risk_impact: "while drift is open, each linked risk counts one likelihood step higher; a breach of appetite opens an alarm on that risk with its owner"
+
+coordinates:   # every drift event and response is placed in time and in cyberspace
+  time: "event time, detection delay, time open, time to response; shown on the entity's timeline with its changes, decisions and alarms"
+  cyberspace:
+    site: "the site from the estate register and the federation map"
+    infra: "the host, node or BMC the component runs on (DCIM and Kubernetes)"
+    layer: "the stack sub-layer of the capability (platform/layers.yaml)"
+    logical: "the entity id in the estate graph and the seams that touch it"
+  views: "the drill-down of platform/spog.yaml; a drift episode lights up on every level from fleet to evidence"
+
+ladder:   # recommended responses in escalating order; the autonomy of each is decided by tools/autonomy.py per tier and context
+  - {rung: watch-detail, action: raise-observation, when: "any drift"}
+  - {rung: restore, action: reconcile-config, when: "drift from the declared state with a known good revision"}
+  - {rung: permission, action: tighten-permission, when: "the drift was written by an identity that should not have written it"}
+  - {rung: revocation, action: revoke-session, when: "an identity behind the drift is suspect; certificates rotate instead for PKI targets"}
+  - {rung: quarantine, action: quarantine-host, when: "integrity cannot be established or the drift repeats; isolate-site when a whole site is affected"}
+  - {rung: forensics, action: snapshot-forensics, when: "before any destructive or restoring step on a Tier 0 component"}
+
+target_actions:   # per capability kind, the concrete action that fills a rung when the generic one does not fit
+  revocation: {identity-broker: revoke-user, secrets-and-pki: rotate-certificate, device-enrolment: revoke-user, overlay-vpn: revoke-session, privileged-access: revoke-session}
+  quarantine: {overlay-vpn: isolate-site, event-backbone: isolate-site}
+
+act_or_inform:
+  act: "the system acts when the decided autonomy is autonomous or notify; notify also informs at once"
+  ask: "gated: the system proposes a change record and waits for one approval; human: a person decides"
+  inform: "always the capability owner (platform/facets.yaml); the security officer for Tier 0 and for revocation or quarantine; the tenant admin when the target is tenant-scoped; the auditor for Tier 0"
+
+# Lifecycle detectors: lifecycle management that is checked frequently, fails loudly and is mitigated by self-healing.
+# Each detector runs on every ring on a schedule and after every change, reports a state to the pane (a detector that
+# did not run is unknown, never green), and heals only through an action of governance/autonomy.yaml whose direction is
+# restore or reduce. A heal that does not clear the symptom on its next run escalates: the state stays red and the
+# owner is told.
+lifecycle_detectors:
+  LD-1:
+    symptom: "a pod Pending longer than 5 minutes, unschedulable"
+    heal: {when: "the blocker is a running pod of an older ReplicaSet of the same Deployment whose required anti-affinity applies to the new pod (a rollout deadlock on too few nodes)", action: restart-workload, does: "delete that older pod so the rollout proceeds"}
+    otherwise: "red, inform: the scheduler's reason and the pod"
+  LD-2:
+    symptom: "a CloudNativePG cluster reports more instances than its spec, or a join job is Pending longer than 10 minutes"
+    heal: {when: "the extra instance never joined: its join job is Pending and its volume never bound", action: reconcile-config, does: "delete the stale join job and the never-bound volume; never a bound volume"}
+    otherwise: "red, inform"
+  LD-3:
+    symptom: "a Flux Kustomization not Ready past its timeout, or still reconciling an older revision than its source holds"
+    heal: {when: "the source holds a newer signed revision", action: reconcile-config, does: "restart the reconciliation (suspend and resume) so the new revision applies"}
+    otherwise: "red, inform: the condition message"
+  LD-4:
+    symptom: "a Kustomization failing because an object it applies references a namespace another Kustomization creates"
+    heal: null   # a design error in the tree: never healed at run time, fixed in the model
+    otherwise: "red, inform the model owner"
+  LD-5:
+    symptom: "a pod in CreateContainerConfigError because a Secret is missing"
+    heal: {when: "the Secret is one of the ring's random secrets made at install", action: reconcile-config, does: "create it inside the ring, never printed"}
+    otherwise: "red, inform"
+  LD-6:
+    symptom: "OpenBao sealed"
+    heal: null   # manual Shamir unseal on cloud S (ADR-0134): healing would need a key the ring must not hold
+    otherwise: "red, page the custodians"
+  LD-7:
+    symptom: "a pod Terminating for more than 10 minutes"
+    heal: null   # never forced: a forced delete can leave two writers on one volume
+    otherwise: "red, inform the owner of the workload"
+  LD-8:
+    symptom: "a pod scheduled but not Ready for more than 10 minutes (stuck creating, a missing volume or ConfigMap, a failing probe)"
+    heal: null   # the causes vary; never green by omission
+    otherwise: "red, inform the owner of the workload"

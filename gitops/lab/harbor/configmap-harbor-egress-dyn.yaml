@@ -1,0 +1,14 @@
+# the Harbor's way out starts empty and valid when no partner is admitted (Envoy refuses a missing file and
+# crash-looped on a ring without a partner). Admitting a partner overwrites this ConfigMap (by the lab tooling,
+# egress); Flux creates it only when it is absent, so it never reverts an admitted partner's listener and cluster.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: harbor-egress-dyn
+  namespace: vdh-harbor
+  annotations: {kustomize.toolkit.fluxcd.io/ssa: IfNotPresent}
+data:
+  lds.yaml: |
+    resources: []
+  cds.yaml: |
+    resources: []

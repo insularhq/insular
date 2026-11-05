@@ -1,0 +1,58 @@
+# Governance scaffold, drills (ADR-0133): break-and-heal scenarios run on the Chartroom's EDU rings (ADR-0132) for
+# students and junior operators. A passed drill is competency evidence of kind "drill", verified by a registered grader.
+# The format follows prior art (CyberRangeCZ training definitions, MIT; the Killercoda step-and-verify pattern), adopted
+# as a format only, on our own rings: no hosted training service.
+# Rules: every drill starts from a real finding or a ceremony (the debrief is the finding); the checker runs on the
+# Chartroom grader from outside the ring, never inside it (a checker the student can run leaks the answer); the result
+# is signed with the grading key no ring reaches (platform/signing-chains.yaml edu-grading) and issued as an expiring
+# credential (Open Badges 3.0 on W3C VC 2.0, self-issued); each run is seeded so answers differ between students;
+# hints cost points; every drill's solve script runs in CI so drills do not rot; EDU rings hold synthetic data only.
+# The scripts are planned: the names below are the contract they will meet.
+drills:
+  phases: [setup, break, objectives, solve, cleanup, debrief]
+  rules:
+    grader: chartroom-grader
+    verify_from: outside-the-ring
+    variants: seeded-per-run
+    solve_in_ci: true
+    data: synthetic
+  catalog:
+    wireguard-break-and-heal:
+      source_findings: [lab findings]
+      competencies: [platform-operations, platform-security]
+      ring: {size: S, nodes: 3, ip: ipv6-only}
+      timelimit_minutes: 90
+      break: "switch on Cilium WireGuard with the host baseline not admitting its port"
+      objectives:
+        - {id: diagnose, weight: 30, verify: "the student names the dropped port and the rule that drops it", hints: [{text: "node health is green; look at cross-node flows", cost: 5}]}
+        - {id: heal, weight: 50, verify: "cross-node pod flows and the scrape targets are back; encryption is on", hints: [{text: "the baseline admits VXLAN but not the WireGuard port", cost: 10}]}
+        - {id: settle, weight: 20, verify: "every Flux kustomization is ready after the outage", hints: [{text: "Flux retries a failed download only at the next interval", cost: 5}]}
+    flux-after-outage:
+      source_findings: [lab findings]
+      competencies: [platform-operations]
+      ring: {size: S, nodes: 1}
+      timelimit_minutes: 45
+      break: "cut the ring's source mirror for one interval, and change a live Deployment's strategy to Recreate"
+      objectives:
+        - {id: reconcile, weight: 50, verify: "every kustomization is ready and none waits on its interval", hints: [{text: "reconcile the source, then the kustomizations", cost: 5}]}
+        - {id: recreate, weight: 50, verify: "the Deployment runs with strategy Recreate and Flux applies it cleanly", hints: [{text: "the live object keeps rollingUpdate fields that Recreate forbids", cost: 10}]}
+    restore-within-rto:
+      source_findings: []
+      source: "the availability tier's restore test (governance/scaffold/tiers.yaml restore_test_days)"
+      competencies: [database-recovery]
+      ring: {size: S, nodes: 1}
+      timelimit_minutes: 120
+      break: "drop the application database of a synthetic tenant"
+      objectives:
+        - {id: restore, weight: 70, verify: "the database is restored from the backup chain and the synthetic rows match", hints: [{text: "the backups live in the ring's object store", cost: 10}]}
+        - {id: within-rto, weight: 30, verify: "the restore finished within the tier's RTO, measured by the grader", hints: []}
+    ceremony-rehearsal:
+      source_findings: []
+      source: "governance/ceremonies.yaml and ADR-0129: a root and delegation ceremony with throwaway tokens"
+      competencies: [key-custody]
+      ring: {size: S, nodes: 1}
+      timelimit_minutes: 120
+      break: "none: a rehearsal; one throwaway token is reported lost halfway"
+      objectives:
+        - {id: ceremony, weight: 60, verify: "throwaway root metadata signed by the threshold verifies; the transcript hash is in the evidence", hints: []}
+        - {id: lost-token, weight: 40, verify: "the lost token is revoked and the threshold still met with the remaining holders", hints: [{text: "2-of-3 survives one loss", cost: 10}]}

@@ -1,0 +1,6 @@
+# the desk's first revision on a fresh store. No grants and no root: nobody can grant through
+# KeyClerk until the organisation seeds its root trust owner and records (a later step). Read only on a fresh store.
+realm: vdh
+home: "${ring_domain:=lab.vdh.test}"
+grants: []
+revocations: []

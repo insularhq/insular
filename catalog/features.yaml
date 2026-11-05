@@ -1,0 +1,57 @@
+# Feature registry: every feature declares whether it is user-facing or backend-only, which roles it touches, and
+# (if user-facing) the screen state to capture. A release cannot ship a user-facing feature without onboarding steps
+# for every role it touches and a fresh screenshot captured from a live instance in that state (tools/onboarding.py).
+features:
+  account-activation:
+    facing: user
+    roles: [end-user, team-champion, tenant-admin, risk-owner]
+    screen: {app: keycloak, path: "/realms/{tenant}/account", fixture: new-user-invited}
+    since: "0.1"
+  passkey-enrolment:
+    facing: user
+    roles: [end-user, team-champion, tenant-admin, risk-owner, security-officer]
+    screen: {app: keycloak, path: "/realms/{tenant}/account/security/signingin", fixture: user-without-keys}
+    since: "0.1"
+  key-collection:
+    facing: user
+    roles: [end-user, team-champion, tenant-admin, risk-owner]
+    screen: null
+    since: "0.1"
+  vault-team-drive:
+    facing: user
+    roles: [end-user, team-champion, tenant-admin]
+    screen: {app: cryptpad, path: "/teams/", fixture: team-with-engagement}
+    since: "0.1"
+  request-and-feedback:
+    facing: user
+    roles: [end-user, team-champion]
+    screen: {app: glpi, path: "/front/helpdesk.public.php", fixture: open-request}
+    since: "0.2"
+  decision-card-approval:
+    facing: user
+    roles: [risk-owner]
+    screen: {app: decision-inbox, path: "/inbox", fixture: deviation-awaiting-approval}
+    since: "0.2"
+  key-issuance:
+    facing: user
+    roles: [security-officer]
+    screen: {app: glpi, path: "/front/peripheral.php", fixture: keys-in-stock}
+    since: "0.2"
+  green-light-view:
+    facing: user
+    roles: [risk-owner, tenant-admin, site-sysadmin, team-champion]
+    screen: {app: grafana, path: "/d/green-light", fixture: one-control-amber}
+    since: "0.1"
+  break-glass-procedure:
+    facing: user
+    roles: [site-sysadmin]
+    screen: null
+    since: "0.1"
+  evidence-federation:
+    facing: backend
+    roles: []
+    since: "0.1"
+  flux-reconciliation:
+    facing: backend
+    roles: []
+    since: "0.1"

@@ -1,0 +1,68 @@
+# Governance scaffold, competencies (ADR-0133): what a person must know to hold a role, where to learn it and what
+# counts as proof. A competency is an attribute with a clock, like every other trust (ADR-0093): it is valid until
+# its evidence expires (the security tier sets the validity), and an expired competency stops the role at the policy
+# decision point. Sandboxes are the Chartroom's sandbox rings (ADR-0132): an exercise there leaves lab evidence, so a
+# disconnected organisation can prove competency without an outside certificate. A drill on an EDU ring is graded by the
+# Chartroom's grader from outside the ring and signed with a key no ring reaches (drills.yaml).
+competencies:
+  # who may verify each kind of evidence: never the person it is about; a drill only by a registered grader
+  evidence_kinds:
+    certification: {verifier: "the issuing body, recorded with the certificate id"}
+    sandbox-exercise: {verifier: "another person holding the competency"}
+    drill: {verifier: grader}
+    ceremony-rehearsal: {verifier: "a witness other than the person"}
+    peer-review: {verifier: "another person holding the competency"}
+  graders: [chartroom-grader]
+  catalog:
+    platform-operations:
+      for_roles: [platform_operator, release_manager]
+      learn:
+        - {kind: docs, ref: "docs/ (generated from the model) and the runbooks"}
+        - {kind: sandbox, ref: "a Chartroom sandbox ring: bring a ring up, install its first layer, sync it; break and heal exercises"}
+        - {kind: course, ref: "https://kubernetes.io/docs/"}
+        - {kind: certification, ref: "CKA (Linux Foundation)"}
+      evidence: [certification, drill, sandbox-exercise]
+    platform-security:
+      for_roles: [security_officer, platform_operator]
+      learn:
+        - {kind: docs, ref: "the risk register, detection-response and zero-trust registers of the model"}
+        - {kind: sandbox, ref: "a Chartroom sandbox ring with the exposure scan and the findings of earlier reviews"}
+        - {kind: certification, ref: "CKS (Linux Foundation)"}
+      evidence: [certification, drill, sandbox-exercise]
+    policy-authoring:
+      for_roles: [security_officer, owner]
+      learn:
+        - {kind: docs, ref: "policies/model.yaml and policy/vdh (Rego with tests)"}
+        - {kind: course, ref: "https://www.openpolicyagent.org/docs/latest/"}
+        - {kind: sandbox, ref: "opa test on a fork of the policy packs; the PDP on a sandbox ring"}
+      evidence: [drill, sandbox-exercise, peer-review]
+    key-custody:
+      for_roles: [pki_custodian]
+      learn:
+        - {kind: docs, ref: "governance/ceremonies.yaml and ADR-0129 (the offline trust chain)"}
+        - {kind: course, ref: "https://theupdateframework.io/"}
+        - {kind: sandbox, ref: "a rehearsal ceremony with throwaway tokens on a sandbox ring"}
+      evidence: [ceremony-rehearsal, drill]
+    secrets-management:
+      for_roles: [pki_custodian, platform_operator]
+      learn:
+        - {kind: docs, ref: "https://openbao.org/docs/"}
+        - {kind: sandbox, ref: "init, seal, unseal and rotate OpenBao on a sandbox ring"}
+      evidence: [drill, sandbox-exercise]
+    database-recovery:
+      for_roles: [platform_operator]
+      learn:
+        - {kind: docs, ref: "https://cloudnative-pg.io/documentation/"}
+        - {kind: sandbox, ref: "a restore from backup on a sandbox ring, timed against the RTO"}
+      evidence: [drill, sandbox-exercise]
+    risk-acceptance:
+      for_roles: [owner]
+      learn:
+        - {kind: docs, ref: "ADR-0004 decision cards and the risk cycle (ADR-0089)"}
+      evidence: [peer-review]
+    release-officer:
+      for_roles: [release_manager]
+      learn:
+        - {kind: docs, ref: "the release gateway and the stick release (ADR-0053, ADR-0129)"}
+        - {kind: sandbox, ref: "a release through a sandbox ring's release loader"}
+      evidence: [drill, sandbox-exercise, certification]

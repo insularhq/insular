@@ -1,0 +1,21 @@
+# Element Web for the demo tenant: only this ring's homeserver, no guests, no registration, no integrations, no URL
+# previews, no bug reports or telemetry endpoints.
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: element, namespace: vdh-tenant-demo}
+data:
+  config.json: |
+    {
+      "default_server_config": {"m.homeserver": {"base_url": "https://matrix.${ring_domain:=lab.vdh.test}", "server_name": "matrix.${ring_domain:=lab.vdh.test}"}},
+      "disable_custom_urls": true,
+      "disable_guests": true,
+      "disable_3pid_login": true,
+      "brand": "Demo chat",
+      "show_labs_settings": false,
+      "integrations_ui_url": "",
+      "integrations_rest_url": "",
+      "integrations_widgets_urls": [],
+      "bug_report_endpoint_url": "",
+      "map_style_url": "",
+      "setting_defaults": {"UIFeature.urlPreviews": false, "UIFeature.feedback": false, "UIFeature.registration": false, "UIFeature.passwordReset": false, "UIFeature.thirdPartyId": false}
+    }

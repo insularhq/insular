@@ -1,0 +1,66 @@
+# Product vocabulary (ADR-0111, ADR-0123). The product is called Insular (ADR-0127, replacing Isolae of ADR-0111). Seven terms name the parts people talk about; every term
+# names one concept that already exists in the model, and configs, code and registers keep the plain engineering name.
+# Docs and the pane show both ("Islet (edge site)"). No other nautical terms: the metaphor stays small on purpose (Chartroom added deliberately, ADR-0132).
+# Checked by test_the_product_vocabulary_names_existing_model_concepts.
+
+product: Insular
+terms:
+  - term: Isle
+    plain: core site
+    meaning: "a site that holds its own authority (CA, identity, policy, desk, backups) and runs on its own; highly available from size M (three servers), one node at size S (ADR-0133)"
+    model: {file: platform/layers.yaml, path: [topology, orchestration-api, ha], contains: "three servers per site"}
+    main:   # a role, not a site: whichever Isle holds the orchestrator lease (ADR-0111); failover is proven in a lab run
+      term: Main Isle
+      plain: orchestrating core site
+      meaning: "the Isle that currently holds the orchestrator lease; changes to the desired state, the policy root and the pane's write paths go through it, running never depends on it"
+      model: {file: policies/data-logistics.yaml, path: [sites, core-1, kind], value: parent}
+      held_by: lease
+      quorum: majority-of-isles
+      tie_breaker_when_two_isles: witness
+      on_lapse: "another Isle with a quorum takes the lease; the handover is logged"
+  - term: Pillar   # ADR-0187: was Anchor in ADR-0111
+    plain: core node
+    meaning: "one of the servers that hold an Isle; one at size S, three or more from size M, so an Isle of size M keeps its quorum when it loses one"
+    model: {file: platform/layers.yaml, path: [topology, orchestration-api, ha], contains: "three servers per site"}
+    per_size: {S: 1, M: 3}
+  - term: Islet
+    plain: edge site
+    meaning: "a smaller site attached to an Isle, permanent or an ephemeral PoP; it runs alone when cut off"
+    model: {file: policies/data-logistics.yaml, path: [sites, edge-1, kind], value: site}
+    includes: {file: policies/data-logistics.yaml, path: [sites, pop-17, kind], value: ephemeral-pop}
+  - term: Skiff
+    plain: thin client
+    meaning: "an endpoint moored to an Islet by a lease; it carries a session, never the data; when its Islet is down it reaches the overlay through any Isle's or Islet's relay and is served by another site of its ring, under its own lease (ADR-0118)"
+    model: {file: platform/egress.yaml, path: [ingress, from], contains: "thin clients"}
+    mooring:   # ADR-0187: a nested term, like Main Isle of Isle
+      term: Anchor
+      plain: a Skiff's mooring
+      meaning: "the lease under which an Islet serves a Skiff; when the Islet is down the Skiff is served by another site of its ring under its own lease (ADR-0118)"
+      model: {file: policies/federation.yaml, path: [amendments, A13, rule], contains: "a Skiff whose Islet is down"}
+  - term: Hull
+    plain: endpoint hypervisor
+    meaning: "the trustworthy KVM host that runs a Skiff as a virtual machine; attested, it lets a Skiff on an ordinary laptop meet the Restricted endpoint floor (ADR-0123)"
+    model: {file: platform/endpoint-access.yaml, path: [hull, what], contains: "KVM host"}
+  - term: Chartroom
+    plain: estate factory and control plane
+    meaning: "the organisation's one software and infrastructure factory: sandbox, integration tests, updates, signing and release media; independent of every ring, it deploys rings of any classification, which then run on their own (ADR-0132)"
+    placement: estate
+    model: {file: platform/estate-roles.yaml, path: [roles, chartroom, purpose], contains: "software and infrastructure factory"}
+  - term: Keel
+    plain: progenitor medium
+    meaning: "the signed, read-only boot medium that founds an estate: it boots a dedicated machine, runs the first-run screen (hash check on a separate device, governance intake in OPA, signed instance file), builds the Chartroom, hands control to it and holds nothing after; a profile of the boot stick image (ADR-0052, ADR-0132 amendments 2 and 3). Laying the keel starts a ship. Internal term: keel.sh is an unrelated Kubernetes tool"
+    placement: estate
+    model: {file: platform/estate-roles.yaml, path: [roles, seed, instantiate], contains: "progenitor medium"}
+  - term: Harbor
+    plain: release gateway
+    meaning: "where data leaves its ring, inspected, approved and logged; any Isle or Islet may run one, so an edge can federate with partner solutions or other information domains directly"
+    placement: any-site
+    model: {file: platform/channels.yaml, text: "through the release gateway"}
+
+modules:   # named parts of the product, always written with the house mark (ADR-0115)
+  - name: Pharos
+    full_name: Insular Pharos
+    plain: operator pane (single pane of glass)
+    meaning: "the lighthouse over the archipelago: one front door over the estate graph, with a view per role"
+    model: {file: platform/spog.yaml, path: [estate_graph, sources], contains: "calm/vdhome-platform.architecture.json"}
+    standalone_mark: false   # never used without the house mark

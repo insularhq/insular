@@ -1,0 +1,9 @@
+# the demo app is reached only through the gateway's proxies.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata: {name: ingress, namespace: vdh-demo-app}
+spec:
+  endpointSelector: {}
+  ingress:
+    - fromEndpoints: [{matchLabels: {k8s:io.kubernetes.pod.namespace: envoy-gateway-system}}]
+      toPorts: [{ports: [{port: "8080", protocol: TCP}]}]

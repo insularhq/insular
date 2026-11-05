@@ -1,0 +1,13 @@
+# the CloudNativePG webhook answers only the API server; the operator and the Barman Cloud plugin talk inside
+# the namespace (9090); Prometheus scrapes the operator's metrics.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata: {name: ingress, namespace: cnpg-system}
+spec:
+  endpointSelector: {}
+  ingress:
+    - fromEntities: [kube-apiserver, host, remote-node]
+      toPorts: [{ports: [{port: "9443", protocol: TCP}]}]
+    - fromEndpoints: [{matchLabels: {k8s:io.kubernetes.pod.namespace: cnpg-system}}]
+    - fromEndpoints: [{matchLabels: {k8s:io.kubernetes.pod.namespace: vdh-pharos, app: prometheus}}]
+      toPorts: [{ports: [{port: "8080", protocol: TCP}]}]

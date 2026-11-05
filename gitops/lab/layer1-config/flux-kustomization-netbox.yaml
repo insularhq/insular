@@ -1,0 +1,14 @@
+# NetBox on the Isle (ADR-0171): after the ring's segmentation
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: netbox, namespace: flux-system}
+spec:
+  interval: 10m
+  dependsOn: [{name: segmentation}, {name: backup-plugin}]
+  sourceRef: {kind: OCIRepository, name: lab-gitops}
+  path: ./netbox
+  prune: true
+  wait: false
+  timeout: 10m
+  postBuild:
+    substituteFrom: [{kind: ConfigMap, name: ring-settings, optional: true}]

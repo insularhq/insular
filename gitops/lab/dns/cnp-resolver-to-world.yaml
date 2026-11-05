@@ -1,0 +1,9 @@
+# The resolver iterates outside names from the root (ADR-0172): DNS to the internet, nothing else
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata: {name: resolver-to-world, namespace: vdh-dns}
+spec:
+  endpointSelector: {matchLabels: {app: resolver}}
+  egress:
+    - toEntities: [world]
+      toPorts: [{ports: [{port: "53", protocol: UDP}, {port: "53", protocol: TCP}]}]

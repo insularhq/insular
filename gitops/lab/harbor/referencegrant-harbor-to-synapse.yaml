@@ -1,0 +1,6 @@
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata: {name: harbor-to-synapse, namespace: vdh-tenant-demo}
+spec:
+  from: [{group: gateway.networking.k8s.io, kind: HTTPRoute, namespace: vdh-harbor}]
+  to: [{group: "", kind: Service, name: synapse}]

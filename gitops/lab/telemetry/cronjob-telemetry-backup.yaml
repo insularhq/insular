@@ -1,0 +1,54 @@
+# ADR-0139: the event store, the audit ledgers included (ADR-0153), backed up by ClickHouse itself every
+# six hours into the ring's Garage (bucket state-telemetry), from where the off-site job (at :30) carries it to the box.
+# The job asks ClickHouse, as the user backup (BACKUP only), for a BACKUP through the collection garage_backup: the
+# Garage key is in ClickHouse's configuration (from the optional Secret telemetry-backup), never in a query. Garage
+# keeps two days of backups; the history is the off-site repository's.
+apiVersion: batch/v1
+kind: CronJob
+metadata: {name: telemetry-backup, namespace: vdh-telemetry, annotations: {vdh.component: "ClickHouse", vdh.app-version: "v26.3.39.7"}}
+spec:
+  schedule: "15 */6 * * *"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 3600
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 1800
+      template:
+        metadata: {labels: {app: telemetry-backup}}
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext: {runAsNonRoot: true, runAsUser: 101, runAsGroup: 101, seccompProfile: {type: RuntimeDefault}}
+          initContainers:
+            - name: backup
+              image: docker.io/clickhouse/clickhouse-server:26.3.39.7@sha256:3a91276f066905da0edbbd622d3fc2a2df632c87ea7fe32ef4e74fdf8c9567b0
+              command: [sh, -c]
+              env: [{name: BACKUP_PASSWORD, valueFrom: {secretKeyRef: {name: telemetry-users, key: backup}}}, {name: HOME, value: /work}]
+              args:
+                - |
+                  set -eu
+                  at=$(date -u +%Y%m%dT%H%M%SZ)
+                  clickhouse-client --host clickhouse.vdh-telemetry.svc --user backup --password "$BACKUP_PASSWORD" --query "BACKUP DATABASE otel TO S3(garage_backup, 'otel/$at') FORMAT TSV"
+                  echo "event store backed up: state-telemetry/otel/$at"
+              resources: {requests: {cpu: 20m, memory: 64Mi}, limits: {memory: 256Mi}}
+              securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+              volumeMounts: [{name: work, mountPath: /work}]
+          containers:
+            - name: retention
+              image: docker.io/rclone/rclone:1.75.1@sha256:45401ad7410db1d67ffdb58e19059ad20b0d8e0285a60e38bbec55cc1019c7a5
+              command: [sh, -c]
+              args:
+                - |
+                  set -eu
+                  rclone --config /target/rclone.conf --cache-dir /work/.rclone delete garage:state-telemetry/otel --min-age 2d
+                  rclone --config /target/rclone.conf --cache-dir /work/.rclone rmdirs garage:state-telemetry/otel --leave-root
+                  echo "Garage keeps two days of event store backups"
+              resources: {requests: {cpu: 20m, memory: 32Mi}, limits: {memory: 128Mi}}
+              securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+              volumeMounts: [{name: work, mountPath: /work}, {name: target, mountPath: /target, readOnly: true}]
+          volumes:
+            - {name: work, emptyDir: {sizeLimit: 64Mi}}
+            - {name: target, secret: {secretName: telemetry-backup, defaultMode: 0440}}

@@ -1,0 +1,23 @@
+# Element Web, the tenant's Matrix client (stateless; the image's own unprivileged nginx on 8080, its configuration
+# from configmap-element.yaml).
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: element, namespace: vdh-tenant-demo, annotations: {vdh.component: "Element Web", vdh.app-version: "v1.12.30"}}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: element}}
+  template:
+    metadata: {labels: {app: element}}
+    spec:
+      automountServiceAccountToken: false
+      securityContext: {runAsNonRoot: true, runAsUser: 101, runAsGroup: 101, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: element
+          image: docker.io/vectorim/element-web:v1.12.30@sha256:3e7dbd4424de9e11c812bc740acf2725b2abe66ea0d0802023b56fd85d3fa09a
+          env: [{name: ELEMENT_WEB_PORT, value: "8080"}]
+          ports: [{containerPort: 8080}]
+          readinessProbe: {httpGet: {path: /config.json, port: 8080}}
+          securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+          resources: {requests: {cpu: 10m, memory: 32Mi}, limits: {memory: 128Mi}}
+          volumeMounts: [{name: config, mountPath: /app/config.json, subPath: config.json, readOnly: true}]
+      volumes: [{name: config, configMap: {name: element}}]

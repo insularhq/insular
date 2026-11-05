@@ -1,0 +1,17 @@
+# Weekly updates, as pull requests that CI checks: the pinned workflow actions and the hash-locked Python tools.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      python-tools:
+        patterns: ["*"]

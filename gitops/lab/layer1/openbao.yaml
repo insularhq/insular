@@ -1,0 +1,52 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata: {name: openbao, namespace: openbao, annotations: {vdh.component: "OpenBao", vdh.app-version: "v2.7.1"}}
+spec:
+  interval: 30m
+  timeout: 10m
+  chartRef: {kind: OCIRepository, name: chart-openbao, namespace: flux-system}   # chart openbao 0.30.3, locked and signed
+  # a transient failure (a hook Job on a loaded node) is retried, never left Stalled for a person
+  install: {disableWait: true, remediation: {retries: 3}}   # sealed until the init ceremony, so never Ready in the lab
+  upgrade: {disableWait: true, remediation: {retries: 3}}
+  values:
+    injector: {enabled: false}
+    ui: {enabled: false}
+    server:
+      ha:
+        enabled: true
+        replicas: 3
+        raft:
+          enabled: true
+          # ADR-0128: no standing break-glass token. The main listener keeps unauthenticated generate-root
+          # off (the default since OpenBao 2.5.3); a second listener on the pod's loopback only allows it, so a
+          # root token is regenerated on demand from unseal shares by custodians who can also exec into the pod.
+          config: |
+            ui = true
+            listener "tcp" {
+              tls_disable = 1
+              address = "[::]:8200"
+              cluster_address = "[::]:8201"
+            }
+            listener "tcp" {
+              tls_disable = 1
+              address = "[::1]:8210"
+              disable_unauthed_generate_root_endpoints = false
+            }
+            storage "raft" {
+              path = "/openbao/data"
+            }
+            service_registration "kubernetes" {}
+        # the chart's default api_addr is http://$(POD_IP):8200, unbracketed, which breaks on IPv6-only pods;
+        # address the pod by name (IP carries no meaning). Only variables defined earlier in env expand.
+        apiAddr: "http://$(BAO_K8S_POD_NAME).openbao-internal:8200"
+      dataStorage: {size: 1Gi}
+      affinity: |
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels: {app.kubernetes.io/name: openbao, component: server}
+              topologyKey: kubernetes.io/hostname
+  postRenderers:   # the chart's images pinned by digest
+    - kustomize:
+        images:
+          - {name: quay.io/openbao/openbao, digest: "sha256:6d2b93856e3fcf7b18ad855a0b51eaba474dc8b79cf554379ea32034797d2acf"}

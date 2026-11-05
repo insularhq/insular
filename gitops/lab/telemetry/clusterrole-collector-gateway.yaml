@@ -1,0 +1,8 @@
+# Read-only on events (core and events.k8s.io): a pod that crash-loops or never becomes ready is an event before it is
+# anything else. No secrets, no pods, no write.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata: {name: vdh-telemetry-collector-gateway}
+rules:
+  - {apiGroups: ["events.k8s.io"], resources: [events], verbs: [list, watch]}
+  - {apiGroups: [""], resources: [events], verbs: [list, watch]}

@@ -1,0 +1,18 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# ADR-0172 point 1: what the ring gives is gated locally from git. Certificates: one request policy per issuer, used by
+# cert-manager's controller (its own approval is off). Service addresses: an admission policy (Kubernetes' own CEL).
+resources:
+  - certificaterequestpolicy-bootstrap-ca.yaml
+  - certificaterequestpolicy-lab-probe.yaml
+  - certificaterequestpolicy-pane-gateway.yaml
+  - certificaterequestpolicy-ring-ca.yaml
+  - certificaterequestpolicy-barman-cloud.yaml
+  - clusterrole-cert-policy-use.yaml
+  - clusterrolebinding-cert-policy-use.yaml
+  - validatingadmissionpolicy-service-addresses.yaml
+  - validatingadmissionpolicybinding-service-addresses.yaml
+  - validatingadmissionpolicy-service-status.yaml
+  - validatingadmissionpolicybinding-service-status.yaml
+  - validatingadmissionpolicy-ring-variables.yaml
+  - validatingadmissionpolicybinding-ring-variables.yaml

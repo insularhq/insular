@@ -1,0 +1,7 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# CloudNativePG's Barman Cloud plugin in a unit of its own: its chart makes two certificates from its
+# own self-signed issuer, and with cert-manager's approval off (ADR-0172) they are issued only once the request
+# policies exist, so the plugin comes after cert-policy and the databases that use it come after the plugin.
+resources:
+  - helmrelease-barman-cloud.yaml

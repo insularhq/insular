@@ -1,0 +1,34 @@
+# One agent per node. It reads host files (Hubble's export and the pod logs, root-owned) read-only: root without
+# capabilities beyond reading, the SELinux type spc_t so the enforcing host lets it read what the kubelet wrote.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: collector-agent
+  namespace: vdh-telemetry
+  annotations: {vdh.component: "OpenTelemetry Collector", vdh.app-version: "v0.161.0"}
+spec:
+  selector: {matchLabels: {app: collector-agent}}
+  template:
+    metadata: {labels: {app: collector-agent}}
+    spec:
+      tolerations: [{operator: Exists}]
+      containers:
+        - name: otelcol
+          image: docker.io/otel/opentelemetry-collector-contrib:0.161.0@sha256:fd328de2552466ad78385e1b1289c3f2402b1c45f265b252aab1955b42845ac1
+          args: ["--config=/conf/agent.yaml"]
+          env: [{name: NODE_NAME, valueFrom: {fieldRef: {fieldPath: spec.nodeName}}}]
+          securityContext:
+            runAsUser: 0
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL], add: [DAC_READ_SEARCH]}
+            seLinuxOptions: {type: spc_t}
+          resources: {requests: {cpu: 20m, memory: 64Mi}, limits: {memory: 256Mi}}
+          volumeMounts:
+            - {name: conf, mountPath: /conf, readOnly: true}
+            - {name: hubble, mountPath: /var/run/cilium/hubble, readOnly: true}
+            - {name: pods, mountPath: /var/log/pods, readOnly: true}
+      volumes:
+        - {name: conf, configMap: {name: collector-agent}}
+        - {name: hubble, hostPath: {path: /var/run/cilium/hubble, type: DirectoryOrCreate}}
+        - {name: pods, hostPath: {path: /var/log/pods, type: Directory}}

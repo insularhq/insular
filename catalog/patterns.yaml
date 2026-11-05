@@ -1,0 +1,58 @@
+# Security-architect-owned patterns: the ONLY way a function an application needs becomes network flows, controls
+# and runtime settings. App owners declare functions in an intent (intent/apps/); they never write ports, CIDRs or
+# protocols. Components (vetted software) declare which ports their protocols listen on; the resolver joins the two.
+# Changing a pattern is a security-architect decision (review + ADR), not an app-owner change.
+owner: security-architect
+
+patterns:
+  web-ui:
+    text: "users reach the application in a browser"
+    exposure: internet
+    flows:
+      - {from: client-browser, to: ingress, port: 443, proto: tcp}
+      - {from: client-browser, to: ingress, port: 80, proto: tcp, why: "ACME HTTP-01 and redirect only"}
+      - {from: ingress, to: self, protocol: http}
+    controls: [SC-8, SC-23, AC-17]
+  realtime-websocket:
+    text: "live collaboration over a websocket"
+    exposure: internet
+    requires: [web-ui]
+    flows:
+      - {from: ingress, to: self, protocol: websocket}
+    controls: [SC-8]
+  sso-login:
+    text: "users log in through the platform identity provider"
+    exposure: internal
+    flows:
+      - {from: self, to: ingress, port: 443, proto: tcp, why: "OIDC discovery and token endpoint via the identity vhost"}
+    controls: [IA-2, IA-8, AC-2]
+  outbound-mail:
+    text: "the application sends notification mail"
+    exposure: internal
+    flows:
+      - {from: self, to: mail-relay, port: 587, proto: tcp}
+    controls: [SC-8, SI-8]
+  private-database:
+    text: "the application keeps state in its own database, reachable only by itself"
+    exposure: none
+    flows:
+      - {from: self, to: self-db, protocol: postgres, component: postgres}
+    controls: [SC-28, AC-6]
+  vpn-only-ui:
+    text: "users reach the application only over the overlay VPN with posture checks"
+    exposure: overlay
+    flows:
+      - {from: overlay-peer, to: self, protocol: http}
+    controls: [AC-17, SC-7, IA-2]
+
+# Data label rules: which exposures a label allows (Restricted never faces the internet directly).
+exposure_allowed:
+  Internal:     [internet, overlay, internal, none]
+  Sensitive: [internet, overlay, internal, none]
+  Restricted:   [overlay, internal, none]
+
+components:   # vetted software: what each protocol listens on (from upstream documentation and the reference deployment)
+  cryptpad: {listens: {http: 7095, websocket: 7096}, licence: AGPL-3.0}
+  synapse:  {listens: {http: 8008}, licence: AGPL-3.0}
+  keycloak: {listens: {http: 7110}, licence: Apache-2.0}
+  postgres: {listens: {postgres: 5432}, licence: PostgreSQL}

@@ -1,0 +1,34 @@
+# A ring variable never reaches the Isle unsubstituted: an object that still carries one is refused at apply
+# time, so the unit's Flux Kustomization fails at once with the reason and the fix, instead of a workload starting on a
+# placeholder and crash-looping without saying why. When the unit is fixed in the model (postBuild substituteFrom
+# ring-settings), Flux applies it again and it heals. The marker is built from two strings so this policy never holds it.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata: {name: vdh-ring-variables-substituted}
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - {apiGroups: [""], apiVersions: [v1], operations: [CREATE, UPDATE], resources: [configmaps]}
+      - {apiGroups: [apps], apiVersions: [v1], operations: [CREATE, UPDATE], resources: [deployments, daemonsets, statefulsets]}
+      - {apiGroups: [gateway.networking.k8s.io], apiVersions: [v1], operations: [CREATE, UPDATE], resources: [httproutes]}
+  variables:
+    - name: marker
+      expression: "'$' + '{ring_'"
+    - name: fix
+      expression: "' still holds an unsubstituted ring variable: the Flux Kustomization of its unit needs postBuild.substituteFrom ring-settings'"
+  validations:
+    - expression: >-
+        object.kind != 'ConfigMap' || !has(object.data) ||
+        object.data.all(k, !object.data[k].contains(variables.marker))
+      messageExpression: "'ConfigMap ' + object.metadata.name + variables.fix"
+    - expression: >-
+        !(object.kind in ['Deployment', 'DaemonSet', 'StatefulSet']) ||
+        object.spec.template.spec.containers.all(c,
+          (!has(c.args) || c.args.all(a, !a.contains(variables.marker))) &&
+          (!has(c.env) || c.env.all(e, !has(e.value) || !e.value.contains(variables.marker))))
+      messageExpression: "object.kind + ' ' + object.metadata.name + variables.fix"
+    - expression: >-
+        object.kind != 'HTTPRoute' || !has(object.spec.hostnames) ||
+        object.spec.hostnames.all(h, !h.contains(variables.marker))
+      messageExpression: "'HTTPRoute ' + object.metadata.name + variables.fix"

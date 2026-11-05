@@ -1,0 +1,38 @@
+{
+ "site": "site-1",
+ "site_prefix": "fd00:0:0:100::/56",
+ "prefixes": {
+  "nodes": "fd00:0:0:100::/64",
+  "lb_pool": "fd00:0:0:101::/64",
+  "admin_overlay": "fd00:0:0:1f0::/64",
+  "people_overlay": "fd00:0:0:1f1::/64",
+  "pods": "fd00:0:0:140::/58",
+  "services": "fd00:0:0:180::/108"
+ },
+ "record_class": {
+  "nodes": "per-address",
+  "lb_pool": "per-address",
+  "admin_overlay": "per-address",
+  "people_overlay": "per-address",
+  "pods": "prefix-only",
+  "services": "prefix-only"
+ },
+ "addresses": {
+  "fd00:0:0:100::6464": {
+   "role": "nat64",
+   "status": "active"
+  },
+  "fd00:0:0:180::a": {
+   "role": "cluster-dns",
+   "status": "active"
+  },
+  "fd00:0:0:180::35": {
+   "role": "dns-authoritative",
+   "status": "active"
+  },
+  "fd00:0:0:180::53": {
+   "role": "dns-resolver",
+   "status": "active"
+  }
+ }
+}

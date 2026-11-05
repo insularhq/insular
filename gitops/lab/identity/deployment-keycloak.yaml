@@ -1,0 +1,60 @@
+# Keycloak 26.8.0 behind the lab gateway (TLS ends at Envoy; Keycloak trusts X-Forwarded headers from it only). The
+# realm comes from the model (tools/pharos.py, realm-vdh.json) and is imported at start; the bootstrap admin secret is
+# made on the node by the lab tooling and never printed. Keycloak rebuilds its runtime at
+# start, so the root filesystem stays writable (an optimized image would change that).
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: keycloak, namespace: vdh-identity, labels: {app: keycloak}, annotations: {vdh.component: "Keycloak", vdh.app-version: "26.8.0"}}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}   # never two instances at once against one database without a cluster cache
+  selector: {matchLabels: {app: keycloak}}
+  template:
+    metadata: {labels: {app: keycloak}}
+    spec:
+      automountServiceAccountToken: false
+      securityContext: {runAsNonRoot: true, runAsUser: 1000, seccompProfile: {type: RuntimeDefault}}
+      # after a cold start Keycloak restarted three times while its database was still starting; it now waits for
+      # the database's port (bash from the same pinned image), up to ten minutes, then starts anyway
+      initContainers:
+        - name: wait-for-database
+          image: quay.io/keycloak/keycloak:26.8.1@sha256:79c623a22abacf3fe6c00a5fb30f5b7843d717b234033b80995891c06116d244
+          command: [bash, -c, "for i in $(seq 1 300); do (echo > /dev/tcp/kc-db-rw.vdh-identity.svc/5432) 2>/dev/null && exit 0; sleep 2; done; exit 0"]
+          securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+      containers:
+        - name: keycloak
+          image: quay.io/keycloak/keycloak:26.8.1@sha256:79c623a22abacf3fe6c00a5fb30f5b7843d717b234033b80995891c06116d244
+          args: [start, --import-realm]
+          env:
+            - {name: KC_DB, value: postgres}
+            - {name: KC_DB_URL, value: "jdbc:postgresql://kc-db-rw.vdh-identity.svc:5432/keycloak"}
+            - {name: KC_DB_USERNAME, valueFrom: {secretKeyRef: {name: kc-db-app, key: username}}}
+            - {name: KC_DB_PASSWORD, valueFrom: {secretKeyRef: {name: kc-db-app, key: password}}}
+            # the temporary bootstrap admin exists only until the hand-over to the realm's service account:
+            # then its Secret is deleted, so these are optional
+            - {name: KC_BOOTSTRAP_ADMIN_USERNAME, valueFrom: {secretKeyRef: {name: kc-bootstrap-admin, key: username, optional: true}}}
+            - {name: KC_BOOTSTRAP_ADMIN_PASSWORD, valueFrom: {secretKeyRef: {name: kc-bootstrap-admin, key: password, optional: true}}}
+            - {name: KC_HOSTNAME, value: "https://id.${ring_domain:=lab.vdh.test}"}
+            - {name: KC_HOSTNAME_BACKCHANNEL_DYNAMIC, value: "true"}
+            - {name: KC_HTTP_ENABLED, value: "true"}
+            # an in-cluster HTTPS listener on 8443 for KeyClerk (ring CA, certificate-keycloak-internal.yaml);
+            # Keycloak reloads the files as cert-manager renews them
+            - {name: KC_HTTPS_CERTIFICATE_FILE, value: /etc/keycloak-tls/tls.crt}
+            - {name: KC_HTTPS_CERTIFICATE_KEY_FILE, value: /etc/keycloak-tls/tls.key}
+            # with a certificate the management interface (9000) would turn HTTPS too and break the readiness probe, the
+            # pane's scrape and the lab tooling's health check (seen on a local k3s): it stays HTTP
+            - {name: KC_HTTP_MANAGEMENT_SCHEME, value: http}
+            - {name: KC_PROXY_HEADERS, value: xforwarded}
+            - {name: KC_HEALTH_ENABLED, value: "true"}
+            # the TOC's sign-in signals (ADR-0167 point 6): metrics on the management port, user events counted
+            # per realm, client and event, never per user
+            - {name: KC_METRICS_ENABLED, value: "true"}
+            - {name: KC_EVENT_METRICS_USER_ENABLED, value: "true"}
+            - {name: KC_CACHE, value: local}   # one instance on the lab; clustering on IPv6 is untested
+            - {name: JAVA_OPTS_KC_HEAP, value: "-XX:MaxRAMPercentage=60"}
+          ports: [{name: http, containerPort: 8080}, {name: https, containerPort: 8443}, {name: metrics, containerPort: 9000}]   # management: health and metrics; the pane scrapes it by this name
+          readinessProbe: {httpGet: {path: /health/ready, port: 9000}, periodSeconds: 10, failureThreshold: 30}
+          resources: {requests: {cpu: 250m, memory: 768Mi}, limits: {memory: 1536Mi}}
+          securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+          volumeMounts: [{name: realm, mountPath: /opt/keycloak/data/import, readOnly: true}, {name: tls, mountPath: /etc/keycloak-tls, readOnly: true}]
+      volumes: [{name: realm, configMap: {name: realm-vdh}}, {name: tls, secret: {secretName: keycloak-internal-tls, defaultMode: 0440}}]

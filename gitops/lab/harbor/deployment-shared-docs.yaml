@@ -1,0 +1,16 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: shared-docs, namespace: vdh-harbor, annotations: {vdh.component: "Harbor shared document"}}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: shared-docs}}
+  template:
+    metadata: {labels: {app: shared-docs}}
+    spec:
+      containers:
+        - name: nginx
+          image: docker.io/library/nginx:1.29-alpine@sha256:5616878291a2eed594aee8db4dade5878cf7edcb475e59193904b198d9b830de
+          ports: [{containerPort: 80}]
+          resources: {requests: {cpu: 10m, memory: 16Mi}, limits: {memory: 64Mi}}
+          volumeMounts: [{name: docs, mountPath: /usr/share/nginx/html/data/docs, readOnly: true}]
+      volumes: [{name: docs, configMap: {name: shared-docs}}]

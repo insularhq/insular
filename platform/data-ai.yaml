@@ -1,0 +1,62 @@
+# Data and AI across the seams: one lifecycle for every data product and every model, under the same identity,
+# labels, policy, execution path and decision cards as the rest of the platform. Reuse first: a new component only
+# where nothing in the stack already does the job.
+
+ai:
+  inference:
+    local_cpu: "llama.cpp (MIT): small models on CPU, also at edge sites"
+    local_gpu: "vLLM (Apache-2.0): GPU serving on demand (a GPU host at an EU provider when needed)"
+    gateway: "every prompt goes through the inference gateway: caller identity (person, workload or agent), purpose, data label; OPA decides; content-free logging (hashes and OpenTelemetry GenAI metadata, never the text: prompt masking in the policy decision logs, OpenTelemetry GenAI content capture off, ADR-0164 point 5); the order on the path is workload, inference gateway (authorisation, quotas), AI egress gate (pseudonymise, gate, journal), model; only the gate's journal holds originals, sealed per tenant"
+    external_models: "only through a provider of the AI egress gate contract (catalog/contracts.yaml ai-egress-gate), after pseudonymisation and with the client's named consent (decision D2), the consent lease re-read per request; Restricted never leaves; fail-closed, never fail-static, and never overflowing to another site's gate; until a provider forwards externally (ADR-0164) external AI egress is denied (tools/datalife.py)"
+    output_label: "an answer carries the highest label of everything that went in (prompt, retrieved chunks, tools)"
+  retrieval:
+    vector_store: "pgvector inside the existing PostgreSQL (PostgreSQL licence): no new database; row-level security by tenant and label"
+    vector_store_at_scale: "Qdrant (Apache-2.0, Germany) only if pgvector stops scaling"
+    embeddings: "inherit the label and the retention of their source; destroyed with it"
+  llmops:
+    registry: "MLflow (Apache-2.0): models, versions, evaluations, lineage"
+    supply_chain: "model artefacts signed with cosign, CycloneDX ML-BOM per model, model card in plain language"
+    promotion: "a new or changed model is a normal change: evaluation suite must pass, decision card to the service owner"
+    guardrails: "NeMo Guardrails (Apache-2.0) for input and output rails where a model talks to people"
+    observability: "OpenTelemetry GenAI conventions into VictoriaMetrics, VictoriaLogs and Grafana: no separate LLM observability product"
+  agents:
+    identity: "an agent is a subject in platform/identity.yaml: SPIFFE identity plus registry entry"
+    registry_fields: [owner, delegator, purpose, tools, max_label, autonomy, expires]
+    max_lifetime_days: 90
+    execution: "every tool call goes through the execution path (tools/automate.py): agents propose, never execute irreversible actions"
+
+databases:   # zero trust for data stores
+  - "no shared application accounts: dynamic credentials from OpenBao (max 1 h) per workload identity"
+  - "mutual TLS with SPIFFE certificates between workload and database"
+  - "row-level security by tenant and label; column masking for personal data"
+  - "pgAudit for statement audit into the evidence chain"
+  - "encryption at rest with per-tenant keys; wrapped data keys under the tenant-held KEK"
+
+protection:
+  backup: "CloudNativePG for PostgreSQL point-in-time recovery (pgBackRest retired, ADR-0036); restic for files and object data; cluster state needs no backup (it is rebuilt from git by Flux)"
+  cyber_vault: "an append-only restic rest-server (BSD-2-Clause) at the second provider in a separate account whose credentials are held separately from the operator's; retention lock; restores tested in an isolated environment; a monthly offline encrypted copy in a physically separate safe place"
+  drp: "per product RTO and RPO by criticality; restore drills recorded as evidence in the green light"
+  bcp: "per mission function a manual fallback and its communication plan; exercised yearly"
+
+lifecycle:
+  archival: "archive packages as BagIt bags with open formats (PDF/A, CSV, plain text), a signed manifest and an RFC 3161 timestamp; Archivematica (AGPL-3.0) at L for OAIS-style preservation"
+  declassification: "every labelled object has a review date; at review the data owner either keeps the label or starts a release through the release gateway"
+  destruction: "at retention end: destroy the data keys (crypto-erasure), delete embeddings and derived indexes, let backups expire within the backup retention window, and issue a signed certificate of destruction"
+  legal_hold: "a hold suspends destruction and is itself a decision card with an expiry"
+
+observability_and_governance:
+  quality: "Great Expectations (Apache-2.0; now under Fivetran) checks as code per product; freshness and volume metrics; failures are controls in the green light"
+  lineage: "OpenLineage from every pipeline into OpenMetadata"
+  data_owners: "OpenMetadata for ownership, glossary and tasks; a plain-language data risk card per product (same lint as decision cards); data owners decide purposes, retention, residual risk and declassification in the decision inbox or GLPI"
+
+excluded:
+  Soda Core: "Elastic License 2.0, not open source"
+  Weaviate: "mixed BSD-3-Clause and the Weaviate License"
+  Langfuse: "open core with enterprise directories; now owned by ClickHouse, Inc."
+  MinIO: "repository archived in 2026"
+  Velero: "not needed: cluster state is rebuilt from git"
+
+products:   # per data product, the lifecycle parameters a data owner decides (fictional examples)
+  hr-roster:        {criticality: high,   rto_hours: 8,  rpo_hours: 1,  retention_days: 365,  backup_retention_days: 35, review_months: 12}
+  sensor-telemetry: {criticality: medium, rto_hours: 24, rpo_hours: 24, retention_days: 90,   backup_retention_days: 14, review_months: 24}
+  case-files-index: {criticality: high,   rto_hours: 4,  rpo_hours: 1,  retention_days: 3650, backup_retention_days: 35, review_months: 12}

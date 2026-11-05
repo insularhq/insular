@@ -1,0 +1,12 @@
+# Keycloak's in-cluster HTTPS listener (8443) for KeyClerk, whose engine speaks plain HTTP only to
+# localhost (keyclerk guard.broker_url). Its reconciler needs the admin API, which the pane gateway never routes, so it
+# reaches Keycloak here, by the Service name, trusting only the ring CA. People and the other clients keep their paths.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata: {name: keycloak-internal-tls, namespace: vdh-identity}
+spec:
+  secretName: keycloak-internal-tls
+  dnsNames: [keycloak.vdh-identity.svc, keycloak.vdh-identity.svc.cluster.local]
+  duration: 168h
+  privateKey: {algorithm: ECDSA, size: 256}
+  issuerRef: {kind: ClusterIssuer, name: ring-ca}

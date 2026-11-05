@@ -1,0 +1,51 @@
+# The Isle's signer (ADR-0172): Knot DNS 3.6.0 (GPL-3.0-or-later, CZ.NIC), the apex and the Isle's zone from
+# git, signed under KASP (ECDSA P-256, NSEC, signatures 9 days); unprivileged on 5353 behind its fixed service address;
+# a helper places the Isle's DS in the apex
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: knot, namespace: vdh-dns, annotations: {vdh.component: "Knot DNS", vdh.app-version: "3.6.0"}}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector: {matchLabels: {app: knot}}
+  template:
+    metadata: {labels: {app: knot}}
+    spec:
+      automountServiceAccountToken: false
+      securityContext: {runAsNonRoot: true, runAsUser: 65534, runAsGroup: 65534, fsGroup: 65534, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: knot
+          image: docker.io/cznic/knot:v3.6.0@sha256:166fd8956f1a69eeb6558c28f65cedb4ea112d4689317f4a50c2f2787ee6a622
+          command: ["knotd", "-c", "/config/knot.conf"]
+          ports: [{name: dns-udp, containerPort: 5353, protocol: UDP}, {name: dns-tcp, containerPort: 5353, protocol: TCP}]
+          readinessProbe: {tcpSocket: {port: 5353}, periodSeconds: 10}
+          securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}, readOnlyRootFilesystem: true}
+          resources: {requests: {cpu: 20m, memory: 48Mi}, limits: {memory: 256Mi}}
+          volumeMounts:
+            - {name: config, mountPath: /config, readOnly: true}
+            - {name: federation, mountPath: /federation, readOnly: true}   # the federation zone, ring values substituted
+            - {name: keys, mountPath: /keys, readOnly: true}   # the edge secondary's TSIG key (a ring secret)
+            - {name: storage, mountPath: /storage}
+            - {name: rundir, mountPath: /rundir}
+            - {name: tmp, mountPath: /tmp}   # knotd and knotc load the text config into a temporary database
+        - name: child-ds
+          image: docker.io/cznic/knot:v3.6.0@sha256:166fd8956f1a69eeb6558c28f65cedb4ea112d4689317f4a50c2f2787ee6a622
+          command: ["/bin/bash", "/code/child-ds.sh", "vdhome.internal", "isle"]
+          securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}, readOnlyRootFilesystem: true}
+          resources: {requests: {cpu: 5m, memory: 16Mi}, limits: {memory: 64Mi}}
+          volumeMounts:
+            - {name: config, mountPath: /config, readOnly: true}
+            - {name: federation, mountPath: /federation, readOnly: true}   # keymgr reads the same configuration
+            - {name: keys, mountPath: /keys, readOnly: true}
+            - {name: code, mountPath: /code, readOnly: true}
+            - {name: storage, mountPath: /storage}
+            - {name: rundir, mountPath: /rundir}
+            - {name: tmp, mountPath: /tmp}   # knotd and knotc load the text config into a temporary database
+      volumes:
+        - {name: config, configMap: {name: dns-config}}
+        - {name: code, configMap: {name: dns-code}}
+        - {name: federation, configMap: {name: dns-federation, items: [{key: knot.conf, path: knot.conf}, {key: federation.zone, path: federation.zone}]}}
+        - {name: keys, secret: {secretName: dns-edge-tsig, defaultMode: 0440}}   # made by the ring's bring-up (the lab tooling)
+        - {name: storage, persistentVolumeClaim: {claimName: knot-storage}}
+        - {name: rundir, emptyDir: {}}
+        - {name: tmp, emptyDir: {sizeLimit: 64Mi}}

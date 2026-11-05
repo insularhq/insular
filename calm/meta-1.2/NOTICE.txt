@@ -1,0 +1,2 @@
+FINOS CALM 1.2 meta-schemas, vendored unchanged from github.com/finos/architecture-as-code (calm/release/1.2/meta), Apache-2.0.
+Vendored so the schema test always runs.

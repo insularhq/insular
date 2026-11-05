@@ -1,0 +1,22 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - clusterissuer-lab-selfsigned.yaml
+  - certificate-lab-probe.yaml
+  - postgres.yaml
+  - gateway.yaml
+  - flux-kustomization-pdp.yaml
+  - envoyproxy-vdh-proxy.yaml
+  - flux-kustomization-edge-demo.yaml
+  - flux-kustomization-backup.yaml
+  - flux-kustomization-identity.yaml
+  - flux-kustomization-tenant-demo.yaml
+  - flux-kustomization-forge.yaml
+  - flux-kustomization-netbox.yaml
+  - flux-kustomization-dns.yaml
+  - flux-kustomization-cert-policy.yaml
+  - flux-kustomization-backup-plugin.yaml
+  - flux-kustomization-netbird.yaml
+  - flux-kustomization-segmentation.yaml
+  - flux-kustomization-harbor.yaml
+  - flux-kustomization-telemetry.yaml

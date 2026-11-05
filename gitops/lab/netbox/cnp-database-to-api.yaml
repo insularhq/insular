@@ -1,0 +1,7 @@
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata: {name: database-to-api, namespace: vdh-netbox}
+spec:
+  endpointSelector: {matchExpressions: [{key: cnpg.io/cluster, operator: Exists}]}
+  egress:
+    - toEntities: [kube-apiserver]

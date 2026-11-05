@@ -1,0 +1,2 @@
+targets:
+  - {name: "vdhVoorbeeld ERP test", protocol: RDP, through: "Warpgate (seam M15)"}

@@ -1,0 +1,28 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# ADR-0122: the two NetBird networks of a ring, from the signed tree
+resources:
+  - networkpolicy-vdh-nbmain.yaml
+  - ciliumnetworkpolicy-vdh-nbmain-front.yaml
+  - certificate-vdh-nbmain.yaml
+  - pvc-vdh-nbmain.yaml
+  - deployment-vdh-nbmain.yaml
+  - service-vdh-nbmain.yaml
+  - configmap-app-entry-envoy.yaml
+  - pvc-app-entry.yaml
+  - deployment-app-entry.yaml
+  - networkpolicy-vdh-nblogin.yaml
+  - ciliumnetworkpolicy-vdh-nblogin-front.yaml
+  - certificate-vdh-nblogin.yaml
+  - pvc-vdh-nblogin.yaml
+  - deployment-vdh-nblogin.yaml
+  - service-vdh-nblogin.yaml
+  - configmap-login-entry-envoy.yaml
+  - pvc-login-entry.yaml
+  - deployment-login-entry.yaml
+  - namespace-vdh-front.yaml
+  - networkpolicy-vdh-front.yaml
+  - configmap-ring-front.yaml
+  - daemonset-ring-front.yaml
+  - cronjob-state-backup-vdh-nbmain.yaml
+  - cronjob-state-backup-vdh-nblogin.yaml

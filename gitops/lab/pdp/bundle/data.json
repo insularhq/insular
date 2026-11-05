@@ -1,0 +1,1590 @@
+{
+ "vdh": {
+  "autonomy": {
+   "actions": {
+    "break-glass": {
+     "direction": "increase",
+     "reversible": true
+    },
+    "destroy-keys": {
+     "direction": "reduce",
+     "reversible": false
+    },
+    "grant-access": {
+     "direction": "increase",
+     "reversible": true
+    },
+    "isolate-site": {
+     "direction": "reduce",
+     "reversible": true
+    },
+    "observe": {
+     "direction": "neutral",
+     "reversible": true
+    },
+    "propose-change": {
+     "direction": "neutral",
+     "reversible": true
+    },
+    "quarantine-host": {
+     "direction": "reduce",
+     "reversible": true
+    },
+    "raise-observation": {
+     "direction": "neutral",
+     "reversible": true
+    },
+    "reconcile-config": {
+     "direction": "restore",
+     "reversible": true
+    },
+    "rejoin-site": {
+     "direction": "increase",
+     "reversible": true
+    },
+    "release-quarantine": {
+     "direction": "increase",
+     "reversible": true
+    },
+    "restart-workload": {
+     "direction": "restore",
+     "reversible": true
+    },
+    "restore-from-backup": {
+     "direction": "restore",
+     "reversible": true
+    },
+    "revoke-session": {
+     "direction": "reduce",
+     "reversible": true
+    },
+    "revoke-user": {
+     "direction": "reduce",
+     "reversible": true
+    },
+    "rotate-certificate": {
+     "direction": "reduce",
+     "reversible": true
+    },
+    "snapshot-forensics": {
+     "direction": "neutral",
+     "reversible": true
+    },
+    "tighten-permission": {
+     "direction": "reduce",
+     "reversible": true
+    },
+    "unseal-store": {
+     "direction": "restore",
+     "reversible": true
+    },
+    "wipe-host": {
+     "direction": "reduce",
+     "reversible": false
+    }
+   },
+   "max_autonomy": {
+    "high-appetite": {
+     "break-glass": "human",
+     "destroy-keys": "human",
+     "grant-access": "gated",
+     "isolate-site": "notify",
+     "observe": "autonomous",
+     "propose-change": "autonomous",
+     "quarantine-host": "autonomous",
+     "raise-observation": "autonomous",
+     "reconcile-config": "autonomous",
+     "rejoin-site": "gated",
+     "release-quarantine": "gated",
+     "restart-workload": "autonomous",
+     "restore-from-backup": "gated",
+     "revoke-session": "autonomous",
+     "revoke-user": "autonomous",
+     "rotate-certificate": "autonomous",
+     "snapshot-forensics": "autonomous",
+     "tighten-permission": "autonomous",
+     "unseal-store": "human",
+     "wipe-host": "gated"
+    },
+    "low-appetite": {
+     "break-glass": "human",
+     "destroy-keys": "human",
+     "grant-access": "human",
+     "isolate-site": "gated",
+     "observe": "autonomous",
+     "propose-change": "autonomous",
+     "quarantine-host": "notify",
+     "raise-observation": "autonomous",
+     "reconcile-config": "gated",
+     "rejoin-site": "human",
+     "release-quarantine": "human",
+     "restart-workload": "notify",
+     "restore-from-backup": "gated",
+     "revoke-session": "autonomous",
+     "revoke-user": "notify",
+     "rotate-certificate": "notify",
+     "snapshot-forensics": "autonomous",
+     "tighten-permission": "notify",
+     "unseal-store": "human",
+     "wipe-host": "human"
+    },
+    "medium-appetite": {
+     "break-glass": "human",
+     "destroy-keys": "human",
+     "grant-access": "gated",
+     "isolate-site": "gated",
+     "observe": "autonomous",
+     "propose-change": "autonomous",
+     "quarantine-host": "notify",
+     "raise-observation": "autonomous",
+     "reconcile-config": "notify",
+     "rejoin-site": "gated",
+     "release-quarantine": "gated",
+     "restart-workload": "autonomous",
+     "restore-from-backup": "gated",
+     "revoke-session": "autonomous",
+     "revoke-user": "notify",
+     "rotate-certificate": "autonomous",
+     "snapshot-forensics": "autonomous",
+     "tighten-permission": "notify",
+     "unseal-store": "human",
+     "wipe-host": "human"
+    }
+   }
+  },
+  "band_floor": {
+   "amber": "warn",
+   "black": "enforce",
+   "green": "off",
+   "red": "enforce"
+  },
+  "rules": [
+   {
+    "affects": [
+     {
+      "id": "platform/sdn.yaml#site_links",
+      "kind": "register",
+      "what": "site edge routers terminate MACsec on an Ethernet service per link; WireGuard stays inside"
+     },
+     {
+      "id": "L02",
+      "kind": "seam",
+      "what": "SPIRE federation between sites rides a protected link"
+     },
+     {
+      "id": "L08",
+      "kind": "seam",
+      "what": "gateway to gateway of another site rides a protected link"
+     },
+     {
+      "id": "overlay-vpn",
+      "kind": "capability",
+      "what": "NetBird paths that cross a site boundary ride a protected link"
+     }
+    ],
+    "anchor": "configuration",
+    "decision": {
+     "by": "security_officer",
+     "date": "2026-10-14",
+     "record": "ADR-0146"
+    },
+    "effect": "require",
+    "id": "MACSEC-INTER-SITE",
+    "mitigates": [
+     "RI-25"
+    ],
+    "owner": "security_officer",
+    "pack": "baseline",
+    "pack_kind": "baseline",
+    "parameter": "IEEE 802.1AE MACsec with MKA, GCM-AES-XPN-256",
+    "residual": {
+     "I": 4,
+     "L": 1
+    },
+    "review_by": "2027-06-30",
+    "scope": {},
+    "status": "active",
+    "tests": [
+     "test_every_policy_rule_decides_as_written",
+     "test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten",
+     "test_a_ciso_decision_flows_into_rule_rollout_impact_and_risk"
+    ],
+    "title": "MACsec on every inter-site link, WireGuard kept inside it",
+    "topic": "inter-site-link-encryption",
+    "valid_from": "2027-04-02"
+   },
+   {
+    "anchor": "configuration",
+    "effect": "require",
+    "id": "TLS-2026",
+    "mitigates": [
+     "RK-30"
+    ],
+    "owner": "security_officer",
+    "pack": "baseline",
+    "pack_kind": "baseline",
+    "parameter": "1.3",
+    "residual": {
+     "I": 3,
+     "L": 1
+    },
+    "review_by": "2027-04-08",
+    "scope": {},
+    "status": "active",
+    "supersedes": [
+     {
+      "rule": "TLS-2024"
+     }
+    ],
+    "tests": [
+     "test_every_policy_rule_decides_as_written",
+     "test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten"
+    ],
+    "topic": "tls-min-version",
+    "valid_from": "2026-01-01"
+   },
+   {
+    "anchor": "configuration",
+    "effect": "require",
+    "id": "TLS-2024",
+    "mitigates": [
+     "RK-30"
+    ],
+    "owner": "security_officer",
+    "pack": "baseline",
+    "pack_kind": "baseline",
+    "parameter": "1.2",
+    "residual": {
+     "I": 3,
+     "L": 2
+    },
+    "review_by": "2027-04-08",
+    "scope": {},
+    "status": "superseded",
+    "tests": [
+     "test_every_policy_rule_decides_as_written",
+     "test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten"
+    ],
+    "topic": "tls-min-version",
+    "valid_from": "2024-01-01"
+   },
+   {
+    "anchor": "identity-assurance",
+    "by_band": {
+     "amber": "1h",
+     "black": "0",
+     "red": "15m"
+    },
+    "by_trust": {
+     "high": "8h",
+     "low": "15m",
+     "medium": "1h",
+     "none": "0"
+    },
+    "effect": "limit",
+    "id": "SESSION-LIFETIME",
+    "mitigates": [
+     "RK-32"
+    ],
+    "owner": "security_officer",
+    "pack": "baseline",
+    "pack_kind": "baseline",
+    "residual": {
+     "I": 3,
+     "L": 1
+    },
+    "review_by": "2027-04-08",
+    "scope": {},
+    "status": "active",
+    "tests": [
+     "test_every_policy_rule_decides_as_written",
+     "test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten"
+    ],
+    "topic": "session-lifetime",
+    "valid_from": "2026-10-01"
+   },
+   {
+    "anchor": "identity-assurance",
+    "effect": "require",
+    "id": "PASSKEY-ONLY",
+    "mitigates": [
+     "RK-03",
+     "RK-33"
+    ],
+    "owner": "security_officer",
+    "pack": "baseline",
+    "pack_kind": "baseline",
+    "parameter": "attested hardware passkey",
+    "residual": {
+     "I": 3,
+     "L": 1
+    },
+    "review_by": "2027-04-08",
+    "scope": {},
+    "status": "active",
+    "tests": [
+     "test_every_policy_rule_decides_as_written",
+     "test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten"
+    ],
+    "topic": "sign-in",
+    "valid_from": "2026-10-07"
+   },
+   {
+    "anchor": "configuration",
+    "effect": "forbid",
+    "id": "NO-USB-STORAGE",
+    "mitigates": [
+     "RK-04"
+    ],
+    "owner": "security_officer",
+    "pack": "baseline",
+    "pack_kind": "baseline",
+    "residual": {
+     "I": 3,
+     "L": 1
+    },
+    "review_by": "2027-04-08",
+    "scope": {},
+    "status": "active",
+    "tests": [
+     "test_every_policy_rule_decides_as_written",
+     "test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten"
+    ],
+    "topic": "removable-storage",
+    "valid_from": "2026-10-01"
+   },
+   {
+    "anchor": "hardware-attestation",
+    "effect": "require",
+    "id": "HOST-ATTESTATION",
+    "mitigates": [
+     "RI-01"
+    ],
+    "owner": "security_officer",
+    "pack": "baseline",
+    "pack_kind": "baseline",
+    "parameter": "a Keylime-verified TPM quote no older than 60 minutes before a Sensitive or Restricted workload is placed on the host",
+    "residual": {
+     "I": 4,
+     "L": 1
+    },
+    "review_by": "2027-04-08",
+    "scope": {},
+    "status": "active",
+    "tests": [
+     "test_every_policy_rule_decides_as_written",
+     "test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten"
+    ],
+    "topic": "host-attestation",
+    "valid_from": "2026-10-10"
+   },
+   {
+    "anchor": "configuration",
+    "effect": "require",
+    "id": "HOST-BASELINE",
+    "mitigates": [
+     "RI-02"
+    ],
+    "owner": "security_officer",
+    "pack": "baseline",
+    "pack_kind": "baseline",
+    "parameter": "default-drop inbound in both families, key-only SSH and SELinux enforcing before the host joins; drift is an incident",
+    "residual": {
+     "I": 3,
+     "L": 1
+    },
+    "review_by": "2027-04-08",
+    "scope": {},
+    "status": "active",
+    "tests": [
+     "test_every_policy_rule_decides_as_written",
+     "test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten"
+    ],
+    "topic": "host-baseline",
+    "valid_from": "2026-10-10"
+   },
+   {
+    "anchor": "configuration",
+    "decision": {
+     "by": "owner",
+     "date": "2026-10-12",
+     "record": "ADR-0136"
+    },
+    "effect": "require",
+    "id": "ALERT-ROUTE",
+    "mitigates": [
+     "RI-27"
+    ],
+    "owner": "platform_operator",
+    "pack": "baseline",
+    "pack_kind": "baseline",
+    "parameter": "every ring evaluates its alert rules from git and an evaluator in another failure domain pulls them and pages a person; a ring that is not heard pages as silent",
+    "residual": {
+     "I": 4,
+     "L": 2
+    },
+    "review_by": "2027-04-15",
+    "scope": {},
+    "status": "active",
+    "tests": [
+     "test_every_policy_rule_decides_as_written",
+     "test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten",
+     "test_the_ring_alerts_by_rules_from_git_each_in_a_class_and_without_counts"
+    ],
+    "topic": "alert-route",
+    "valid_from": "2026-10-17"
+   },
+   {
+    "anchor": "signature",
+    "by_band": {
+     "amber": "12h",
+     "black": "0",
+     "red": "4h"
+    },
+    "by_trust": {
+     "high": "24h",
+     "low": "4h",
+     "medium": "12h",
+     "none": "0"
+    },
+    "effect": "limit",
+    "id": "BUNDLE-STALENESS",
+    "mitigates": [
+     "RI-03"
+    ],
+    "owner": "security_officer",
+    "pack": "baseline",
+    "pack_kind": "baseline",
+    "residual": {
+     "I": 2,
+     "L": 2
+    },
+    "review_by": "2027-04-08",
+    "scope": {},
+    "status": "active",
+    "tests": [
+     "test_every_policy_rule_decides_as_written",
+     "test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten"
+    ],
+    "topic": "bundle-staleness",
+    "valid_from": "2026-10-10"
+   },
+   {
+    "anchor": "configuration",
+    "effect": "limit",
+    "id": "DRIFT-RESOLUTION",
+    "mitigates": [
+     "RI-04"
+    ],
+    "owner": "security_officer",
+    "pack": "baseline",
+    "pack_kind": "baseline",
+    "parameter": "an open difference between a master and observed state is resolved or accepted within 24 hours",
+    "residual": {
+     "I": 2,
+     "L": 2
+    },
+    "review_by": "2027-04-08",
+    "scope": {},
+    "status": "active",
+    "tests": [
+     "test_every_policy_rule_decides_as_written",
+     "test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten"
+    ],
+    "topic": "drift-resolution",
+    "valid_from": "2026-10-10"
+   },
+   {
+    "anchor": "human-approval",
+    "effect": "forbid",
+    "id": "CUSTODY-CLEARANCE",
+    "mitigates": [
+     "RI-05"
+    ],
+    "owner": "security_officer",
+    "pack": "baseline",
+    "pack_kind": "baseline",
+    "parameter": "placing data on a facility whose clearance or custody is to-establish or below the data's label",
+    "residual": {
+     "I": 3,
+     "L": 2
+    },
+    "review_by": "2027-04-08",
+    "scope": {},
+    "status": "active",
+    "tests": [
+     "test_every_policy_rule_decides_as_written",
+     "test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten"
+    ],
+    "topic": "custody-clearance",
+    "valid_from": "2026-10-10"
+   },
+   {
+    "anchor": "configuration",
+    "effect": "limit",
+    "id": "PATCH-SLA",
+    "mitigates": [
+     "RI-06"
+    ],
+    "owner": "security_officer",
+    "pack": "baseline",
+    "pack_kind": "baseline",
+    "parameter": "critical 72h, high 7d, medium 30d from upstream fix to deployed; past it the component's trust drops one band and exposure is reduced or compensated",
+    "residual": {
+     "I": 3,
+     "L": 2
+    },
+    "review_by": "2027-04-08",
+    "scope": {},
+    "status": "active",
+    "tests": [
+     "test_every_policy_rule_decides_as_written",
+     "test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten"
+    ],
+    "topic": "patch-sla",
+    "valid_from": "2026-10-10"
+   },
+   {
+    "anchor": "signature",
+    "effect": "forbid",
+    "id": "FED-NO-COPY",
+    "mitigates": [
+     "RI-07"
+    ],
+    "owner": "security_officer",
+    "pack": "baseline",
+    "pack_kind": "baseline",
+    "parameter": "copying a foreign acr, amr or role into a locally issued token without the signed mapping table",
+    "residual": {
+     "I": 3,
+     "L": 1
+    },
+    "review_by": "2027-04-08",
+    "scope": {},
+    "status": "active",
+    "tests": [
+     "test_every_policy_rule_decides_as_written",
+     "test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten"
+    ],
+    "topic": "federation-claim-copy",
+    "valid_from": "2026-10-10"
+   },
+   {
+    "anchor": "signature",
+    "effect": "limit",
+    "id": "FED-EXCHANGE-DEPTH",
+    "mitigates": [
+     "RI-08"
+    ],
+    "owner": "security_officer",
+    "pack": "baseline",
+    "pack_kind": "baseline",
+    "parameter": "two token-exchange hops, pairwise subjects per receiving broker, every exchange logged",
+    "residual": {
+     "I": 4,
+     "L": 1
+    },
+    "review_by": "2027-04-08",
+    "scope": {},
+    "status": "active",
+    "tests": [
+     "test_every_policy_rule_decides_as_written",
+     "test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten"
+    ],
+    "topic": "federation-exchange-depth",
+    "valid_from": "2026-10-10"
+   },
+   {
+    "anchor": "signature",
+    "by_trust": {
+     "high": "24h",
+     "low": "7d",
+     "medium": "72h",
+     "none": "0"
+    },
+    "effect": "limit",
+    "id": "FED-CHAIN-EXPIRY",
+    "mitigates": [
+     "RI-09"
+    ],
+    "owner": "security_officer",
+    "pack": "baseline",
+    "pack_kind": "baseline",
+    "residual": {
+     "I": 2,
+     "L": 2
+    },
+    "review_by": "2027-04-08",
+    "scope": {},
+    "status": "active",
+    "tests": [
+     "test_every_policy_rule_decides_as_written",
+     "test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten"
+    ],
+    "topic": "federation-chain-expiry",
+    "valid_from": "2026-10-10"
+   },
+   {
+    "anchor": "signature",
+    "decision": {
+     "by": "owner",
+     "date": "2026-10-14",
+     "record": "ADR-0149"
+    },
+    "effect": "limit",
+    "id": "FED-PARTNER-EVIDENCE",
+    "mitigates": [
+     "RI-26"
+    ],
+    "owner": "security_officer",
+    "pack": "baseline",
+    "pack_kind": "baseline",
+    "parameter": "a partner's band is earned by fresh evidence (policies/federation.yaml partner_trust); trust above it only by a decided risk acceptance of at most 90 days and at most medium, with its limits",
+    "residual": {
+     "I": 4,
+     "L": 2
+    },
+    "review_by": "2027-04-14",
+    "scope": {},
+    "status": "active",
+    "tests": [
+     "test_every_policy_rule_decides_as_written",
+     "test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten",
+     "test_federation_partners_earn_trust_by_evidence_and_acceptance_is_limited"
+    ],
+    "topic": "federation-partner-evidence",
+    "valid_from": "2026-10-14"
+   },
+   {
+    "anchor": "configuration",
+    "effect": "require",
+    "id": "SITE-AUTONOMY",
+    "mitigates": [
+     "RI-10"
+    ],
+    "owner": "security_officer",
+    "pack": "baseline",
+    "pack_kind": "baseline",
+    "parameter": "every site sized to run alone for 72 hours: issuers keep issuing, queues hold 72 hours, certificates outlive the budget; isolation time is a signal",
+    "residual": {
+     "I": 3,
+     "L": 1
+    },
+    "review_by": "2027-04-08",
+    "scope": {},
+    "status": "active",
+    "tests": [
+     "test_every_policy_rule_decides_as_written",
+     "test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten"
+    ],
+    "topic": "site-autonomy",
+    "valid_from": "2026-10-10"
+   },
+   {
+    "anchor": "configuration",
+    "effect": "forbid",
+    "id": "TEMP-ISLE-NO-TRUST",
+    "mitigates": [
+     "RI-19"
+    ],
+    "owner": "security_officer",
+    "pack": "baseline",
+    "pack_kind": "baseline",
+    "parameter": "a temporary Isle never grants or renews leases, issues identities, certificates or tokens for others, writes or signs policy, accepts a release or moves a writer; it relays, caches, aggregates, serves locally and passes on revocations (platform/layers.yaml temporary_isle)",
+    "residual": {
+     "I": 3,
+     "L": 1
+    },
+    "review_by": "2027-04-08",
+    "scope": {},
+    "status": "active",
+    "tests": [
+     "test_every_policy_rule_decides_as_written",
+     "test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten",
+     "test_a_temporary_isle_never_creates_trust_and_is_bound_to_risk_and_policy"
+    ],
+    "topic": "temporary-isle-trust",
+    "valid_from": "2026-10-10"
+   },
+   {
+    "anchor": "signature",
+    "by_band": {
+     "amber": "15m",
+     "black": "0",
+     "red": "5m"
+    },
+    "effect": "limit",
+    "id": "TEMP-ISLE-LEASE",
+    "mitigates": [
+     "RI-20"
+    ],
+    "owner": "security_officer",
+    "pack": "baseline",
+    "pack_kind": "baseline",
+    "parameter": "the temporary Isle lease lasts at most 15 minutes, renewed by heartbeat; it ends when any Isle is reachable; a site served by a temporary Isle runs at band amber or higher",
+    "residual": {
+     "I": 3,
+     "L": 1
+    },
+    "review_by": "2027-04-08",
+    "scope": {},
+    "status": "active",
+    "tests": [
+     "test_every_policy_rule_decides_as_written",
+     "test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten",
+     "test_a_temporary_isle_never_creates_trust_and_is_bound_to_risk_and_policy"
+    ],
+    "topic": "temporary-isle-lease",
+    "valid_from": "2026-10-10"
+   },
+   {
+    "anchor": "configuration",
+    "by_band": {
+     "amber": "1h",
+     "black": "0",
+     "red": "15m"
+    },
+    "effect": "limit",
+    "id": "SKIFF-ROAMING",
+    "mitigates": [
+     "RI-21"
+    ],
+    "owner": "security_officer",
+    "pack": "baseline",
+    "pack_kind": "baseline",
+    "parameter": "a Skiff whose Islet is unreachable may reach another Isle or Islet of its own ring through any relay, keeping its own lease and getting no new grant; never a site outside its ring; a roaming Skiff runs at band amber or higher and its session is at most 1 hour",
+    "residual": {
+     "I": 3,
+     "L": 1
+    },
+    "review_by": "2027-04-08",
+    "scope": {},
+    "status": "active",
+    "tests": [
+     "test_every_policy_rule_decides_as_written",
+     "test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten",
+     "test_skiffs_reach_the_overlay_through_any_relay_of_their_ring_under_their_own_lease"
+    ],
+    "topic": "skiff-roaming",
+    "valid_from": "2026-10-10"
+   },
+   {
+    "anchor": "configuration",
+    "effect": "require",
+    "id": "BREAK-GLASS-UPGRADE-GATE",
+    "mitigates": [
+     "RI-22"
+    ],
+    "owner": "security_officer",
+    "pack": "baseline",
+    "pack_kind": "baseline",
+    "parameter": "no standing break-glass token is kept; an OpenBao upgrade proceeds only after the root-on-demand drill (regenerate a root from unseal shares through the loopback-only listener, use it, revoke it) passes on the new version in a test",
+    "residual": {
+     "I": 4,
+     "L": 1
+    },
+    "review_by": "2027-04-10",
+    "scope": {},
+    "status": "active",
+    "tests": [
+     "test_every_policy_rule_decides_as_written",
+     "test_break_glass_keeps_a_loopback_only_generate_root_listener_and_its_risk_is_gated"
+    ],
+    "topic": "break-glass-upgrade",
+    "valid_from": "2026-10-11"
+   },
+   {
+    "anchor": "configuration",
+    "effect": "require",
+    "id": "BACKUP-BENEATH-CORE",
+    "mitigates": [
+     "RI-23",
+     "RI-24"
+    ],
+    "owner": "security_officer",
+    "pack": "baseline",
+    "pack_kind": "baseline",
+    "parameter": "every master backed up where platform/resilience.yaml says, with a copy outside the failure domain it protects; backup keys on the break-glass tokens, never only in OpenBao; a release proceeds only when the core restore drill (platform/resops.yaml core_restore_order, without Keycloak, OpenBao, NetBird or the policy point running) passed within 90 days (ADR-0139)",
+    "residual": {
+     "I": 5,
+     "L": 1
+    },
+    "review_by": "2027-04-13",
+    "scope": {},
+    "status": "active",
+    "tests": [
+     "test_every_policy_rule_decides_as_written",
+     "test_resops_is_core_risk_and_backup_sits_beneath_the_core"
+    ],
+    "topic": "backup-beneath-core",
+    "valid_from": "2026-10-13"
+   },
+   {
+    "anchor": "human-approval",
+    "effect": "limit",
+    "id": "TWO-PERSON-INTERIM",
+    "mitigates": [
+     "RI-11"
+    ],
+    "owner": "security_officer",
+    "pack": "baseline",
+    "pack_kind": "baseline",
+    "parameter": "in single-operator start-up mode a proposer approves their own change only after 24 hours, with an independent pipeline verification and an external alert",
+    "residual": {
+     "I": 3,
+     "L": 3
+    },
+    "review_by": "2027-04-08",
+    "scope": {},
+    "status": "active",
+    "tests": [
+     "test_every_policy_rule_decides_as_written",
+     "test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten"
+    ],
+    "topic": "self-approval",
+    "valid_from": "2026-10-10"
+   },
+   {
+    "anchor": "configuration",
+    "by_trust": {
+     "high": "quota per day, alert on export",
+     "low": "deny",
+     "medium": "deny",
+     "none": "deny"
+    },
+    "effect": "limit",
+    "id": "MASTER-BULK-READ",
+    "mitigates": [
+     "RI-12"
+    ],
+    "owner": "security_officer",
+    "pack": "baseline",
+    "pack_kind": "baseline",
+    "residual": {
+     "I": 3,
+     "L": 2
+    },
+    "review_by": "2027-04-08",
+    "scope": {},
+    "status": "active",
+    "tests": [
+     "test_every_policy_rule_decides_as_written",
+     "test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten"
+    ],
+    "topic": "master-bulk-read",
+    "valid_from": "2026-10-10"
+   },
+   {
+    "anchor": "configuration",
+    "effect": "forbid",
+    "id": "NO-STANDING-WRITE",
+    "mitigates": [
+     "RI-13"
+    ],
+    "owner": "security_officer",
+    "pack": "baseline",
+    "pack_kind": "baseline",
+    "parameter": "standing human write access to any master; writes are applied by pipelines, people get just-in-time elevation or break-glass only",
+    "residual": {
+     "I": 4,
+     "L": 1
+    },
+    "review_by": "2027-04-08",
+    "scope": {},
+    "status": "active",
+    "tests": [
+     "test_every_policy_rule_decides_as_written",
+     "test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten"
+    ],
+    "topic": "master-standing-write",
+    "valid_from": "2026-10-10"
+   },
+   {
+    "anchor": "configuration",
+    "effect": "require",
+    "id": "OOB-ISOLATION",
+    "mitigates": [
+     "RI-14"
+    ],
+    "owner": "security_officer",
+    "pack": "baseline",
+    "pack_kind": "baseline",
+    "parameter": "BMCs only on the isolated management network through the bastion; IPMI disabled; per-operation Redfish accounts from OpenBao; signed firmware only; every Redfish action audited",
+    "residual": {
+     "I": 4,
+     "L": 1
+    },
+    "review_by": "2027-04-08",
+    "scope": {},
+    "status": "active",
+    "tests": [
+     "test_every_policy_rule_decides_as_written",
+     "test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten"
+    ],
+    "topic": "oob-isolation",
+    "valid_from": "2026-10-10"
+   },
+   {
+    "anchor": "signature",
+    "effect": "forbid",
+    "id": "FACTORY-NO-AUTOMERGE",
+    "mitigates": [
+     "RI-15"
+    ],
+    "owner": "security_officer",
+    "pack": "baseline",
+    "pack_kind": "baseline",
+    "parameter": "auto-merging update merge requests; every update passes signatures, provenance, lab and conformance before release",
+    "residual": {
+     "I": 4,
+     "L": 2
+    },
+    "review_by": "2027-04-08",
+    "scope": {},
+    "status": "active",
+    "tests": [
+     "test_every_policy_rule_decides_as_written",
+     "test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten"
+    ],
+    "topic": "factory-update-merge",
+    "valid_from": "2026-10-10"
+   },
+   {
+    "anchor": "configuration",
+    "effect": "require",
+    "id": "FACTORY-SLA-CLOCK",
+    "mitigates": [
+     "RI-16"
+    ],
+    "owner": "security_officer",
+    "pack": "baseline",
+    "pack_kind": "baseline",
+    "parameter": "the patch SLA clock starts at advisory publication; an alarm at half time; past SLA only an accepted risk with expiry",
+    "residual": {
+     "I": 3,
+     "L": 2
+    },
+    "review_by": "2027-04-08",
+    "scope": {},
+    "status": "active",
+    "tests": [
+     "test_every_policy_rule_decides_as_written",
+     "test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten"
+    ],
+    "topic": "factory-sla-clock",
+    "valid_from": "2026-10-10"
+   },
+   {
+    "anchor": "configuration",
+    "effect": "require",
+    "id": "FACTORY-CRA-CLOCK",
+    "mitigates": [
+     "RI-17"
+    ],
+    "owner": "security_officer",
+    "pack": "baseline",
+    "pack_kind": "baseline",
+    "parameter": "an exploited vulnerability in the product starts the CRA clocks (24h early warning, 72h notification) with an alarm at half time",
+    "residual": {
+     "I": 3,
+     "L": 1
+    },
+    "review_by": "2027-04-08",
+    "scope": {},
+    "status": "active",
+    "tests": [
+     "test_every_policy_rule_decides_as_written",
+     "test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten"
+    ],
+    "topic": "factory-cra-clock",
+    "valid_from": "2026-10-10"
+   },
+   {
+    "anchor": "human-approval",
+    "effect": "require",
+    "id": "FACTORY-VEX-EVIDENCE",
+    "mitigates": [
+     "RI-18"
+    ],
+    "owner": "security_officer",
+    "pack": "baseline",
+    "pack_kind": "baseline",
+    "parameter": "a not_affected statement carries a justification, evidence and a decision taker; critical advisories are re-tested",
+    "residual": {
+     "I": 3,
+     "L": 2
+    },
+    "review_by": "2027-04-08",
+    "scope": {},
+    "status": "active",
+    "tests": [
+     "test_every_policy_rule_decides_as_written",
+     "test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten"
+    ],
+    "topic": "factory-vex-evidence",
+    "valid_from": "2026-10-10"
+   },
+   {
+    "anchor": "configuration",
+    "effect": "limit",
+    "id": "DATA-RING-INTERNAL",
+    "mitigates": [
+     "RK-14"
+    ],
+    "owner": "security_officer",
+    "pack": "data-centric",
+    "pack_kind": "baseline",
+    "parameter": "federation",
+    "review_by": "2027-04-08",
+    "scope": {
+     "label": [
+      "Internal"
+     ]
+    },
+    "standards": [
+     "iso-27001:A.5.12",
+     "iso-27001:A.5.14",
+     "nist-800-53:AC-4",
+     "nist-800-53:AC-16",
+     "nist-ir-8496"
+    ],
+    "status": "active",
+    "tests": [
+     "test_every_policy_rule_decides_as_written",
+     "test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten",
+     "test_data_limits_are_policy_packs_that_tenants_tighten_or_except_with_accepted_risk"
+    ],
+    "topic": "data-max-ring",
+    "valid_from": "2026-10-01"
+   },
+   {
+    "anchor": "configuration",
+    "effect": "limit",
+    "id": "DATA-RING-SENSITIVE",
+    "mitigates": [
+     "RK-14"
+    ],
+    "owner": "security_officer",
+    "pack": "data-centric",
+    "pack_kind": "baseline",
+    "parameter": "tenant",
+    "review_by": "2027-04-08",
+    "scope": {
+     "label": [
+      "Sensitive"
+     ]
+    },
+    "standards": [
+     "iso-27001:A.5.12",
+     "iso-27001:A.5.14",
+     "iso-27001:A.8.12",
+     "nist-800-53:AC-4",
+     "nist-800-53:AC-16",
+     "nist-ir-8496",
+     "nist-sp-1800-28"
+    ],
+    "status": "active",
+    "tests": [
+     "test_every_policy_rule_decides_as_written",
+     "test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten",
+     "test_data_limits_are_policy_packs_that_tenants_tighten_or_except_with_accepted_risk"
+    ],
+    "topic": "data-max-ring",
+    "valid_from": "2026-10-01"
+   },
+   {
+    "anchor": "configuration",
+    "effect": "limit",
+    "id": "DATA-RING-RESTRICTED",
+    "mitigates": [
+     "RK-08",
+     "RK-14"
+    ],
+    "owner": "security_officer",
+    "pack": "data-centric",
+    "pack_kind": "baseline",
+    "parameter": "site",
+    "review_by": "2027-04-08",
+    "scope": {
+     "label": [
+      "Restricted"
+     ]
+    },
+    "standards": [
+     "iso-27001:A.5.12",
+     "iso-27001:A.8.12",
+     "nist-800-53:AC-4",
+     "nist-800-53:AC-16",
+     "nist-ir-8496",
+     "nist-sp-1800-28"
+    ],
+    "status": "active",
+    "tests": [
+     "test_every_policy_rule_decides_as_written",
+     "test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten",
+     "test_data_limits_are_policy_packs_that_tenants_tighten_or_except_with_accepted_risk"
+    ],
+    "topic": "data-max-ring",
+    "valid_from": "2026-10-01"
+   },
+   {
+    "anchor": "configuration",
+    "effect": "limit",
+    "id": "DATA-RING-UNIDENTIFIED",
+    "mitigates": [
+     "RK-14"
+    ],
+    "owner": "security_officer",
+    "pack": "data-centric",
+    "pack_kind": "baseline",
+    "parameter": "site",
+    "review_by": "2027-04-08",
+    "scope": {},
+    "standards": [
+     "oasis-data-provenance",
+     "w3c-prov"
+    ],
+    "status": "active",
+    "tests": [
+     "test_every_policy_rule_decides_as_written",
+     "test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten",
+     "test_data_limits_are_policy_packs_that_tenants_tighten_or_except_with_accepted_risk"
+    ],
+    "topic": "data-max-ring-unidentified",
+    "valid_from": "2026-10-01"
+   },
+   {
+    "anchor": "configuration",
+    "effect": "limit",
+    "id": "DATA-RING-TRANSCRIBED",
+    "mitigates": [
+     "RK-14"
+    ],
+    "owner": "security_officer",
+    "pack": "data-centric",
+    "pack_kind": "baseline",
+    "parameter": "tenant",
+    "review_by": "2027-04-08",
+    "scope": {},
+    "standards": [
+     "oasis-data-provenance",
+     "c2pa"
+    ],
+    "status": "active",
+    "tests": [
+     "test_every_policy_rule_decides_as_written",
+     "test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten",
+     "test_data_limits_are_policy_packs_that_tenants_tighten_or_except_with_accepted_risk"
+    ],
+    "topic": "data-max-ring-transcribed",
+    "valid_from": "2026-10-01"
+   },
+   {
+    "anchor": "configuration",
+    "effect": "require",
+    "id": "DATA-MIN-GROUP",
+    "mitigates": [
+     "RK-13",
+     "RK-14"
+    ],
+    "owner": "security_officer",
+    "pack": "data-centric",
+    "pack_kind": "baseline",
+    "parameter": 10,
+    "review_by": "2027-04-08",
+    "scope": {},
+    "standards": [
+     "iso-27001:A.8.11",
+     "enisa-pseudonymisation",
+     "gdpr"
+    ],
+    "status": "active",
+    "tests": [
+     "test_every_policy_rule_decides_as_written",
+     "test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten",
+     "test_data_limits_are_policy_packs_that_tenants_tighten_or_except_with_accepted_risk"
+    ],
+    "topic": "data-min-group-size",
+    "valid_from": "2026-10-01"
+   },
+   {
+    "anchor": "configuration",
+    "effect": "limit",
+    "id": "DATA-LEASE-INTERNAL",
+    "mitigates": [
+     "RK-14"
+    ],
+    "owner": "security_officer",
+    "pack": "data-centric",
+    "pack_kind": "baseline",
+    "parameter": 365,
+    "review_by": "2027-04-08",
+    "scope": {
+     "label": [
+      "Internal"
+     ]
+    },
+    "standards": [
+     "iso-27001:A.5.15",
+     "iso-27001:A.5.18",
+     "nist-800-207"
+    ],
+    "status": "active",
+    "tests": [
+     "test_every_policy_rule_decides_as_written",
+     "test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten",
+     "test_data_limits_are_policy_packs_that_tenants_tighten_or_except_with_accepted_risk"
+    ],
+    "topic": "data-lease-subscription-days",
+    "valid_from": "2026-10-01"
+   },
+   {
+    "anchor": "configuration",
+    "effect": "limit",
+    "id": "DATA-LEASE-SENSITIVE",
+    "mitigates": [
+     "RK-14"
+    ],
+    "owner": "security_officer",
+    "pack": "data-centric",
+    "pack_kind": "baseline",
+    "parameter": 180,
+    "review_by": "2027-04-08",
+    "scope": {
+     "label": [
+      "Sensitive"
+     ]
+    },
+    "standards": [
+     "iso-27001:A.5.15",
+     "iso-27001:A.5.18",
+     "nist-800-207",
+     "gdpr"
+    ],
+    "status": "active",
+    "tests": [
+     "test_every_policy_rule_decides_as_written",
+     "test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten",
+     "test_data_limits_are_policy_packs_that_tenants_tighten_or_except_with_accepted_risk"
+    ],
+    "topic": "data-lease-subscription-days",
+    "valid_from": "2026-10-01"
+   },
+   {
+    "anchor": "configuration",
+    "effect": "limit",
+    "id": "DATA-LEASE-RESTRICTED",
+    "mitigates": [
+     "RK-08",
+     "RK-14"
+    ],
+    "owner": "security_officer",
+    "pack": "data-centric",
+    "pack_kind": "baseline",
+    "parameter": 90,
+    "review_by": "2027-04-08",
+    "scope": {
+     "label": [
+      "Restricted"
+     ]
+    },
+    "standards": [
+     "iso-27001:A.5.15",
+     "iso-27001:A.5.18",
+     "nist-800-207"
+    ],
+    "status": "active",
+    "tests": [
+     "test_every_policy_rule_decides_as_written",
+     "test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten",
+     "test_data_limits_are_policy_packs_that_tenants_tighten_or_except_with_accepted_risk"
+    ],
+    "topic": "data-lease-subscription-days",
+    "valid_from": "2026-10-01"
+   },
+   {
+    "anchor": "configuration",
+    "effect": "limit",
+    "id": "DATA-CEILING-INTERNAL",
+    "mitigates": [
+     "RK-14"
+    ],
+    "owner": "security_officer",
+    "pack": "data-centric",
+    "pack_kind": "baseline",
+    "parameter": "public",
+    "review_by": "2027-04-08",
+    "scope": {
+     "label": [
+      "Internal"
+     ]
+    },
+    "standards": [
+     "iso-27001:A.5.14",
+     "adatp-4774"
+    ],
+    "status": "active",
+    "tests": [
+     "test_every_policy_rule_decides_as_written",
+     "test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten",
+     "test_data_limits_are_policy_packs_that_tenants_tighten_or_except_with_accepted_risk"
+    ],
+    "topic": "data-ring-ceiling",
+    "valid_from": "2026-10-01"
+   },
+   {
+    "anchor": "configuration",
+    "effect": "limit",
+    "id": "DATA-CEILING-SENSITIVE",
+    "mitigates": [
+     "RK-14"
+    ],
+    "owner": "security_officer",
+    "pack": "data-centric",
+    "pack_kind": "baseline",
+    "parameter": "federation",
+    "review_by": "2027-04-08",
+    "scope": {
+     "label": [
+      "Sensitive"
+     ]
+    },
+    "standards": [
+     "iso-27001:A.5.14",
+     "adatp-4774"
+    ],
+    "status": "active",
+    "tests": [
+     "test_every_policy_rule_decides_as_written",
+     "test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten",
+     "test_data_limits_are_policy_packs_that_tenants_tighten_or_except_with_accepted_risk"
+    ],
+    "topic": "data-ring-ceiling",
+    "valid_from": "2026-10-01"
+   },
+   {
+    "anchor": "configuration",
+    "effect": "limit",
+    "id": "DATA-CEILING-RESTRICTED",
+    "mitigates": [
+     "RK-08",
+     "RK-14"
+    ],
+    "owner": "security_officer",
+    "pack": "data-centric",
+    "pack_kind": "baseline",
+    "parameter": "tenant",
+    "review_by": "2027-04-08",
+    "scope": {
+     "label": [
+      "Restricted"
+     ]
+    },
+    "standards": [
+     "iso-27001:A.5.14",
+     "iso-27001:A.8.12",
+     "adatp-4774"
+    ],
+    "status": "active",
+    "tests": [
+     "test_every_policy_rule_decides_as_written",
+     "test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten",
+     "test_data_limits_are_policy_packs_that_tenants_tighten_or_except_with_accepted_risk"
+    ],
+    "topic": "data-ring-ceiling",
+    "valid_from": "2026-10-01"
+   },
+   {
+    "anchor": "identity-assurance",
+    "by_trust": {
+     "high": "2h",
+     "low": "10m",
+     "medium": "30m",
+     "none": "0"
+    },
+    "effect": "limit",
+    "id": "DEMO-LAB-SESSION",
+    "mitigates": [
+     "RK-32"
+    ],
+    "owner": "security_officer",
+    "pack": "island-vdh-demo",
+    "pack_kind": "island",
+    "residual": {
+     "I": 2,
+     "L": 1
+    },
+    "review_by": "2027-04-08",
+    "scope": {
+     "island": [
+      "lab"
+     ],
+     "tenant": [
+      "vdh-demo"
+     ]
+    },
+    "status": "active",
+    "tests": [
+     "test_every_policy_rule_decides_as_written",
+     "test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten"
+    ],
+    "topic": "session-lifetime",
+    "valid_from": "2026-10-08"
+   },
+   {
+    "acceptance": {
+     "by": "demo risk owner",
+     "rationale": "lab instruments export measurements only by USB",
+     "residual": {
+      "I": 3,
+      "L": 2
+     },
+     "role": "risk_owner",
+     "until": "2027-01-31"
+    },
+    "anchor": "hardware-attestation",
+    "effect": "allow",
+    "id": "DEMO-LAB-USB",
+    "min_trust": "high",
+    "mitigates": [
+     "RK-04"
+    ],
+    "owner": "security_officer",
+    "pack": "island-vdh-demo",
+    "pack_kind": "island",
+    "parameter": "encrypted, registered devices only",
+    "raises_risk": true,
+    "residual": {
+     "I": 3,
+     "L": 2
+    },
+    "review_by": "2027-04-08",
+    "scope": {
+     "island": [
+      "lab"
+     ],
+     "tenant": [
+      "vdh-demo"
+     ]
+    },
+    "status": "active",
+    "tests": [
+     "test_every_policy_rule_decides_as_written",
+     "test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten"
+    ],
+    "topic": "removable-storage",
+    "valid_from": "2026-10-08",
+    "valid_until": "2027-01-31"
+   },
+   {
+    "anchor": "configuration",
+    "effect": "require",
+    "id": "DEMO-MIN-GROUP-25",
+    "mitigates": [
+     "RK-13"
+    ],
+    "owner": "security_officer",
+    "pack": "tenant-vdh-demo",
+    "pack_kind": "tenant",
+    "parameter": 25,
+    "review_by": "2027-04-08",
+    "scope": {
+     "tenant": [
+      "vdh-demo"
+     ]
+    },
+    "standards": [
+     "enisa-pseudonymisation"
+    ],
+    "status": "active",
+    "tests": [
+     "test_every_policy_rule_decides_as_written",
+     "test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten",
+     "test_data_limits_are_policy_packs_that_tenants_tighten_or_except_with_accepted_risk"
+    ],
+    "topic": "data-min-group-size",
+    "valid_from": "2026-10-01"
+   },
+   {
+    "anchor": "configuration",
+    "effect": "limit",
+    "id": "DEMO-RESTRICTED-LEASE-30",
+    "mitigates": [
+     "RK-08"
+    ],
+    "owner": "security_officer",
+    "pack": "tenant-vdh-demo",
+    "pack_kind": "tenant",
+    "parameter": 30,
+    "review_by": "2027-04-08",
+    "scope": {
+     "label": [
+      "Restricted"
+     ],
+     "tenant": [
+      "vdh-demo"
+     ]
+    },
+    "standards": [
+     "iso-27001:A.5.18"
+    ],
+    "status": "active",
+    "tests": [
+     "test_every_policy_rule_decides_as_written",
+     "test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten",
+     "test_data_limits_are_policy_packs_that_tenants_tighten_or_except_with_accepted_risk"
+    ],
+    "topic": "data-lease-subscription-days",
+    "valid_from": "2026-10-01"
+   },
+   {
+    "acceptance": {
+     "by": "tenant risk owner (fictional)",
+     "rationale": "a named partner programme needs Sensitive data under a dataspace contract; only high-trust requesters may release it",
+     "residual": {
+      "I": 3,
+      "L": 2
+     },
+     "role": "risk_owner",
+     "until": "2027-03-31"
+    },
+    "anchor": "identity-assurance",
+    "effect": "limit",
+    "id": "DEMO-SENSITIVE-TO-PARTNERS",
+    "min_trust": "high",
+    "mitigates": [],
+    "owner": "security_officer",
+    "pack": "tenant-vdh-demo",
+    "pack_kind": "tenant",
+    "parameter": "federation",
+    "raises_risk": true,
+    "residual": {
+     "I": 3,
+     "L": 2
+    },
+    "review_by": "2027-04-08",
+    "scope": {
+     "label": [
+      "Sensitive"
+     ],
+     "tenant": [
+      "vdh-demo"
+     ]
+    },
+    "standards": [
+     "iso-27001:A.5.14",
+     "w3c-odrl"
+    ],
+    "status": "active",
+    "tests": [
+     "test_every_policy_rule_decides_as_written",
+     "test_opa_and_the_python_engine_decide_identically_and_bands_only_tighten",
+     "test_data_limits_are_policy_packs_that_tenants_tighten_or_except_with_accepted_risk"
+    ],
+    "topic": "data-max-ring",
+    "valid_from": "2026-10-01",
+    "valid_until": "2027-03-31"
+   }
+  ]
+ }
+}

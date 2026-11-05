@@ -1,0 +1,16 @@
+# Keycloak is reached only by the gateway's proxies (users), the PDP (signing keys) and its own namespace;
+# its database also by the CloudNativePG operator and Pharos's Prometheus (exporter only).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: default-deny-ingress, namespace: vdh-identity}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - {podSelector: {}}
+        - {namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: envoy-gateway-system}}}
+        - {namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: vdh-pdp}}}
+        - {namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: cnpg-system}}}
+    - from: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: vdh-pharos}}, podSelector: {matchLabels: {app: prometheus}}}]
+      ports: [{port: 9187, protocol: TCP}, {port: 9000, protocol: TCP}]   # Pharos scrapes the database exporter (the lab tooling) and Keycloak's metrics

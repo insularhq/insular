@@ -1,0 +1,45 @@
+# The common policy model: every policy pack, in any domain, is written in these terms (tools/policy_engine.py).
+# Risk and trust are at the core: every rule states the risk it mitigates and what it leaves, the trust anchor it
+# relies on, and, when it raises risk compared with the rule it overrides, the acceptance and the minimum trust band
+# under which that risk may be taken. Supersession works in time (valid_from, valid_until, supersedes) and in scope
+# (the most specific matching rule wins); legacy keeps an older rule simply because the newer rule's scope excludes it.
+
+scope_dimensions: [tenant, site, island, size, label, environment, hosting, estate, sector, jurisdiction, component]
+effects:
+  require: "the parameter must hold (at least this strong)"
+  forbid: "the thing must not happen"
+  allow: "the thing may happen (only meaningful where something stricter would otherwise apply)"
+  limit: "a bound on a quantity (lifetime, retention, size)"
+
+trust_bands: [none, low, medium, high]   # the same bands as platform/adaptive-policy.yaml
+
+trust_anchors:   # what a rule's enforcement or evidence rests on; a rule cannot claim more trust than its anchor gives
+  hardware-attestation: {max_trust: high, freshness: "1h", example: "TPM quote verified by Keylime, measured stick image"}
+  signature: {max_trust: high, freshness: "24h", example: "cosign-verified bundle, signed approval record"}
+  identity-assurance: {max_trust: high, freshness: "1h", example: "passkey with attestation from an allow-listed key"}
+  human-approval: {max_trust: medium, freshness: "72h", example: "four-eyes approval recorded in the decision inbox"}
+  self-report: {max_trust: low, freshness: "1h", example: "agent-reported posture without attestation"}
+  configuration: {max_trust: medium, freshness: "24h", example: "declared configuration checked for drift"}
+
+risk:
+  register: [a private register, a private register]   # rules mitigate risk ids from these registers
+  scale: "likelihood 1-5 times impact 1-5"
+  appetite: "a private register appetite_max_residual per pack tier"
+  acceptance_roles: [risk_owner, security_officer]
+  acceptance_requires: [by, role, until, rationale, residual]
+
+pack_precedence: [baseline, sector, tenant, island]   # used only to report which pack a rule came from; specificity decides
+
+rule_schema:
+  required: [id, topic, effect, scope, valid_from, mitigates, anchor]
+  optional: [parameter, by_trust, by_band, rollout, valid_until, supersedes, raises_risk, residual, min_trust, acceptance, title, owner, status, review_by, tests, standards, decision, affects]   # standards: frameworks/register.yaml ids, optionally with a control (ADR-0100); decision: {by, date, record} who decided the rule, when, and the record that carries it (ADR-0145), required for rules taking effect from 2026-10-14; affects: [{kind: capability|seam|register, id, what}] the systems a rule changes, flagged on the pane with their owners and conformance (ADR-0146)
+
+band_enforcement:   # ADR-0092: the risk band of the request sets a floor under every rule's rollout stage; it only tightens
+  floor: {green: "off", amber: warn, red: enforce, black: enforce}
+  meaning:
+    green: "each rule runs at its own rollout stage (platform/enforcement-rollout.yaml: announce, observe, warn, enforce)"
+    amber: "every rule at least warns: what was only observed now tells the subject"
+    red: "every rule is enforced, whatever its rollout stage; exemptions with expiry still apply"
+    black: "every rule is enforced and exemptions are suspended; only restoring and reducing actions pass (governance/autonomy.yaml)"
+  by_band: "a rule may set its parameter per band (by_band); values must only tighten from green to black (the checker proves it for durations, numbers and effect levels)"
+  precedence: "by_band for the current band, else by_trust for the current trust, else the parameter"

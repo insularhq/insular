@@ -1,0 +1,13 @@
+# the lab's PostgreSQL clusters: replication and instance traffic inside the namespace, the CloudNativePG
+# operator to the instance manager (8000) and PostgreSQL, Pharos's Prometheus to the exporter (9187).
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata: {name: ingress, namespace: vdh-test}
+spec:
+  endpointSelector: {}
+  ingress:
+    - fromEndpoints: [{matchLabels: {k8s:io.kubernetes.pod.namespace: vdh-test}}]
+    - fromEndpoints: [{matchLabels: {k8s:io.kubernetes.pod.namespace: cnpg-system}}]
+      toPorts: [{ports: [{port: "8000", protocol: TCP}, {port: "5432", protocol: TCP}]}]
+    - fromEndpoints: [{matchLabels: {k8s:io.kubernetes.pod.namespace: vdh-pharos, app: prometheus}}]
+      toPorts: [{ports: [{port: "9187", protocol: TCP}]}]

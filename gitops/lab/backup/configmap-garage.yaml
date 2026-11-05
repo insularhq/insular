@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: ConfigMap
+# Garage on the lab: one node, replication 1 (lab form; production runs three nodes per zone, platform/layers.yaml).
+# The RPC secret comes from the Secret garage-rpc, created on the lab by the drill script, never from git.
+metadata: {name: garage, namespace: vdh-backup}
+data:
+  garage.toml: |
+    metadata_dir = "/var/lib/garage/meta"
+    data_dir = "/var/lib/garage/data"
+    db_engine = "lmdb"
+    replication_factor = 1
+    rpc_bind_addr = "[::]:3901"
+    rpc_public_addr = "[::1]:3901"
+
+    [s3_api]
+    s3_region = "garage"
+    api_bind_addr = "[::]:3900"
+
+    [admin]
+    api_bind_addr = "[::]:3903"

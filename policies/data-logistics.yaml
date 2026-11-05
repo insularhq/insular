@@ -1,0 +1,63 @@
+# Data logistics and resilience (ADR-0106): data is where it is needed before it is needed, it moves as ciphertext,
+# and the cheapest safe path wins: network or a physical carrier. Every move is planned, verified and reversible.
+# Planned and checked by tools/data_logistics.py. Sizes, links and demands below are examples, marked as such.
+
+principle: "place data by demand, lease and ring; move ciphertext only; seed by carrier when the network cannot make the deadline, then pull deltas; drain before a PoP goes; back up ciphertext, keep keys apart, drill restores"
+
+replication:
+  modes:
+    stream: "NATS JetStream mirror or leaf node: continuous, for products that must stay fresher than an hour"
+    snapshot: "Iceberg snapshot copy, incremental between snapshot ids, for tables"
+    on-demand: "fetched at first use and cached under the reader's lease"
+  writer: "one writing site per product, its owner's site; replicas are read-only; site-mastered facts follow the reconcile kinds of platform/sources-of-truth.yaml"
+  verify: "every replica and every carrier load is checked against the source's snapshot ids and Merkle roots before use; proof bundles verify offline (ADR-0098)"
+
+placement:
+  site_membership: "a PoP may join its parent's site ring (memberships below) while every condition is evidenced and the membership lease runs; a missing condition or an expired membership makes the PoP its own site again (fail closed); only a member may hold site-bound data and drain it back"
+  membership_conditions: [attested_hosts, overlay_only, carrier_custody_two_person, physical_class_of_parent]
+  rule: "a product is placed at a site only when a demand names it, a current lease covers the reader there, and the product's ring allows that site (Restricted stays at its own site)"
+  copies_by_criticality: {mission-critical: 3, important: 2, normal: 1}   # sites holding a full replica
+
+transport:
+  network_efficiency: 0.7        # share of the nominal bandwidth a bulk transfer gets in practice
+  max_network_hours: 24          # a seed that would take longer over the network than this, or miss its deadline, goes by carrier
+  carrier:
+    capacity_gb: 4000
+    contents: "ciphertext only, as a sealed artefact (platform/sealed-artefacts.yaml); the key access service releases keys at arrival under the site's lease, so a lost carrier is ciphertext"
+    custody: "two persons from packing to import; the carrier's Merkle root is logged before departure and checked on arrival"
+    loss: "a lost or late carrier: revoke its key wrapping, record it, and send again or fall back to the network"
+  deltas: "after a carrier seed, the site pulls only what changed since the carrier's snapshot ids and stream sequences"
+
+pop_lifecycle:
+  spin_up: "per demand in priority order (mission-critical first): placement check, carrier seed if planned, then deltas; nothing is used before its proof bundle verifies"
+  spin_down:
+    originated: "drain to the owner's site within the unit's ring (ADR-0097); data that may not leave the PoP's site returns on a carrier to that site or is shredded at the end of its retention; never drained to a wider ring"
+    cached: "replicas and caches of other sites' products: crypto-shred by destroying the PoP-local key wrapping, then wipe"
+    audit: "audit records and logs drain append-only to the parent, then the local copy is shredded"
+    keys: "PoP-local keys are destroyed and recorded in the shred ledger"
+    gate: "power-off is allowed only when every drain is acknowledged and the shred ledger entry is logged"
+
+backup:
+  rule: "backups hold ciphertext only and keys are backed up apart; a restore replays the shred ledger before any key is served (ADR-0095); custody of ciphertext outside a ring is not access"
+  by_criticality:
+    mission-critical: {rpo_minutes: 15, rto_minutes: 60, copies: [site, second-provider, offline-carrier], drill: monthly}
+    important: {rpo_minutes: 240, rto_minutes: 480, copies: [site, second-provider], drill: quarterly}
+    normal: {rpo_minutes: 1440, rto_minutes: 2880, copies: [second-provider], drill: half-yearly}
+  site_bound: "an offline copy of data whose ring is the site stays at that site (a carrier in the site's safe)"
+
+# ---- examples: the planner's inputs (not measured; replace with the estate's figures) ----
+products:   # size and daily change per product, and criticality
+  sensor-telemetry: {size_gb: 1800, change_gb_per_day: 60, criticality: important, mode: stream}
+  hr-roster: {size_gb: 2, change_gb_per_day: 0.05, criticality: important, mode: snapshot}
+  case-files-index: {size_gb: 40, change_gb_per_day: 0.5, criticality: mission-critical, mode: snapshot}
+  policy-bundles: {size_gb: 0.1, change_gb_per_day: 0.01, criticality: mission-critical, mode: stream}
+  platform-health: {size_gb: 5, change_gb_per_day: 1, criticality: normal, mode: stream}
+sites:
+  core-1: {kind: parent}
+  edge-1: {kind: site, parent: core-1}
+  pop-17: {kind: ephemeral-pop, parent: edge-1}
+memberships:   # example: a PoP in its parent's site ring, as a lease (ADR-0093) with the evidence that renews it
+  pop-17: {ring_site: edge-1, conditions: {attested_hosts: "Keylime verdicts for every host", overlay_only: "NetBird site overlay, no other route", carrier_custody_two_person: "custody records per carrier", physical_class_of_parent: "site security class B, as edge-1"}, member_until: "2026-11-09", renewed_by: [collected, decided]}
+links:   # nominal bandwidth into the site and how often the link is up
+  edge-1: {mbps: 1000, availability: 0.99}
+  pop-17: {mbps: 20, availability: 0.6}

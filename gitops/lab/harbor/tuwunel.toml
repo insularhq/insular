@@ -1,0 +1,9 @@
+[global]
+server_name = "${ring_domain:=lab.vdh.test}"
+database_path = "/var/lib/tuwunel"
+address = ["::"]
+port = 8008
+allow_registration = true
+registration_token_file = "/etc/tuwunel-secret/token"
+allow_federation = false
+trusted_servers = []

@@ -1,0 +1,30 @@
+# The address-drift reconciler (ADR-0171 point 5): own standard-library code from a ConfigMap in the pinned image;
+# counts per rule and a heartbeat on /metrics for the pane; findings on /findings inside the ring only
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: ipam-drift, namespace: vdh-netbox, annotations: {vdh.component: "ipam-drift"}}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: ipam-drift}}
+  template:
+    metadata: {labels: {app: ipam-drift}}
+    spec:
+      serviceAccountName: ipam-drift
+      securityContext: {runAsNonRoot: true, runAsUser: 10001, runAsGroup: 10001, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: drift
+          image: docker.io/library/python:3.13-alpine@sha256:2d9aefe2fef018a7eb2c13064c89c71929800fd2e5dccdbf52ea5da5bb8d929a
+          command: ["python3", "-u", "/app/drift-runner.py"]
+          env:
+            - {name: SITE_TAG, value: vdh-site-1}
+            - {name: FLEET, value: "fd00:0:0::/48"}
+          ports: [{name: metrics, containerPort: 9102}]
+          readinessProbe: {httpGet: {path: /healthz, port: 9102}, periodSeconds: 30}
+          securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}, readOnlyRootFilesystem: true}
+          resources: {requests: {cpu: 5m, memory: 24Mi}, limits: {memory: 96Mi}}
+          volumeMounts:
+            - {name: code, mountPath: /app, readOnly: true}
+            - {name: token, mountPath: /token, readOnly: true}
+      volumes:
+        - {name: code, configMap: {name: netbox-code}}
+        - {name: token, secret: {secretName: netbox-token-ipam-drift, optional: true}}

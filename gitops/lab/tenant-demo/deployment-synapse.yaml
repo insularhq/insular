@@ -1,0 +1,75 @@
+# Synapse, the tenant's Matrix homeserver (ADR-0114; lab form: one replica, media and keys on a volume, Recreate). The
+# init step renders the configuration (configmap-synapse.yaml render.py) and the trust bundle: system roots plus the
+# lab CA, so the sign-in through the ring's Keycloak verifies TLS. The admin API is not routed (httproute-synapse.yaml).
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: synapse, namespace: vdh-tenant-demo, annotations: {vdh.component: "Synapse", vdh.app-version: "v1.162.0"}}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector: {matchLabels: {app: synapse}}
+  template:
+    metadata: {labels: {app: synapse}, annotations: {prometheus.io/path: /_synapse/metrics}}
+    spec:
+      automountServiceAccountToken: false
+      securityContext: {runAsNonRoot: true, runAsUser: 991, runAsGroup: 991, fsGroup: 991, seccompProfile: {type: RuntimeDefault}, seLinuxOptions: {level: "s0:c32,c33"}}
+      initContainers:
+        - name: render
+          image: ghcr.io/element-hq/synapse:v1.162.0@sha256:6b84a7bbac36f080b2d2e51e0289cf1b08b349598ea44a558df38d558f2c2311
+          command: ["python", "/config/render.py"]
+          env:
+            - {name: DB_PASSWORD, valueFrom: {secretKeyRef: {name: synapse-db-app, key: password}}}
+            - {name: OIDC_SECRET, valueFrom: {secretKeyRef: {name: synapse-oidc, key: client-secret, optional: true}}}
+          securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+          volumeMounts:
+            - {name: config, mountPath: /config, readOnly: true}
+            - {name: data, mountPath: /data}
+            - {name: lab-ca, mountPath: /lab-ca, readOnly: true}
+            - {name: trust, mountPath: /trust}
+            - {name: federation, mountPath: /federation, readOnly: true}
+            - {name: appservice, mountPath: /appservice, readOnly: true}
+        # Synapse needs Keycloak's discovery document at start: it waits for it (with the trust bundle render made), up to
+        # ten minutes, and then starts anyway so a lasting failure stays visible
+        - name: wait-for-identity
+          image: ghcr.io/element-hq/synapse:v1.162.0@sha256:6b84a7bbac36f080b2d2e51e0289cf1b08b349598ea44a558df38d558f2c2311
+          command: [python, -c]
+          args:
+            - |
+              import os, ssl, time, urllib.request as u
+              ctx = ssl.create_default_context(cafile="/trust/bundle.pem")
+              for i in range(300):
+                  try:
+                      u.urlopen(os.environ["DISCOVERY"], timeout=5, context=ctx)
+                      break
+                  except Exception:
+                      time.sleep(2)
+          env: [{name: DISCOVERY, value: "https://id.${ring_domain:=lab.vdh.test}/realms/vdh/.well-known/openid-configuration"}]
+          securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+          volumeMounts: [{name: trust, mountPath: /trust, readOnly: true}]
+      containers:
+        - name: synapse
+          image: ghcr.io/element-hq/synapse:v1.162.0@sha256:6b84a7bbac36f080b2d2e51e0289cf1b08b349598ea44a558df38d558f2c2311
+          command: ["python", "-m", "synapse.app.homeserver", "-c", "/data/homeserver.yaml"]
+          env: [{name: SSL_CERT_FILE, value: /trust/bundle.pem}]
+          ports: [{containerPort: 8008}, {name: metrics, containerPort: 9000}]
+          readinessProbe: {httpGet: {path: /health, port: 8008}, periodSeconds: 10}
+          livenessProbe: {httpGet: {path: /health, port: 8008}, initialDelaySeconds: 60, periodSeconds: 30}
+          securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+          resources: {requests: {cpu: 50m, memory: 256Mi}, limits: {memory: 1Gi}}
+          volumeMounts:
+            - {name: config, mountPath: /config, readOnly: true}
+            - {name: data, mountPath: /data}
+            - {name: trust, mountPath: /trust, readOnly: true}
+            - {name: lab-ca, mountPath: /lab-ca, readOnly: true}
+            - {name: appservice, mountPath: /appservice, readOnly: true}
+      volumes:
+        - {name: config, configMap: {name: synapse}}
+        - {name: data, persistentVolumeClaim: {claimName: synapse-data}}
+        - {name: lab-ca, configMap: {name: lab-ca}}
+        - {name: trust, emptyDir: {}}
+        - {name: federation, configMap: {name: matrix-federation, optional: true}}
+        # the bots' application-service registrations, Secrets made after bring-up; each may be absent
+        - name: appservice
+          projected:
+            sources:
+              - {secret: {name: synapse-appservice-alerts, optional: true}}

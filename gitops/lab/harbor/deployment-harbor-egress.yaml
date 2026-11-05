@@ -1,0 +1,37 @@
+# The Harbor's way out (ADR-0151): this ring's servers reach a partner ring's Harbor through it, never on their
+# own. A server here (OpenCloud's Open Cloud Mesh) calls the partner's name; CoreDNS sends that name here; the gateway
+# answers with a certificate from this ring's CA and re-originates the connection to the partner's Harbor with this
+# ring's Harbor client certificate, validating the partner against its CA only. Its listener and cluster name the
+# partners, so they are made when a partner is admitted (ConfigMap harbor-egress-dyn, the lab tooling)
+# and read live from files (egress-bootstrap.yaml); until then the gateway idles.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: harbor-egress, namespace: vdh-harbor, annotations: {vdh.component: "Envoy", vdh.app-version: "v1.36"}}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: harbor-egress}}
+  template:
+    metadata: {labels: {app: harbor-egress}}
+    spec:
+      securityContext: {runAsNonRoot: true, runAsUser: 10004, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: envoy
+          image: docker.io/envoyproxy/envoy@sha256:eb2c01c13125d1629637cb4e4cce7207009fb7cc2c8027f9742758549d15b6f4
+          args: ["-c", "/bootstrap/egress-bootstrap.yaml", "--log-level", "warn", "--disable-hot-restart"]
+          ports: [{containerPort: 10443}]
+          securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}, readOnlyRootFilesystem: true}
+          resources: {requests: {cpu: 10m, memory: 32Mi}, limits: {memory: 256Mi}}
+          volumeMounts:
+            - {name: bootstrap, mountPath: /bootstrap, readOnly: true}
+            - {name: dyn, mountPath: /dyn, readOnly: true}
+            - {name: serve, mountPath: /serve, readOnly: true}
+            - {name: me, mountPath: /me, readOnly: true}
+            - {name: peer, mountPath: /peer, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - {name: bootstrap, configMap: {name: harbor-egress-bootstrap}}
+        - {name: dyn, configMap: {name: harbor-egress-dyn, optional: true}}
+        - {name: serve, secret: {secretName: harbor-egress-tls, optional: true}}
+        - {name: me, secret: {secretName: harbor-client, optional: true}}
+        - {name: peer, configMap: {name: peer-ca, optional: true}}
+        - {name: tmp, emptyDir: {}}

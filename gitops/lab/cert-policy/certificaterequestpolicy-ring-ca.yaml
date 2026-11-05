@@ -1,0 +1,18 @@
+# The ring CA signs only the declared service names (Harbor, the NetBird entries, the synthetic test name), for at most
+# 30 days; protected names are issued by a CA policy from git, never by DNS-01 (master protection)
+apiVersion: policy.cert-manager.io/v1alpha1
+kind: CertificateRequestPolicy
+metadata: {name: ring-ca}
+spec:
+  allowed:
+    commonName: {value: "synthetic.${ring_domain:=lab.vdh.test}"}
+    dnsNames: {values: ["harbor.${ring_domain:=lab.vdh.test}", "id.${ring_domain:=lab.vdh.test}", "cloud.${ring_domain:=lab.vdh.test}", "matrix.${ring_domain:=lab.vdh.test}", "synthetic.${ring_domain:=lab.vdh.test}", "nb.vdh.test", "netbird.vdh-nbmain.svc", "netbird.vdh-nbmain.svc.cluster.local", "nbl.vdh.test", "netbird.vdh-nblogin.svc", "netbird.vdh-nblogin.svc.cluster.local", "keycloak.vdh-identity.svc", "keycloak.vdh-identity.svc.cluster.local"], required: true}
+    # the Harbor's client certificate names this ring only by its SPIFFE principal (the partner's Harbor reads the URI
+    # SAN, ADR-0151)
+    uris: {values: ["spiffe://${ring_domain:=lab.vdh.test}/harbor"]}
+    usages: ["digital signature", "key encipherment", "server auth", "client auth"]
+  constraints:
+    maxDuration: 720h
+  selector:
+    issuerRef: {name: ring-ca, kind: ClusterIssuer, group: cert-manager.io}
+    namespace: {matchNames: [vdh-harbor, vdh-nbmain, vdh-nblogin, vdh-pharos, vdh-identity]}

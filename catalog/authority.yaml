@@ -1,0 +1,24 @@
+# Authority matrix for deviations from the golden path (the ~80% covered by catalog/patterns.yaml and the placement
+# policy). A deviation is a justified, scoped, time-boxed exception, approved by the roles below, locked by a hash of
+# its content. Floors are never deviable. Roles come from governance/roles.yaml.
+golden_path:
+  patterns: catalog/patterns.yaml
+  placement:      # where a workload may run, by data label (functional justification required for anything else)
+    Internal:     [eu-cloud, edge-site]
+    Sensitive: [eu-cloud, edge-site]         # edge sites are S or M, which host Sensitive from M
+    Restricted:   [eu-cloud-dedicated]           # Restricted needs L; edge sites are S or M
+
+deviation_types:
+  extra-flow:           {approvers: [security_officer], max_days: 180, text: "a flow no pattern provides"}
+  exposure-exception:   {approvers: [security_officer, owner], max_days: 90, text: "an exposure the label does not normally allow"}
+  isolation-above-floor: {approvers: [security_officer], max_days: 180, text: "a weaker runtime than the label's default but not below the floor"}
+  placement-exception:  {approvers: [owner, security_officer], max_days: 365, text: "a placement outside the golden path"}
+  unvetted-component:   {approvers: [security_officer, release_manager], max_days: 90, text: "software not yet in the vetted component list"}
+  floor:                {approvers: [], max_days: 0, text: "below a floor: never allowed"}
+
+rules:
+  - the requester never approves their own deviation (segregation of duties)
+  - an approval is valid only for the exact content it hashed; any edit voids it
+  - an expired deviation turns its effects into drift: revoke, or renew with a fresh justification and approval
+  - observed state outside golden path plus valid deviations is drift
+  - every deviation is visible to the tenant whose instance it affects and in the compliance view as an exception

@@ -1,0 +1,17 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: whoami, namespace: vdh-demo-app, annotations: {vdh.component: "whoami", vdh.app-version: "v1.11.0"}}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: whoami}}
+  template:
+    metadata: {labels: {app: whoami}}
+    spec:
+      automountServiceAccountToken: false
+      securityContext: {runAsNonRoot: true, runAsUser: 65532, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: whoami
+          image: docker.io/traefik/whoami:v1.11.0@sha256:200689790a0a0ea48ca45992e0450bc26ccab5307375b41c84dfc4f2475937ab
+          args: ["--port", "8080"]
+          ports: [{containerPort: 8080}]
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}

@@ -1,0 +1,1 @@
+{"vdh": {"ring": {"pane_host": "pharos.${ring_domain:=lab.vdh.test}", "netbox_host": "netbox.${ring_domain:=lab.vdh.test}", "issuer": "https://id.${ring_domain:=lab.vdh.test}/realms/vdh", "tier": "low-appetite"}}}

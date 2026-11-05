@@ -1,0 +1,54 @@
+# Infrastructure facts as policy, risk and trust inputs (ADR-0078). Every fact class of platform/sources-of-truth.yaml
+# is bound to: the trust anchor it rests on (policies/model.yaml trust_anchors), how fresh it must be, the signals it
+# feeds, the risks it informs, and the decisions that consume it. Checked by tools/infra_trust.py.
+#
+# The chain: master fact -> signal (attested, signed or self-reported, with its age) -> trust band (capped by the
+# anchor, lowered by age) -> remaining risk -> policy decision (local PDP) -> enforcement (local PEP) -> evidence back
+# into the RTOP. Weakest link: a decision is never more trusted than its least-trusted input.
+
+principles:
+  - "a decision is never more trusted than the least-trusted fact it used (weakest link), and never above that fact's anchor ceiling"
+  - "a fact older than its freshness budget counts one trust band lower; twice the budget counts as missing"
+  - "a missing fact counts as risk, never as consent"
+  - "infrastructure trust is per host, per site and per component, re-evaluated on every change event and at least every freshness budget"
+
+decisions: [placement, access, egress, release, update, federation, exposure]
+
+infra_signals:   # in addition to platform/adaptive-policy.yaml signals
+  host_attestation: "fresh TPM quote verified by Keylime: measured boot, kernel, host image"
+  host_baseline: "host checks of the lab-check kind: baseline loaded, key-only SSH, SELinux enforcing, no unexplained AVC"
+  bundle_age: "age of the signed policy and federation bundles at the site"
+  link_protection: "MACsec and MKA state per inter-site link end, read from the edge router (configuration) or attested by the link's owner (self-report); unknown counts as unprotected (ADR-0146)"
+  site_isolation: "minutes since the site last reached its parent"
+  custody: "facility clearance and custody facts from the estate register and DCIM"
+  patch_posture: "advisory posture and patch SLA status per component"
+  drift: "open differences between masters and observed state"
+
+bindings:
+  inter-site-links: {anchor: self-report, freshness_min: 1440, signals: [link_protection, site_isolation], risks: [RI-25], decisions: [federation, placement]}   # ADR-0146: links the platform cannot read count at their owner's word, the weakest anchor
+  intent-and-policy:    {anchor: signature, freshness_min: 1440, signals: [bundle_age], risks: [RI-03, RK-12], decisions: [placement, access, egress, release, update, federation, exposure]}
+  architecture:         {anchor: signature, freshness_min: 10080, signals: [drift], risks: [RI-04], decisions: [exposure, egress]}
+  address-plan:         {anchor: signature, freshness_min: 10080, signals: [drift], risks: [RI-04], decisions: [exposure]}
+  site-allocations:     {anchor: configuration, freshness_min: 60, signals: [drift], risks: [RI-04], decisions: [exposure, egress]}
+  places:               {anchor: configuration, freshness_min: 1440, signals: [custody, drift], risks: [RI-04, RI-05], decisions: [placement, access]}   # ADR-0174: levels, leases and doors are judged per place
+  physical-assets:      {anchor: configuration, freshness_min: 1440, signals: [custody, drift], risks: [RI-04, RI-05], decisions: [placement]}
+  firmware-and-bios:    {anchor: signature, freshness_min: 10080, signals: [drift, host_attestation], risks: [RI-14], decisions: [placement, update]}
+  estate-register:      {anchor: signature, freshness_min: 10080, signals: [custody], risks: [RI-05], decisions: [placement]}
+  people:               {anchor: identity-assurance, freshness_min: 60, signals: [role, persona_status], risks: [RK-12, RI-07, RI-09], decisions: [access, federation]}
+  credentials-and-passkeys: {anchor: identity-assurance, freshness_min: 525600, signals: [role], risks: [RK-33], decisions: [access]}
+  devices:              {anchor: hardware-attestation, freshness_min: 60, signals: [device_posture], risks: [RK-02, RK-10], decisions: [access]}
+  workload-identity:    {anchor: hardware-attestation, freshness_min: 60, signals: [host_attestation], risks: [RI-01, RI-08], decisions: [access, federation]}
+  secrets:              {anchor: configuration, freshness_min: 1440, signals: [site_isolation], risks: [RI-10], decisions: [access]}
+  certificates:         {anchor: signature, freshness_min: 1440, signals: [site_isolation], risks: [RI-10, RI-09], decisions: [access, federation]}
+  dns-records:          {anchor: configuration, freshness_min: 60, signals: [drift], risks: [RI-04], decisions: [egress, exposure]}
+  tickets:              {anchor: human-approval, freshness_min: 10080, signals: [behaviour], risks: [RK-31], decisions: [release, update]}
+  change-records:       {anchor: signature, freshness_min: 60, signals: [drift, behaviour], risks: [RI-13, RI-11], decisions: [release, update]}
+  telemetry-and-audit:  {anchor: signature, freshness_min: 15, signals: [host_baseline, patch_posture, behaviour], risks: [RI-02, RI-06], decisions: [placement, exposure, update]}
+  observed-state:       {anchor: self-report, freshness_min: 15, signals: [drift, host_baseline], risks: [RI-02, RI-04, RI-27], decisions: [exposure]}
+
+host_trust:   # how a host's trust band is computed from the bindings above (the same bands as policies/model.yaml)
+  high: "fresh host_attestation, host_baseline passing, patch_posture within SLA, custody cleared for the label"
+  medium: "host_baseline passing and patch_posture within SLA, attestation older than its budget or not available"
+  low: "self-reported posture only, or patch SLA exceeded, or custody to-establish"
+  none: "baseline failing, attestation failing, or no facts"
+placement_rule: "a workload with label X may run only on a host whose trust band meets the label's floor (Internal: low, Sensitive: medium, Restricted: high) and on a site whose custody is cleared for X"

@@ -1,0 +1,168 @@
+# Observability, traceability and auditability as a plane across all stack layers (ADR-0081). It answers, for every
+# component: how the data is acquired, how it is visualised, who sees raw and who sees visualised data, and how it ties
+# to risk, trust, events, alarms and action. The plane is itself a system with its own governance, orchestration,
+# policy, security and infrastructure, watched from outside. Checked by tools/observability.py.
+
+plane:
+  scope: "every stack layer of platform/layers.yaml, every master and lever of policies/master-protection.yaml"
+  principle: "nothing runs unobserved and nothing changes unaudited: every component emits signals through one pipeline, every master and lever emits an audit stream, and every alarm leads to an action"
+  inner_layers:   # the plane's own stack
+    governance: "who may see which signal (access tiers below), retention per signal and label, who owns each alert class, the alert fatigue budget"
+    orchestration: "collectors, stores, dashboards and alert rules deployed by GitOps from git; dashboards as code generated from the model"
+    policy: "redaction, sampling, retention and routing as policy-as-code in the collectors; changes are a lever (policies/master-protection.yaml alerting and observability config)"
+    security: "mTLS with SPIFFE identities from source to store, signed and hash-chained audit records, tamper-evident retention floors, ABAC on every query"
+    infra: "an agent per node, a gateway collector per site with a persistent queue, stores per site, append-only forwarding to the parent"
+
+signals:
+  metrics: "numeric time series (OTLP metrics, Prometheus scrape)"
+  logs: "structured application and system logs (OTLP logs, journald, filelog)"
+  traces: "distributed traces with one trace id from commit to runtime to evidence (OTLP traces)"
+  events: "state changes as CloudEvents on NATS (deployments, enrolments, decisions, alarms)"
+  audit: "who did what to which master or lever, signed and hash-chained; never sampled, never dropped"
+  flows: "network flows with both identities (Hubble)"
+  state: "periodic snapshots of configuration and permissions for drift comparison"
+
+correlation_keys: [trace_id, spiffe_id, subject_pseudonym, decision_id, change_digest, risk_id, entity_id, site, tenant]
+
+pipeline:
+  acquire: "OpenTelemetry SDKs and auto-instrumentation in workloads; the collector's receivers (Prometheus scrape, filelog, journald, Kubernetes events and objects, host metrics); Hubble for flows; Falco or Tetragon for runtime; product audit devices; Redfish telemetry and event service for BMCs"
+  process: "at the site gateway collector: enrich with the entity graph (component, layer, master, risk ids), redact (secrets, personal data, tenant content), sign audit records, route by label and tenant"
+  store: {metrics: VictoriaMetrics, logs: VictoriaLogs, traces: "Jaeger v2 (OTel-native, CNCF) or VictoriaTraces (one vendor with metrics and logs)", audit: "append-only audit store with chain heads anchored off-site", events: "NATS JetStream with retention per stream"}
+  forward: "aggregates, alarms and audit copies forward to the parent through persistent queues; tenant raw data stays in the tenant's scope"
+  wan_down: "the site stores and alerts alone; queues hold 72 hours (SITE-AUTONOMY); forwarding catches up on reconnect, oldest first"
+
+profiles:   # how each kind of component is observed; every capability, master and lever maps to at least one
+  workload:   {signals: [metrics, logs, traces, events], acquire: "OTel SDK or auto-instrumentation, Kubernetes metadata", audit: "application audit events where the workload changes data"}
+  host:       {signals: [metrics, logs, events, audit, state], acquire: "collector hostmetrics and journald, auditd, Keylime results, host checks of the lab-check kind", audit: "auditd and transactional-update history"}
+  network:    {signals: [flows, metrics, events], acquire: "Hubble flows and Cilium metrics, NetBird events", audit: "policy changes from git"}
+  gateway:    {signals: [metrics, logs, traces], acquire: "Envoy access logs and traces, ext_authz decision logs", audit: "route and policy changes"}
+  identity:   {signals: [events, logs, audit, metrics], acquire: "Keycloak admin and login events, SCIM operations, broker exchanges", audit: "admin events and every token exchange"}
+  secrets:    {signals: [audit, metrics], acquire: "OpenBao file or socket audit device, telemetry endpoint", audit: "every request, HMAC-ed values"}
+  pki:        {signals: [audit, events, metrics], acquire: "issuance and revocation logs, certificate expiry exporter, issuance monitoring for protected names", audit: "every issuance and revocation"}
+  policy:     {signals: [audit, metrics, logs], acquire: "OPA decision logs (redacted by schema), bundle status", audit: "every decision with its decision_id"}
+  delivery:   {signals: [events, traces, audit, logs], acquire: "forge webhooks and audit log, CI run records, Flux and Argo events", audit: "every merge, approval, apply and setting change"}
+  data:       {signals: [metrics, logs, audit], acquire: "pgaudit, object-store access logs, lineage events", audit: "statements and object access on labelled data"}
+  oob:        {signals: [metrics, events, audit], acquire: "Redfish telemetry service, event subscriptions and the system event log", audit: "every power, media, boot and firmware action"}
+  factory:    {signals: [events, audit, metrics, traces], acquire: "advisory sensing jobs, Dependency-Track, Renovate, CI run records, release and rollout events", audit: "VEX statements, release decisions, accepted risks and every pipeline run"}
+  device:     {signals: [events, audit, state], acquire: "enrolment ceremonies, hawkBit rollouts, posture reports", audit: "every enrolment step and rollout"}
+
+capabilities:   # capability contract -> profiles
+  orchestration: [workload, host, delivery]
+  sandboxing: [host, workload]
+  ingress-and-api: [gateway]
+  identity-broker: [identity]
+  secrets-and-pki: [secrets, pki]
+  database: [data]
+  policy-decision: [policy]
+  reconciliation: [delivery]
+  telemetry: [workload]
+  metrics-and-logs: [workload, data]
+  dashboards: [workload]
+  event-backbone: [workload]
+  vault-workspace: [workload, data]
+  itsm: [workload, data]
+  status: [workload]
+  alerting: [workload]
+  overlay-vpn: [network]
+  network-policy: [network]
+  runtime-detection: [host]
+  updates: [device]
+  backup: [data]
+  host-os: [host]
+  host-updates: [host, delivery]
+  portal: [workload]
+  device-enrolment: [device, identity]
+  privileged-access: [gateway, identity]
+  access-governance: [identity, workload]
+  edge-access: [gateway, identity]
+  web-application-firewall: [gateway]
+  remote-browser: [workload, gateway]
+  decision-inbox: [workload, delivery]
+  ai-egress-gate: [workload, gateway]
+  out-of-band-management: [oob]
+  bare-metal-provisioning: [oob, delivery]
+audit_sources:   # every master and lever of policies/master-protection.yaml: where its audit stream comes from
+  git: "forge audit log and webhooks; signed commits"
+  site DCIM/IPAM: "NetBox changelog and journal"
+  site Keycloak: "Keycloak admin events"
+  site enrolment service: "ceremony transcripts, signed"
+  site SPIRE: "registration API log; entries diffed against git"
+  site OpenBao: "OpenBao audit device"
+  site intermediate CA: "issuance and revocation log"
+  tenant GLPI: "GLPI history; approvals as signed git records"
+  audit and telemetry store: "ingestion log; chain heads anchored off-site"
+  control-plane code: "forge audit log for protected paths"
+  forge and runners: "forge settings audit and runner registration log"
+  policy and gateway config: "bundle version log and gateway config diff"
+  alerting: "route, receiver and silence changes"
+  device and network control: "hawkBit and NetBird audit logs"
+  registry and bundle repository: "registry push and delete log, signature mirror log"
+  out-of-band management: "Redfish event service and the BMC system event log"
+
+access:   # who sees what; enforced by ABAC on every query (a query gateway in front of every store), never by dashboards alone
+  raw-content: {what: "data that can contain tenant content or personal data", who: [tenant_admin], note: "tenant-scoped; VDHome sees it only through a tenant-granted consultant role (governance/separation.yaml)"}
+  raw-redacted: {what: "logs, traces and decision logs after redaction (content-free metadata, classification.yaml)", who: [platform_operator, security_officer], note: "per site and tenant scope; bulk export is the bulk-read action of master protection"}
+  raw-audit: {what: "audit records of masters and levers", who: [security_officer, auditor], note: "operators read their own entries only; the audit administrator is not the platform administrator"}
+  security-jit: {what: "raw-redacted plus the security fields an incident needs", who: [security_officer], note: "just-in-time with a stated purpose and an incident id, logged, expiring after 8 hours"}
+  aggregates: {what: "metrics and computed indicators without identities", who: [platform_operator, security_officer, owner, auditor, service_desk]}
+  views: {what: "the role views of platform/spog.yaml", who: "per view, filtered by the viewer's scope"}
+
+risk_and_trust:
+  trust: "observed facts feed policies/infra-bindings.yaml; each signal carries its age; a stale or missing signal lowers trust (weakest link)"
+  risk: "key risk indicators per risk id: the signals bound to a risk raise its live likelihood; a breached indicator opens an event linked to the risk, its rules and its owner"
+  model_metrics: "tools/rtop_export.py puts the model's own state (registers, gaps, readiness) on the same pane"
+
+events_and_alarms:
+  event_schema: "CloudEvents 1.0 with extensions named by its rule (lower-case letters and digits): entityid, layer, site, tenant, riskids, trustimpact, severity, decisionid, and traceparent from the Distributed Tracing extension (ADR-0136); the solution-level contract is platform/alert-event-contract.yaml"
+  severity_to_band: {info: green, warning: amber, critical: red, compromise: black}
+  alert_classes:   # every alert belongs to a class; a class names its owner, the risks it watches, its runbook, its action and the action's autonomy level
+    host-trust-drop: {owner: platform_operator, risks: [RI-01, RI-02], runbook: "re-attest, compare baseline, quarantine if failing", action: quarantine-host, autonomy: notify}
+    master-drift: {owner: security_officer, risks: [RI-04, RI-13], runbook: "diff live against signed state, open an incident, restore by pipeline", action: reconcile-config, autonomy: gated}
+    bundle-stale: {owner: security_officer, risks: [RI-03, RI-09], runbook: "check the site link and the bundle signer, raise the band", action: isolate-site, autonomy: human}
+    break-glass-used: {owner: owner, risks: [RI-13, RI-11], runbook: "confirm with the actor out of band, start the review, rotate", action: revoke-session, autonomy: notify}
+    bulk-read: {owner: security_officer, risks: [RI-12], runbook: "identify the subject, check purpose, block or allow", action: revoke-session, autonomy: gated}
+    site-isolated: {owner: platform_operator, risks: [RI-10, RK-12], runbook: "check the link, confirm local operations, plan the reconnect review", action: observe, autonomy: autonomous}
+    certificate-expiry: {owner: platform_operator, risks: [RI-10], runbook: "renew through ACME; manual only for protected names", action: rotate-certificate, autonomy: autonomous}
+    sla-at-risk: {owner: security_officer, risks: [RI-16], runbook: "half the patch SLA has passed: triage, bump or compensate, or ask the risk owner to accept", action: propose-change, autonomy: autonomous}
+    cra-clock: {owner: owner, risks: [RI-17], runbook: "an exploited vulnerability in the product: draft the early warning with its evidence before half the 24 hours", action: propose-change, autonomy: autonomous}
+    release-trust-drop: {owner: release_manager, risks: [RI-15, RI-18], runbook: "a release lost a trust criterion: stop the rollout at the current stage and find the missing evidence", action: observe, autonomy: autonomous}
+    honeytoken-used: {owner: security_officer, risks: [RI-13, RI-15], runbook: "a decoy was used: snapshot first, then revoke the session behind it and investigate", action: snapshot-forensics, autonomy: autonomous}
+    policy-deny-spike: {owner: security_officer, risks: [RI-03, RK-13], runbook: "denials of one rule jumped against its baseline: check a new bundle, a misconfigured client or an attack; roll the bundle back by change record if it is the cause", action: observe, autonomy: autonomous}
+    policy-eval-error: {owner: security_officer, risks: [RI-03], runbook: "the PDP errs: writes and bulk reads fail closed; check the bundle signature and version, the input shape and the PDP health", action: snapshot-forensics, autonomy: autonomous}
+    backup-stale: {owner: platform_operator, risks: [RI-24, RI-27], runbook: "the off-site backup has not completed for two runs: read the last job's log, run it now, check the target is reachable; a site cut off from its later layers keeps layer 2 current (ADR-0139 amendment); follow SOP-006", action: restore-from-backup, autonomy: gated}
+    secret-store-sealed: {owner: security_officer, risks: [RI-23, RI-27], runbook: "an OpenBao member is sealed (restart, power loss): it serves no secrets or keys until its custodians enter their shares; follow SOP-005 from the pane", action: unseal-store, autonomy: human}
+    service-down: {owner: platform_operator, risks: [RI-27], runbook: "a scrape target or a synthetic test of the ring stopped answering: check the pod, its node and its volume; restart once, then open an incident", action: restart-workload, autonomy: human}
+    rule-never-hit: {owner: security_officer, risks: [RI-04], runbook: "a rule has decided nothing for 30 days: check its scope, retire it by change record, or add a test that exercises it", action: propose-change, autonomy: autonomous}
+    telemetry-silence: {owner: security_officer, risks: [RI-02, RI-04], runbook: "a collector, store or alert route went quiet: treat as blinding until proven otherwise", action: snapshot-forensics, autonomy: notify}
+    partner-trust-accepted: {owner: security_officer, risks: [RI-26], runbook: "a federation partner is trusted above its evidence (ADR-0149): acknowledge, track the promised evidence, re-decide or let the acceptance lapse at its end date; the limits hold meanwhile", action: observe, autonomy: notify}
+  rules:
+    - "no alert without an action: an alert class without owner, risk, runbook and action fails the checker"
+    - "silence is an alarm: every collector, store and alert route sends a heartbeat to the off-instance evaluator"
+    - "an alert links to its entity's drill-down level and to the controls the viewer may request (platform/spog.yaml)"
+    - "an alert fatigue budget per owner: more than 20 actionable alerts a day is itself a governance finding"
+
+actionability:
+  chain: "signal -> condition -> event -> alarm with owner and risk -> pane card with evidence and allowed controls -> signed request -> decision inbox -> execution path -> result event -> evidence -> the alarm closes"
+  autonomy: "governance/autonomy.yaml decides whether the action runs at once (autonomous, notify), waits for one approval (gated) or for a person (human); increase actions never run on their own"
+
+series_budgets:   # ADR-0170 point 7: active series an exporter may add per site at size S (M and L scale per node); peer labels
+                  # are dropped at scrape and kept only in recording rules for the top few
+  netbird-builtin: 300
+  endpoint-collector: 50
+  netbird-peer-exporter: 200
+  wg-host-timer: 50
+  blackbox: 400
+  mtu-probe: 50
+  envoy-builtin: 1500
+  node: 2000
+  nft-host-timer: 100
+  event-store: 0
+  hubble: 1500
+  provider-fw-poller: 50
+  coredns-builtin: 300
+  ipam-drift: 20
+
+meta:   # observability of observability
+  heartbeat: "every collector, store and alert route heartbeats to the on-instance and the off-instance evaluator; each watches the other"
+  self_audit: "changes to collectors, redaction, sampling, retention, dashboards and alert rules are lever changes, audited and protected"
+  retention: {audit: "per label, floor entrenched", logs: "30 days redacted, longer only for security cases", metrics: "13 months aggregated", traces: "7 days, 30 days for incidents"}

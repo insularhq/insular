@@ -1,0 +1,14 @@
+# The ring's local gates (ADR-0172): after layer 1, which installs approver-policy and its CRDs
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: cert-policy, namespace: flux-system}
+spec:
+  interval: 10m
+  dependsOn: [{name: layer1}]
+  sourceRef: {kind: OCIRepository, name: lab-gitops}
+  path: ./cert-policy
+  prune: true
+  wait: false
+  timeout: 5m
+  postBuild:
+    substituteFrom: [{kind: ConfigMap, name: ring-settings, optional: true}]

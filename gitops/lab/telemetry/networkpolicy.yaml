@@ -1,0 +1,26 @@
+# Who may talk to the event store: the agents to the gateway, the gateway to ClickHouse, Pharos's Prometheus and
+# Grafana to ClickHouse (read-only user). Nothing leaves this namespace except to the gateway and ClickHouse inside it,
+# and DNS: ClickHouse cannot reach crash.clickhouse.com or anything else.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: default-deny, namespace: vdh-telemetry}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+  egress:
+    - to: [{podSelector: {}}]
+    - to: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kube-system}}, podSelector: {matchLabels: {k8s-app: kube-dns}}}]
+      ports: [{port: 53, protocol: UDP}, {port: 53, protocol: TCP}]
+    - to: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: vdh-backup}}, podSelector: {matchLabels: {app: garage}}}]
+      ports: [{port: 3900}]   # the event store's backups (ClickHouse) and their retention (telemetry-backup) to Garage
+  ingress:
+    - from: [{podSelector: {matchLabels: {app: collector-agent}}}]
+      ports: [{port: 4317}]
+    - from: [{podSelector: {matchLabels: {app: collector-gateway}}}]
+      ports: [{port: 9000}]
+    - from: [{podSelector: {matchLabels: {app: telemetry-backup}}}]
+      ports: [{port: 9000}]   # the backup job asks ClickHouse for its BACKUP
+    - from: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: vdh-forge}}, podSelector: {matchLabels: {app: forgejo}}}]
+      ports: [{port: 8088}]   # the forge's webhook: Forgejo only
+    - from: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: vdh-pharos}}}]
+      ports: [{port: 8123}, {port: 9004}, {port: 8888}]   # 8888: the gateway collector's own metrics

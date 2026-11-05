@@ -1,0 +1,118 @@
+# Access paths: one graph of where a subject can be and what it can act on, physical and digital (ADR-0175).
+# The model holds nested access (lockbox or safe, compartment, cabinet, rack, aisle, cage, room, hallway, mantrap, common area,
+# building, fenced or gated building guard, site, fenced or gated site guard, outer perimeter). For any given location it knows
+# all places a person can possibly be, based on the perimeter checkpoint they last passed; a person who needs access to a
+# certain lockbox must have access to all prerequisite locations to get there, or be accompanied by someone who has that access.
+# The software side is just as important: zero trust at all OSI layers and above: access to a (privileged) workstation, an
+# account on that workstation, OS permissions and group policy to launch the right local app or browser, the PC's and the
+# user's access to the network, firewall and network policies and segmentation between user and workload, then application
+# or workload RBAC, ABAC and risk-based access control, and finally how permissions are enforced in practice (segmentation,
+# obfuscation of data, non-exportability, read versus write access). reviewed and accepted.
+schema: access-paths/0.1
+status: accepted
+
+position: "a chain is the wrong shape: an estate is a graph with several ways in (the loading dock, an emergency exit used as an entrance, a VPN that skips the privileged workstation); a target is only as strong as its weakest way in, so the model keeps every way in and judges the weakest"
+
+nodes:   # what a subject can be in or act on
+  physical:
+    outside: "where everyone starts: the public road, the internet; an entrance node"
+    space: "a place of ADR-0174 a person can be in (a site's yard, a building's common area, a hallway, a mantrap's inner cell, a room, a cage, an aisle)"
+    container: "something opened rather than entered (a rack, a cabinet, a safe, a compartment, a lockbox); it sits in a space or in another container; a portable one declares it, its lock then counts as delay only, and its placement must match NetBox"
+    hosting: "a workload or data node names the container it is hosted in; the container's console (BMC, KVM, the disks) is a way in to it with its own checkpoint, so the physical way to the data is judged with the digital one; every PEP names the workload that controls it, so whoever administers a PACS head-end or an IdP reaches what it guards"
+  digital:
+    device: "a workstation, privileged access workstation, phone or kiosk; possession and its own state are a checkpoint"
+    session: "an OS session on a device (an account logged in, with its OS permissions and policies)"
+    segment: "a network segment or overlay the device and person are admitted to (NetBird group, VLAN, Cilium identity)"
+    workload: "an application or service behind its gateway"
+    data: "a data object or class inside a workload, the final target, with its label"
+
+checkpoints:   # every edge between two nodes; each is enforced by one enforcement point and decided by one decision point
+  fields: "checkpoint_id, from, to, kind, layer, pep, requires (an entitlement of the catalogue, free, or exit-hardware for an emergency exit used as a way in), depends_on (the controller, the credential and the admin path it relies on), subject (person, device or both: the dual subject of zero trust; device_requires names the device's own entitlement), direction (one_way or both), exit (free: the way back out is free, for life safety), records_passage, tailgate_resistance (none, anti_passback, interlock_with_sensor), fails (per scenario: open or closed), delay_s and detect (for timing), two_person, escort (allowed or not), broker (bridged by a recording broker service), obligations, enforces (the obligations its PEP can enforce)"
+  independence: "two checkpoints are independent only if they share no dependency (controller, credential, admin path); a way in counts one layer per group of checkpoints joined by shared dependencies, so three readers on one PACS head-end and one badge are one layer, and a passkey login, a gateway and an application that all trust one IdP are one layer"
+  emergency_exits: "an emergency exit is declared twice: a free exit for leaving, and a checkpoint from outside in that requires exit-hardware, depends on its held-open and forced-door alarm, and is a way in like any other"
+  kinds:
+    physical: [perimeter_gate, guard_post, building_door, mantrap, door, cage_door, lock, combination]
+    digital: [device_possession, os_login, os_permission, network_admission, overlay_policy, firewall_policy, gateway_authz, application_authz, data_control]
+  layers: "physical, device, identity, os, network (OSI 2 to 4), transport, application (OSI 7), data"
+  same_contracts: "a checkpoint's requirement is an entitlement of the one catalogue (ADR-0173 section 16), held through grants, groups, delegations and leases, decided with the same trust floors and situation levels; only the enforcement point differs (PACS, guard, Keycloak, OS policy, NetBird, Cilium, Envoy with OPA, the application, the key access service; ADR-0174 decision 5)"
+  obligations: "what the last checkpoints add besides allow or deny, in AuthZEN and XACML terms: read_only, no_export, masked, view_only, recorded, escorted, watermarked; along a path they add up and the most restrictive holds (VDI's no clipboard with the vault's view only is both)"
+
+analysis:
+  possible_presence: "where a subject can be now: every node reachable from the far side of the last checkpoint it passed, through checkpoints it may pass (and free exits), and through every checkpoint without tailgate resistance, because a holder can bring anyone through it; a roll call is valid only for areas with recorded exits or muster readers; the digital twin is possible reach: every workload and data object reachable from a session it holds, and device-compromise reach counts the identity already spent once the person logged in; both feed roll calls, incident scope and blast radius, only for a declared purpose, aggregated by default, every per-person query logged, kept briefly"
+  route: "for a subject and a target: every way in, and for each the checkpoints it lacks; the one with fewest gaps is the route; a grant to a target with no complete route is useless or needs an escort or a broker"
+  prerequisites: "the entitlements of the missing checkpoints on the best route; they are proposed with the request (an access package can be composed from them), never granted by themselves, because each is a widening with its own approval"
+  escort: "a physical gap is bridged only by one escort, not the requester, who holds the whole rest of the way from the first gap, stays until the escorted person leaves, and every passage records both; a digital gap is bridged only by a recording broker service (an escorted session through Warpgate, ADR-0173 section 16) with an approver other than the requester, never by sharing someone's entitlement"
+  weakest_path: "a target's strength is the smallest number of independent layers on any way in from an entrance, in every scenario (normal, fire release, power loss, cut off: what fails open in each is open); a label needs a minimum (rule data min_independent_layers); a target below it is a finding naming the path, typically the loading dock, the VPN that skips the privileged workstation, or the console of the rack the data runs in; the search is depth-first with branch and bound, and hitting the length bound is a finding"
+  insiders: "counting layers says nothing against someone who holds them all: every way in to a Restricted target crosses a two-person checkpoint, and Restricted PEPs declare duress handling"
+  timing: "each checkpoint may carry delay_s and detect; an EASI-style check (detection before the remaining delay falls below the response time) follows when sites carry these values"
+  discovery: "the declared graph is reconciled on a schedule against the PACS door configuration, NetBird and Cilium policy, Hubble flows, identity edges and NetBox placement; an observed edge that is not declared is a finding, a declared edge no source confirms goes stale"
+  edits: "adding an edge, marking an exit free or changing a dependency is a widening: the files have owners, a change needs two approvers, and the check runs in the gate against the catalogue"
+  life_safety: "every physical space has a way out to outside through free exits; a space without one is a finding, and nothing in this model or in a situation level ever closes an exit"
+  device_and_person: "a checkpoint whose subject is both needs the person's and the device's entitlement, so an admitted person on an unadmitted device, or the other way round, stops there"
+
+keys:
+  principle: "a key is a thing in the graph: it is kept somewhere (a keybox) or issued to someone, and it opens named checkpoints; to cross a keyed checkpoint you must first reach the key, so the key's place is a prerequisite zone of the door it opens; the same model holds a vault, a PAM check-out, an HSM quorum and a recovery share (tools/keys.py)"
+  credential: "credential_id, kind (mechanical_key, badge, code, secret, token, key_share), stored_in (a keybox node) or held_by (people it is issued to), release_requires (the keybox releases it only to holders of this entitlement), master, backup_of, sealed, tamper_evident, on_use (replace for sealed keys), logged, copies, register (its entry in platform/credentials.yaml for digital ones)"
+  keybox: "a container whose contents are credentials: an electronic key cabinet that releases each key to its holders and logs release and return, a safe with tamper-evident seals, a vault or PAM check-out with a lease; reaching it and passing its release is how a key is obtained"
+  checkpoint_keys: "keys: one key, a list (all of them), or {m, of} (any m of these; m 1 with a master is 'this key or the master', m 2 of 2 held by two people is dual control); requires: possession when the key alone decides (a mechanical lock), an entitlement when a PEP also checks who you are"
+  patterns:   # what the model can express, and what the checks say about each
+    free: "no key and no requirement: a free checkpoint, counted as no layer"
+    one_key_opens_all: "one credential on many checkpoints: they share its dependency and count as one layer; its keybox must be as strong as the most sensitive target behind any of them"
+    master_and_backup: "a master key opens a series of doors besides their own keys; its sealed backup counts as the same key (one layer) and sits in a break-glass safe"
+    keybox_in_a_prerequisite_zone: "the key cabinet in the guard room, the vault behind the admin overlay: the key is reachable only from there, so reaching the zone is part of every route through its doors"
+    dual_control: "M of N keys held or kept apart: no one person may hold or gather M of them, and they never share a store"
+    break_glass: "a sealed key in a two-person, alarmed, tamper-evident store, replaced (rekeyed, rotated) after every use; it is a way in like any other and counts in the weakest way in"
+    issued_keys: "a key issued to a person (a code half, a badge, a hardware token) is held, not fetched; it follows the person's lease and leaver events"
+  checks: "lockout (every copy behind the doors it opens), custody (a keybox weaker than what its keys lead to), master keys collapsing layers, dual control (held or gatherable by one person, or one store), sealed keys without two-person, alarm, tamper evidence or replacement, unlogged keys and single copies on the way to Sensitive or Restricted"
+  audit: "every release, return, use and seal break is an event (ADR-0173 section 22 keyclerk-event-v1); a key out past its lease is an alarm; a lost key is a rekey or rotation, a finding until done"
+  alignment:   # the physical and the software side, one row each
+    - {physical: "electronic key cabinet in the guard room", software: "OpenBao or PAM check-out behind the admin overlay"}
+    - {physical: "mechanical key, badge, PIN", software: "static secret, hardware token, passkey"}
+    - {physical: "master key over a lock series", software: "root CA key, domain admin, cloud root account, a shared admin password"}
+    - {physical: "sealed backup master key in a break-glass safe", software: "recovery shares on hardware tokens in separate custody (ceremonies.yaml), the 2-of-3 break-glass SSH CA (ADR-0015), credentials.yaml class sealed"}
+    - {physical: "two keys or a split code for one door", software: "HSM M-of-N quorum, Shamir unseal, two-person approval"}
+    - {physical: "the key kept inside the room it opens", software: "the disk-encryption recovery key on that disk, the vault's unseal keys in the vault, the password manager's master in itself"}
+    - {physical: "rekey after a lost key", software: "rotation after a leak"}
+    - {physical: "key register and cabinet log", software: "secret-read audit and lease records"}
+  doctrine: "no paper and no show-once secrets (ceremonies.yaml): a sealed backup is a key share on a hardware token or a physical key in a sealed safe, never a printed code"
+  rules:   # from the review
+    two_person: "a two-person checkpoint is crossed only by two distinct entitled people; one alone never crosses it, and routes name where a second person is needed"
+    quorum_custody: "the shares of an M-of-N lock and every backup of them sit in different stores with different custodians; one custodian never keeps two shares, and no person can gather M of them, also in the break-glass scenario"
+    keybox_admin: "every keybox declares its admin path (who changes release rules) and its override (the cabinet's override key, the vault's root token); both are ways in and as strong as the keybox; a change to who may release a key to Restricted is a two-person, logged change"
+    copies: "a possession key to Sensitive or Restricted has a restricted keyway with a key-control register or a secure element; a lost or unaccounted key is a finding until the lock is rekeyed"
+    secrets_read: "a secret released by reading counts as issued to the reader until rotated: secrets to Restricted are dynamic (leased) or rotated on read"
+    scenarios: "custody and lockout are checked in every scenario: an electronic cabinet that stays shut on power loss needs an override that works without power"
+    sealed_in_break_glass: "sealed keys are taken only in the break-glass scenario, never on a routine route"
+    issued: "an issued key to Sensitive or Restricted is revoked or changed at its holder's leaver event; a key taken from a keybox has a return deadline, and an overdue key is an alarm (with the door refusing the holder until it is back)"
+    logged: "logged means recorded: by the keybox's release and return, or by the lock that a held key or code opens"
+
+availability:
+  pools: "every role a checkpoint or decision can need (the second person of a two-person checkpoint, an escort, the custodians of each quorum share, the site office, the surge coordinator, the on-call officer) comes from distinct, equally entitled people, at least pool_factor times what is needed at once, counted from the roster of who holds what now (tools/pools.py); a pool that falls below it is a finding before anyone is stuck at a door"
+  ladder: "each checkpoint that needs two people or an escort on the way to Sensitive or Restricted declares a fallback ladder: the steps tried, in order, when the normal requirement cannot be met now; OPA picks the first step that the label, the risk band, the situation level and the urgency allow and whose own pool is available (the engine's keyclerk/policy/fallback.rego, ADR-0176), and every step taken is an event and a review item"
+  steps:
+    remote_confirm: "the site office confirms the person live over intercom or video against their photo and the request, and releases the door or the session remotely; recorded; the site office is a pool of its own and must be staffed"
+    supervised: "the passage goes ahead watched live from the site office or the security operations desk, after a fresh step-up, time-boxed, and reviewed within 24 hours; only when urgent (an incident or a safety case) unless the label is Internal"
+    deferred: "come back another day: the person sees when the pool is next available and who to ask; nothing opens"
+    never: "come back never: for this target and this person no fallback exists; the request ends"
+  never_lower: "a step is itself a checkpoint with its own requirement and pool; no step drops below the label's floor; a red or black band leaves only never; at high and severe levels remote steps end for Restricted"
+  digital: "the same ladder for software: a call-back confirmation by the on-call officer for a second approval, a watched session through the broker, deferral, or never"
+  rule_data:
+    pool_factor: 2
+    site_office_entitlement: site-office
+    allowed_steps: {Internal: [remote_confirm, supervised, deferred], Sensitive: [remote_confirm, supervised, deferred], Restricted: [remote_confirm, deferred, never]}
+    remote_steps_until_level: {Internal: severe, Sensitive: high, Restricted: elevated}
+    steps:
+      remote_confirm: {obligations: [recorded, remote_confirmed]}
+      supervised: {obligations: [recorded, live_watched, step_up, review_24h]}
+      deferred: {obligations: []}
+      never: {obligations: []}
+
+rule_data:
+  min_independent_layers: {Internal: 1, Sensitive: 2, Restricted: 4}
+  max_path_length: 24
+  scenarios: [normal, fire, power, cut_off, break_glass]
+  two_person_for: [Restricted]
+  obligations: [read_only, no_export, masked, view_only, recorded, escorted, watermarked, no_print, no_clipboard, remote_confirmed, live_watched, step_up, review_24h]
+  obligation_conflicts: [[recorded, unrecorded]]
+
+prior_art: ["attack-path and attack-graph analysis (MulVAL, BloodHound, Microsoft Security Exposure Management attack paths), which discover their edges where this graph declares them and reconciles; attack-defense trees for AND/OR prerequisites", "adversary path analysis and EASI (detection probability, delay, response time, the critical detection point) for the timing to come", "IEC/EN 60839-11-1 access control grades and EN 1627 resistance classes as sources for delay values; CAPEC-514 to label edge-defeat techniques", "OGC IndoorGML navigation: cells and transitions", "layered physical protection (deter, detect, delay, respond; ISO 27001 Annex A 7.1 to 7.4 perimeters and entry controls)", "Genetec areas with perimeter doors, anti-passback and people counting", "spatial and location-aware RBAC (GEO-RBAC, LRBAC)", "NIST SP 800-207 policy enforcement points along a request path; AuthZEN and XACML obligations", "platform/zero-trust.yaml request_paths and platform/endpoint-access.yaml layers, which this graph generalises"]

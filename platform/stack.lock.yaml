@@ -1,0 +1,99 @@
+# Stack lock: every runtime component of the stack, pinned per release. Draft until the first release: digests
+# and versions are filled by the release pipeline from the images it actually built and scanned; no value here is
+# invented. status: released requires a sha256 digest per component (tools/stack.py).
+stack_version: 0.1.0
+status: draft
+components:
+  Apache Camel: {version: pending, digest: pending, licence: Apache-2.0, eol: null}
+  Apache Guacamole: {version: pending, digest: pending, licence: Apache-2.0, eol: null}
+  Apache Tika: {version: pending, digest: pending, licence: Apache-2.0, eol: null}
+  Apicurio Registry: {version: pending, digest: pending, licence: Apache-2.0, eol: null}
+  Archivematica: {version: pending, digest: pending, licence: AGPL-3.0, eol: null}
+  Argo Events: {version: pending, digest: pending, licence: Apache-2.0, eol: null}
+  Argo Workflows: {version: pending, digest: pending, licence: Apache-2.0, eol: null}
+  Asterisk: {version: pending, digest: pending, licence: GPL-2.0, eol: null}
+  Backstage: {version: pending, digest: pending, licence: Apache-2.0, eol: null}
+  Barman Cloud plugin: {version: pending, digest: pending, licence: Apache-2.0, eol: null}
+  Cilium: {version: pending, digest: pending, licence: Apache-2.0, eol: null}
+  ClamAV: {version: pending, digest: pending, licence: GPL-2.0, eol: null}
+  CloudNativePG: {version: pending, digest: pending, licence: Apache-2.0, eol: null}
+  CryptPad: {version: pending, digest: pending, licence: AGPL-3.0, eol: null}
+  Dangerzone: {version: pending, digest: pending, licence: AGPL-3.0, eol: null}
+  Debezium: {version: pending, digest: pending, licence: Apache-2.0, eol: null}
+  Eclipse EDC: {version: pending, digest: pending, licence: Apache-2.0, eol: null}
+  Element Web: {version: pending, digest: pending, licence: AGPL-3.0, eol: null}
+  Envoy: {version: pending, digest: pending, licence: Apache-2.0, eol: null}
+  Envoy Gateway: {version: pending, digest: pending, licence: Apache-2.0, eol: null}
+  Falco: {version: pending, digest: pending, licence: Apache-2.0, eol: null}
+  Flux: {version: pending, digest: pending, licence: Apache-2.0, eol: null}
+  Forgejo: {version: pending, digest: pending, licence: GPL-3.0, eol: null}
+  NetBox: {version: pending, digest: pending, licence: Apache-2.0, eol: null}
+  Valkey: {version: pending, digest: pending, licence: BSD-3-Clause, eol: null}
+  ipam-drift: {version: pending, digest: pending, licence: own, eol: null}
+  GLPI: {version: pending, digest: pending, licence: GPL-3.0, eol: null}
+  Gammu: {version: pending, digest: pending, licence: GPL-2.0, eol: null}
+  libosdp: {version: 3.2.7, digest: pending, licence: Apache-2.0, eol: null}
+  Garage: {version: pending, digest: pending, licence: AGPL-3.0, eol: null}
+  Gatus: {version: pending, digest: pending, licence: Apache-2.0, eol: null}
+  Grafana: {version: pending, digest: pending, licence: AGPL-3.0, eol: null}
+  Great Expectations: {version: pending, digest: pending, licence: Apache-2.0, eol: null}
+  K3s: {version: pending, digest: pending, licence: Apache-2.0, eol: null}
+  Kata Containers: {version: pending, digest: pending, licence: Apache-2.0, eol: null}
+  Keycloak: {version: 26.8.1, digest: "sha256:79c623a22abacf3fe6c00a5fb30f5b7843d717b234033b80995891c06116d244", licence: Apache-2.0, eol: null}   # ADR-0173: SCIM from 26.8, per realm
+  OpenCloud: {version: pending, digest: pending, licence: Apache-2.0, eol: null}
+  keycloak-config-cli: {version: 6.5.1, digest: "sha256:0955d98c8a341898b7aa177477edf8a1e90569ae50bbe7598141c1270b773274", licence: Apache-2.0, eol: null}
+  cert-manager approver-policy: {version: v0.28.0, digest: "sha256:1a955b0a5c41d319fd56b5f85aaff6f2eaba01d70f3b1adf001eac4d7b1d49e5", licence: Apache-2.0, eol: null}
+  Keylime: {version: pending, digest: pending, licence: Apache-2.0, eol: null}
+  MLflow: {version: pending, digest: pending, licence: Apache-2.0, eol: null}
+  NATS: {version: pending, digest: pending, licence: Apache-2.0, eol: null}
+  NeMo Guardrails: {version: pending, digest: pending, licence: Apache-2.0, eol: null}
+  NetBird: {version: pending, digest: pending, licence: BSD-3-Clause + AGPL-3.0 (server), eol: null}
+  OPA: {version: pending, digest: pending, licence: Apache-2.0, eol: null}
+  OpenBao: {version: pending, digest: pending, licence: MPL-2.0, eol: null}
+  OpenMetadata: {version: pending, digest: pending, licence: Apache-2.0, eol: null}
+  OpenTDF: {version: pending, digest: pending, licence: BSD-3-Clause-Clear, eol: null}
+  OpenTelemetry Collector: {version: pending, digest: pending, licence: Apache-2.0, eol: null}
+  PostgreSQL: {version: pending, digest: pending, licence: PostgreSQL, eol: null}
+  Proxmox Backup Server: {version: pending, digest: pending, licence: AGPL-3.0, eol: null}
+  Proxmox VE: {version: pending, digest: pending, licence: AGPL-3.0, eol: null}
+  RAUC: {version: pending, digest: pending, licence: LGPL-2.1, eol: null}
+  SPIRE: {version: pending, digest: pending, licence: Apache-2.0, eol: null}
+  Suricata: {version: pending, digest: pending, licence: GPL-2.0, eol: null}
+  Trino: {version: pending, digest: pending, licence: Apache-2.0, eol: null}
+  Synapse: {version: pending, digest: pending, licence: AGPL-3.0, eol: null}
+  VictoriaLogs: {version: pending, digest: pending, licence: Apache-2.0, eol: null}
+  VictoriaMetrics: {version: pending, digest: pending, licence: Apache-2.0, eol: null}
+  Wazuh: {version: pending, digest: pending, licence: GPL-2.0, eol: null}
+  WireGuard: {version: pending, digest: pending, licence: GPL-2.0, eol: null}
+  SUSE Micro: {version: pending, digest: pending, licence: GPL-2.0, eol: null}
+  system-upgrade-controller: {version: pending, digest: pending, licence: Apache-2.0, eol: null}
+  Uyuni: {version: pending, digest: pending, licence: GPL-2.0, eol: null}
+  YARA-X: {version: pending, digest: pending, licence: BSD-3-Clause, eol: null}
+  cert-manager: {version: pending, digest: pending, licence: Apache-2.0, eol: null}
+  enrolment-service: {version: pending, digest: pending, licence: own, eol: null}
+  Warpgate: {version: pending, digest: pending, licence: Apache-2.0, eol: null}
+  KeyClerk: {version: pending, digest: pending, licence: EUPL-1.2, eol: null}
+  ReliKey agent: {version: pending, digest: pending, licence: EUPL-1.2, eol: null}
+  Coraza: {version: pending, digest: pending, licence: Apache-2.0, eol: null}
+  OWASP CRS: {version: pending, digest: pending, licence: Apache-2.0, eol: null}
+  hawkBit: {version: pending, digest: pending, licence: EPL-2.0, eol: null}
+  Knot DNS: {version: 3.6.0, digest: "sha256:166fd8956f1a69eeb6558c28f65cedb4ea112d4689317f4a50c2f2787ee6a622", licence: GPL-3.0-or-later, eol: null}
+  Knot Resolver: {version: 6.4.2, digest: "sha256:8a5b87ed1842c28a957b99693dcd6cc11a04c0f9ce07fc54736357c3fbc32b2e", licence: GPL-3.0-or-later, eol: null}
+  session-agent: {version: pending, digest: pending, licence: own, eol: null}
+  neko-rooms: {version: pending, digest: pending, licence: Apache-2.0, eol: null}
+  Neko: {version: pending, digest: pending, licence: Apache-2.0, eol: null}
+  Nextcloud: {version: pending, digest: pending, licence: AGPL-3.0, eol: null}
+  Collabora Online: {version: pending, digest: pending, licence: MPL-2.0, eol: null}
+  decision-inbox: {version: pending, digest: pending, licence: own, eol: null}
+  room-sender: {version: pending, digest: pending, licence: own, eol: null}
+  ai-egress-gate: {version: pending, digest: pending, licence: own, eol: null}
+  evaluator: {version: pending, digest: pending, licence: own, eol: null}
+  gVisor: {version: pending, digest: pending, licence: Apache-2.0, eol: null}
+  gitleaks: {version: pending, digest: pending, licence: MIT, eol: null}
+  llama.cpp: {version: pending, digest: pending, licence: MIT, eol: null}
+  ExifTool: {version: pending, digest: pending, licence: GPL-1.0-or-later, eol: null}
+  ntfy: {version: pending, digest: pending, licence: Apache-2.0, eol: null}
+  rest-server: {version: pending, digest: pending, licence: BSD-2-Clause, eol: null}
+  restic: {version: pending, digest: pending, licence: BSD-2-Clause, eol: null}
+  step-ca: {version: pending, digest: pending, licence: Apache-2.0, eol: null}
+  vLLM: {version: pending, digest: pending, licence: Apache-2.0, eol: null}

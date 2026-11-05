@@ -1,0 +1,172 @@
+# T-shirt sizes: one core that never changes, modules that switch on. S is a strict subset of M, M of L, so an
+# instance grows by enabling modules in its signed instance file; nothing in the core is reconfigured or migrated.
+# Every size is federable and DDIL-capable from day one (each instance is autonomous and signs its own light).
+# Component names refer to bom/bill-of-materials.yaml. Functions must be unique per size (no duplicate tools).
+
+core:   # S: the minimum that delivers the platform's promise (vault, ICAM, evidence, green light)
+  - {component: K3s, functions: [orchestration], note: "embedded etcd from S (cluster-init), so servers join later without migration; conformant Kubernetes distribution; workloads target the upstream Kubernetes API only, so a site may run RKE2 or Talos instead without changing any workload (see ADR-0006)"}
+  - {component: Envoy Gateway, functions: [ingress, identity-aware-proxy, api-gateway-cells], note: "one replica in S; M and L add replicas and cells, never a different gateway", parts: [{name: Envoy, runtime: sidecar, note: "the Envoy proxy itself: the data plane Envoy Gateway programs, also run as the lab ring front and the NetBird entry proxies"}]}
+  - {component: cert-manager, functions: [public-acme], parts: [{name: cert-manager approver-policy, runtime: controller, note: "ADR-0172: a certificate is approved only by a request policy for its issuer; cert-manager's own approval is off"}]}
+  - {component: Keycloak, functions: [icam-broker], parts: [{name: keycloak-config-cli, runtime: job, note: "applies the realm from the model on every change as the realm's service account; runs and exits"}]}
+  - {component: PostgreSQL, functions: [database]}
+  - {component: OpenBao, functions: [secrets, internal-ca, ssh-ca, kek],
+     note: "integrated Raft storage from S, so peers join later; ECDSA-only PKI (OpenBao's PKI runs ECDSA root and signing CAs only); roots stay offline on HSMs; OpenBao holds intermediates only"}
+  - {component: CryptPad, functions: [vault, client-collaboration]}
+  - {component: OpenTelemetry Collector, functions: [telemetry-agent]}
+  - {component: VictoriaMetrics, functions: [metrics-store]}
+  - {component: VictoriaLogs, functions: [log-store]}
+  - {component: Grafana, functions: [pane-of-glass, alerting], parts: [{name: room-sender, runtime: service, note: "the ring's firing alerts into its Matrix alert room, ids and links only; own code in the pinned Python image"}]}
+  - {component: Flux, functions: [reconciliation]}
+  - {component: restic, functions: [backup]}
+  - {component: CloudNativePG, functions: [database-operator, database-backup], note: "one instance in S, replicas in M and L; backups and point-in-time recovery built in, shipped by the Barman Cloud plugin to Garage (ADR-0113, ADR-0125)", parts: [{name: Barman Cloud plugin, runtime: sidecar, note: "CloudNativePG's backup plugin: WAL and base backups to the object store"}]}
+  - {component: Garage, functions: [object-storage], note: "from S (ADR-0125): the backup target of the instance's PostgreSQL and the S3 store data products use; one node in S, more nodes and a second site in M and L"}
+  - {component: decision-inbox, functions: [risk-decisions]}
+  - {component: Cilium, functions: [cluster-network-policy], note: "the CNI from S: swapping CNIs later means rebuilding nodes, so it is chosen for upgradeability"}
+  - {component: Knot DNS, functions: [authoritative-dns, site-resolver], parts: [{name: Knot Resolver, runtime: service, note: "ADR-0172 amendment: the validating site resolver; the tenant's names from the Isle's Knot"}], note: "ADR-0131, ADR-0155, ADR-0172: the Isle signs its own zone and validates its own names during a cut; one signer in S, a standby signer in M and L"}
+  - {component: OPA, functions: [policy-evaluation], note: "the instance's policy decision point (also used in CI)"}
+  - {component: evaluator, functions: [evidence-evaluation], note: "VDHome's evaluator (green light, federation) runs on every instance and off-instance"}
+  - {component: WireGuard, functions: [admin-access], runtime: kernel}
+  - {component: Coraza, functions: [web-application-firewall], runtime: wasm, note: "loaded into the Envoy Gateway proxies through EnvoyExtensionPolicy"}
+  - {component: OWASP CRS, functions: [waf-rules], runtime: rules, note: "the Core Rule Set that Coraza evaluates"}
+  - {component: SUSE Micro, functions: [host-os], runtime: host, note: "openSUSE Leap Micro; SUSE Linux Micro where a client wants support; one image on Proxmox VMs, bare metal and cloud (ADR-0050)"}
+  - {component: system-upgrade-controller, functions: [host-updates], note: "OS and K3s upgrades as Kubernetes plans from git, node by node, with transactional rollback"}
+
+ci_only:   # never runs on an instance: no runtime attack surface there
+  - {component: OpenTofu, functions: [infrastructure-as-code]}
+  - {component: Ansible, functions: [host-configuration]}
+  - {component: Aerleon, functions: [firewall-generation]}
+  - {component: compliance-trestle, functions: [oscal]}
+  - {component: FINOS CALM, functions: [architecture-model]}
+  - {component: Trivy, functions: [sbom, vulnerability-scan]}
+  - {component: cosign, functions: [signing]}
+  - {component: Renovate, functions: [dependency-updates]}
+  - {component: Sigma, functions: [detection-rules], note: "rules compiled in CI to the instance's log query language"}
+  - {component: Presidio, functions: [pii-detection], note: "named in the release gateway's content stage (platform/release-gateway.yaml); not inside the AI egress gate, whose detectors are its own (its ADR-0013, Presidio's recogniser format as prior art); its runtime placement is open"}
+  - {component: sphinx-needs, functions: [requirements-docs]}
+  - {component: mkosi, functions: [image-build], note: "appliance and boot-stick images only; hosts run SUSE Micro"}
+  - {component: Playwright, functions: [ui-capture]}
+  - {component: k3d, functions: [ephemeral-clusters]}
+  - {component: Chainsaw, functions: [interface-tests]}
+  - {component: Chaos Mesh, functions: [chaos-tests]}
+  - {component: OWASP ZAP, functions: [dynamic-security-tests]}
+  - {component: Schemathesis, functions: [api-contract-tests]}
+  - {component: renderfact, functions: [document-render], note: "VDHome's own open-source docs-as-code renderer"}
+
+modules:   # switched on per size; a module may be enabled earlier by a signed instance file if needed
+  portal:           {size: M, components: [{component: Backstage, functions: [portal]}], note: "platform/spog.yaml: the front door over the estate graph; S uses Grafana and the decision inbox"}
+  sandbox-runtime:  {size: M, components: [{component: gVisor, functions: [sandboxed-containers]}], note: "the Sensitive isolation floor; S hosts Internal only"}
+  overlay-vpn:      {size: M, components: [{component: NetBird, functions: [client-vpn, device-posture]}]}
+  client-chat:      {size: optional, components: [{component: Synapse, functions: [chat-server]}, {component: Element Web, functions: [chat-client]}]}
+  runtime-detection: {size: M, components: [{component: Falco, functions: [runtime-detection]}]}
+  file-sharing:     {size: optional, labels: [Internal], components: [{component: OpenCloud, functions: [file-sharing]}],
+                     note: "ADR-0137: the first intra-tenant workload; personal drives and project spaces; no end-to-end encryption, the operator can read content"}
+  client-forge:     {size: optional, components: [{component: Forgejo, functions: [forge, feedback]}]}
+  dcim-ipam:        {size: optional, components: [{component: NetBox, functions: [dcim-ipam]}, {component: Valkey, functions: [task-queue-cache]}, {component: ipam-drift, functions: [address-drift]}],
+                     note: "ADR-0077, ADR-0171: the site's DCIM/IPAM master and the address-drift reconciler; S enables it by a signed instance file"}
+  physical-access:  {size: optional, components: [{component: libosdp, functions: [osdp-control-panel]}], note: "doors at a site without a PACS (an access enclave); sites with a PACS get the lease through the PACS connector contract, tools/piam"}
+  status-pages:     {size: M, components: [{component: Gatus, functions: [status-pages]}]}
+  itsm:             {size: M, components: [{component: GLPI, functions: [itsm, cmdb-view, approval-workflow]}],
+                     note: "GLPI (Teclib, France, GPL-3.0): native multi-level approvals, Keycloak OIDC, CMDB as a view synced from git inventory; per-site instances in L fed by the NATS event log (no OSS ITSM does multi-master sync)"}
+  workflow-engine:  {size: optional, components: [{component: Argo Workflows, functions: [workflow-engine]}, {component: Argo Events, functions: [event-triggers]}],
+                     note: "every run goes through tools/automate.py's path; per site for DDIL; n8n rejected (not open source)"}
+  alerting:         {size: M, components: [{component: ntfy, functions: [push-notifications]}],
+                     note: "communication plan (platform/communication.yaml); ntfy and Gammu on the management side and on site, not on the instance they report on"}
+  sms-gateway:      {size: optional, components: [{component: Gammu, functions: [sms-gateway]}], note: "per site with a GSM modem"}
+  voice-alerting:   {size: optional, components: [{component: Asterisk, functions: [voice-calls]}]}
+  workload-identity: {size: L, components: [{component: SPIRE, functions: [workload-identity]}]}
+  microvm-runtime:  {size: L, components: [{component: Kata Containers, functions: [microvm]}]}
+  attestation:      {size: M, components: [{component: Keylime, functions: [attestation]}], note: "from M with the boot stick, so a Hull is attested wherever Skiffs run (ADR-0123, ADR-0125)"}
+  boot-stick:       {size: M, components: [{component: RAUC, functions: [ab-updates]}, {component: enrolment-service, functions: [device-enrolment]}, {component: hawkBit, functions: [stick-update-rollout]}], note: "Sensitive endpoint floor is the boot stick, so it arrives with M"}
+  release-gateway:  {size: L, components: [{component: Apache Tika, functions: [file-identification]}, {component: ClamAV, functions: [malware-scan]},
+                     {component: YARA-X, functions: [rule-matching]}, {component: Dangerzone, functions: [content-disarm]},
+                     {component: ExifTool, functions: [metadata-removal]}, {component: gitleaks, functions: [secret-scan]}],
+                     note: "platform/release-gateway.yaml; the only way out of a Restricted enclave"}
+  data-backbone:    {size: optional, components: [{component: Apicurio Registry, functions: [schema-registry]}, {component: Apache Camel, functions: [integration-routes]},
+                     {component: Debezium, functions: [change-data-capture]}], note: "platform/data-platform.yaml: publish once, subscribe through policy"}
+  preservation:     {size: optional, components: [{component: Archivematica, functions: [digital-preservation]}]}
+  data-products:    {size: optional, components: [{component: Great Expectations, functions: [data-quality]}, {component: Trino, functions: [query-engine]},
+                     {component: OpenMetadata, functions: [data-catalog]}, {component: Eclipse EDC, functions: [dataspace-connector]}], note: "uses the core's Garage (ADR-0125)"}
+  ai-inference:     {size: optional, components: [{component: llama.cpp, functions: [cpu-inference]}, {component: NeMo Guardrails, functions: [model-guardrails]}],
+                     note: "platform/data-ai.yaml: inference gateway, local first, output label is the highest input label"}
+  ai-egress-gate:   {size: optional, components: [{component: ai-egress-gate, functions: [ai-egress-gate]}],
+                     note: "ADR-0164: an Isle module in the tenant enclave, the Isle's resources by adapter (the gate's ADR-0009); local models only now; the path is workload, inference gateway, gate, model; one inspector in the release gateway's content stage, not the release gateway"}
+  cyber-vault:      {size: M, components: [{component: rest-server, functions: [append-only-backup]}], note: "at the second provider, separate account"}
+  ai-platform:      {size: optional, components: [{component: vLLM, functions: [gpu-inference]}, {component: MLflow, functions: [model-registry]}]}
+  own-hardware:     {size: substrate, components: [{component: Proxmox VE, functions: [hypervisor]}, {component: Proxmox Backup Server, functions: [vm-backup]}],
+                     note: "platform/substrate.yaml: under K3s wherever VDHome or the client controls the hardware; required for Restricted"}
+  sealed-artefacts: {size: L, components: [{component: OpenTDF, functions: [key-access-service]}], note: "platform/sealed-artefacts.yaml; KAS in the high domain only"}
+  office-suite:     {size: optional, labels: [Internal], components: [{component: Nextcloud, functions: [files-and-office-host]}, {component: Collabora Online, functions: [office-editing]}], note: "for Internal teams that need full Office fidelity; not end-to-end encrypted, so never Sensitive or Restricted; CryptPad stays the default for every label (ADR-0068)"}
+  remote-browser:   {size: M, components: [{component: Neko, functions: [remote-browser]}, {component: neko-rooms, functions: [remote-browser-sessions]}], note: "pixels-only browser for non-platform destinations, behind the multi-perimeter allow-list (platform/egress.yaml, ADR-0063)"}
+  access-governance: {size: M, components: [{component: KeyClerk, functions: [access-requests, approvals, leases, certification, edge-bundles]}], note: "ADR-0176, ADR-0182: requests and leases for the Isle's Keycloak, its rules in the Isle's bundle; first on a size S site"}
+  edge-access:      {size: optional, components: [{component: ReliKey agent, functions: [edge-lease-enforcement]}, {component: Warpgate, functions: [privileged-access]}], note: "an edge site's appliance: the agent applies KeyClerk's signed bundle to the site's Warpgate and keeps ending leases cut off (ADR-0182)"}
+  privileged-access: {size: M, components: [{component: Warpgate, functions: [privileged-access, session-recording]}], note: "bastion for operator and tenant admins behind the VPN (ADR-0059); targets trust its instance key (no SSH certificates); WireGuard with the OpenBao SSH CA stays the S path and the fallback"}
+  vdi:              {size: optional, components: [{component: Apache Guacamole, functions: [browser-isolation]}, {component: session-agent, functions: [desktop-session-sso]}]}
+  federation-bus:   {size: M, components: [{component: NATS, functions: [store-and-forward, event-backbone]}], note: "one backbone for federation and data products; leaf nodes at the edge"}
+  siem:             {size: optional, components: [{component: Wazuh, functions: [siem]}]}
+  network-ids:      {size: L, components: [{component: Suricata, functions: [network-ids]}]}
+  host-fleet:       {size: optional, components: [{component: Uyuni, functions: [host-fleet-management]}], note: "groups, staged patch channels and Salt states for many hosts; upstream of SUSE Multi-Linux Manager"}
+  rsa-legacy-ca:    {size: deviation, components: [{component: step-ca, functions: [rsa-ca]}],
+                     note: "only when an approved deviation names a consumer that requires an RSA chain"}
+
+# isolation level -> component that provides it (none = built into the core platform)
+# How a size renders (one S Isle first): the GitOps tree is size M as written (three servers,
+# one replica per node, required anti-affinity); a ring of size S selects the Kustomize component below in its own
+# install config, so every byte it renders is signed by the Chartroom and checked by the gate. S has no high
+# availability by design: one replica of everything, and a node drain is an outage.
+lab_fixtures:
+  blackbox exporter: {why: "the ring's synthetic web, DNS and TCP tests until synthetic monitoring is decided as a component (ADR-0152)", until: "2026-12-31"}
+  mtu-probe: {why: "the NOC's path MTU per site link (ADR-0170) until synthetic monitoring is decided as a component (ADR-0152)", until: "2026-12-31"}
+  ClickHouse: {why: "the event store candidate (ADR-0152) on the lab rings until the bake-off decides it into a size", until: "2026-12-31"}
+  whoami: {why: "the demo backend behind the PDP-guarded route (ADR-0109)", until: "2026-12-31"}
+  Harbor intake: {why: "the Harbor's management class (a partner's state events, logs, evidence) in lab form until the intake is decided as a component (ADR-0151)", until: "2026-12-31"}
+  Harbor shared document: {why: "a stand-in data-plane service behind the Harbor (ADR-0151); real data-plane traffic is OpenCloud", until: "2026-12-31"}
+  tuwunel: {why: "the Harbor's telephony class (a Matrix homeserver, ADR-0151) until telephony is decided as a component", until: "2026-12-31"}
+rendering: {S: gitops/lab/components/size-s, M: null, L: null}
+# An estimate of the smallest L, never measured: kept apart from the measured floors until a run replaces it with
+# measured figures.
+size_estimates:
+  L:
+    measured: false
+    topology: "two or more sites, each standing alone (resilience.yaml: K3s and OpenBao a 3-member quorum per site, Keycloak one per site, PostgreSQL a replica cluster per site); a Restricted enclave on own hardware (substrate.yaml: Proxmox, max_label Restricted); the cyber vault at a second provider"
+    per_site: {nodes: 3, memory_gb_per_node: 32, vcpu_per_node: 8, why: "about 25 to 35 GiB in use per site (core with HA replicas 8 to 10, M modules 8 to 12, L modules 7 to 10, with the 1.5 limit factor); two nodes must carry a site when the quorum loses one"}
+    restricted_enclave: {hosts: "1 to 2 dedicated servers", memory_gb_per_host: 64, needs: [bare metal or nested virtualisation for Kata Containers, a TPM for Keylime host attestation]}
+    total_memory_gb: "about 190 to 230"
+    sources: "S measured; M and L modules estimated from the components' usual needs, not measured"
+isolation_providers: {container-hardened: null, sandboxed-container: gVisor, microvm: Kata Containers, dedicated-host: null}
+
+# The highest data label each size may host: a label's isolation floor must be available in that size.
+labels:
+  S: [Internal]                  # no device-posture provider in S: Sensitive starts at M
+  M: [Internal, Sensitive]
+  L: [Internal, Sensitive, Restricted]
+
+retired:   # removed by the consolidation; listed so the BOM test knows they are deliberate
+  Unbound: "the site resolver is Knot Resolver, a part of Knot DNS (ADR-0172 amendment: no official Unbound image)"
+  step-ca: "replaced by OpenBao PKI for the ECDSA core; kept only as the rsa-legacy-ca module"
+  Vector: "one telemetry agent: OpenTelemetry Collector"
+  Loki: "one log store: VictoriaLogs"
+  Syft: "Trivy does SBOM and scanning"
+  Grype: "Trivy does SBOM and scanning"
+  Podman: "K3s from S onwards; Podman only on workstations for builds and ceremonies"
+  Velero: "not needed: cluster state is rebuilt from git by Flux"
+  oauth2-proxy: "Envoy Gateway takes over identity-aware access from S onwards"
+  Caddy: "replaced by Envoy Gateway and cert-manager from S, so an upgrade adds replicas instead of swapping gateways"
+  pgBackRest: "CloudNativePG brings backups and point-in-time recovery, and scales from one instance to replicas"
+  YARA: "maintenance mode upstream; YARA-X is the rule-compatible successor by the same team (provenance review)"
+  mat2: "no release since 2025-01, single maintainer; ExifTool replaces it, mat2 stays the alternate (provenance review)"
+  Zot: "K3s has an embedded registry mirror; edge sites get images as preloaded archives; VDHome images live in the upstream registry (earns-its-keep review)"
+  Zeek: "Suricata's EVE logs already carry the protocol metadata (earns-its-keep review)"
+  Snipe-IT: "one ITSM/CMDB tool (module itsm)"
+  Zammad: "one ITSM/CMDB tool (module itsm)"
+  iTop: "runner-up to GLPI (Keycloak only via SAML); not selected"
+  CISO Assistant community: "risk register as code + decision inbox; optional view only"
+
+# Bootstrap from a single key: an instance file signed by the operator, a hardware enrolment key and one bundle URL.
+bootstrap:
+  instance_file: {size: "S|M|L", tenants: [], parent: "optional fleet parent for federation", domain: "", modules_extra: []}
+  steps:
+    - verify the release bundle with cosign against the release root embedded in the installer (no network trust)
+    - install K3s and Flux; Flux pulls only cosign-verified OCI bundles for the size profile
+    - initialise OpenBao, sealed by the TPM or HSM where the host has one, else unsealed by hand from custodian shares; issue ECDSA intermediates from the offline root ceremony
+    - enrol with the parent if set (signed lights up, signed bundles down); otherwise run standalone
+  growth: "change size or modules_extra in the signed instance file; Flux reconciles the added modules; the core is untouched"

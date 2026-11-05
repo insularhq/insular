@@ -1,0 +1,46 @@
+# Governance scaffold, golden paths (ADR-0133): how roles fall onto people at each team size, one separation-of-duties
+# matrix for every path, and RASCI per role. Conflicts are COMPUTED from who actually holds which roles (the instance's
+# persons; the path's assignment only when no persons are recorded yet), never listed by hand per path. Where the
+# security tier requires separation a conflict is a shortfall; below it the conflict carries its compensation. RASCI is
+# written per role, so it is the same on every path; every governed action has a row whose R holds the action's role.
+# An organisation may reassign roles and rewrite the RASCI; a change that creates a conflict is a deviation (ADR-0003),
+# and a mandate may forbid it. Role names follow governance/roles.yaml.
+golden_paths:
+  paths:
+    solo:
+      min_persons: 1
+      assignment: {person-1: [owner, security_officer, pki_custodian, release_manager, platform_operator, service_desk]}
+    small-team:
+      min_persons: 2
+      assignment: {person-1: [owner, security_officer, pki_custodian], person-2: [release_manager, platform_operator, service_desk]}
+    team:
+      min_persons: 5
+      assignment: {person-1: [owner], person-2: [security_officer], person-3: [pki_custodian], person-4: [release_manager, platform_operator], person-5: [platform_operator, service_desk]}
+    organisation:
+      min_persons: 11
+      assignment: {person-1: [owner], person-2: [security_officer], person-3: [pki_custodian], person-4: [pki_custodian], person-5: [release_manager], person-6: [platform_operator], person-7: [service_desk], person-8: [auditor]}
+
+  sod:   # role pairs one person must not hold together where separation is required
+    - {roles: [owner, release_manager], compensation: "a second hardware token held by a trusted third party co-signs releases; reproducible builds"}
+    - {roles: [owner, pki_custodian], compensation: "root shares 2-of-3 in separate places; ceremonies scripted and recorded"}
+    - {roles: [pki_custodian, release_manager], compensation: "release keys and root keys in different custody"}
+    - {roles: [platform_operator, security_officer], compensation: "evaluation off the operator's hosts, signed results, external audit"}
+    - {roles: [platform_operator, release_manager], compensation: "the gate and the signer check every release; reviews by another person"}
+    - {roles: [auditor, owner], compensation: "none possible: the auditor is external"}
+    - {roles: [auditor, platform_operator], compensation: "none possible: the auditor is external"}
+
+  # R responsible, A accountable (exactly one), S support, C consulted, I informed
+  rasci:
+    accept-risk: {owner: A/R, security_officer: C, auditor: I}
+    keep-risk-register: {security_officer: A/R, owner: C, platform_operator: S}
+    root-ceremony: {owner: A, pki_custodian: R, auditor: C, security_officer: S}
+    revoke-or-rotate-key: {owner: A, pki_custodian: R, security_officer: S, auditor: I}
+    register-signing-chain: {owner: A, pki_custodian: R, release_manager: S, auditor: I}
+    release-sign: {owner: A, release_manager: R, security_officer: C, auditor: I}
+    restore-production: {owner: A, platform_operator: R, security_officer: I, service_desk: I}
+    dr-rehearsal: {owner: A, platform_operator: R, security_officer: S, auditor: I}
+    incident-response: {security_officer: A, platform_operator: R, service_desk: S, owner: I}
+    grant-role: {owner: A, security_officer: R, auditor: I}
+    change-mandate-or-profile: {owner: A, security_officer: R, auditor: C}
+    onboard-person: {owner: A, security_officer: R, service_desk: S}
+    break-glass: {owner: A, platform_operator: R, security_officer: C, auditor: I}

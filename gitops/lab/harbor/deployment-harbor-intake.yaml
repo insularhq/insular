@@ -1,0 +1,23 @@
+# The classes' own services: the management intake, a shared document (data plane) and a Matrix homeserver
+# (telephony). The registration token is a ring secret made in the ring (Secret matrix-reg), never in the tree.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: harbor-intake, namespace: vdh-harbor, annotations: {vdh.component: "Harbor intake"}}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: harbor-intake}}
+  template:
+    metadata: {labels: {app: harbor-intake}}
+    spec:
+      securityContext: {runAsNonRoot: true, runAsUser: 10001, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: intake
+          image: docker.io/library/python:3.13-alpine@sha256:2d9aefe2fef018a7eb2c13064c89c71929800fd2e5dccdbf52ea5da5bb8d929a
+          command: ["python3", "-u", "/app/intake.py"]
+          # a partner's bounds: reports a minute, and stored bytes per kind
+          env: [{name: INTAKE_RATE_PER_MIN, value: "30"}, {name: INTAKE_QUOTA_BYTES, value: "1048576"}]
+          ports: [{containerPort: 8080}]
+          securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}, readOnlyRootFilesystem: true}
+          resources: {requests: {cpu: 10m, memory: 32Mi}, limits: {memory: 128Mi}}
+          volumeMounts: [{name: code, mountPath: /app, readOnly: true}, {name: data, mountPath: /data}]
+      volumes: [{name: code, configMap: {name: harbor-intake-code}}, {name: data, emptyDir: {}}]

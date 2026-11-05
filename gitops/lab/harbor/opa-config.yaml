@@ -1,0 +1,3 @@
+plugins:
+  envoy_ext_authz_grpc: {addr: "[::]:9191", path: vdh/harbor/allow}
+decision_logs: {console: true}

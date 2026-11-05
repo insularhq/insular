@@ -1,0 +1,63 @@
+# NetBox's service accounts, permissions and expiring tokens (ADR-0171 points 2, 3 and 5), through Django's shell in the
+# NetBox image; tokens replaced a week before they end and written to one Secret per account
+apiVersion: batch/v1
+kind: CronJob
+metadata: {name: netbox-bootstrap, namespace: vdh-netbox, annotations: {vdh.component: "NetBox"}}
+spec:
+  schedule: "*/30 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        metadata: {labels: {app: netbox-bootstrap}}
+        spec:
+          serviceAccountName: netbox-bootstrap
+          restartPolicy: Never
+          securityContext: {runAsNonRoot: true, runAsUser: 999, runAsGroup: 0, seccompProfile: {type: RuntimeDefault}}
+          containers:
+            - name: bootstrap
+              image: docker.io/netboxcommunity/netbox:v4.7.2-5.1.1@sha256:3cf9d3bd77aa186233b84d0ea1cf1755581d5e5678fa7d86ec3be62f79d0c643
+              command: ["/opt/netbox/venv/bin/python", "/opt/netbox/netbox/manage.py", "shell", "--no-startup", "--no-imports",
+                        "--interface", "python", "--command", "exec(open('/app/bootstrap.py').read())"]
+              workingDir: /opt/netbox/netbox
+              env:
+                - {name: DB_HOST, value: netbox-db-rw}
+                - {name: DB_NAME, value: netbox}
+                - {name: DB_USER, value: netbox}
+                - {name: DB_PASSWORD, valueFrom: {secretKeyRef: {name: netbox-db-app, key: password}}}
+                - {name: REDIS_HOST, value: valkey}
+                - {name: REDIS_DATABASE, value: "0"}
+                - {name: REDIS_CACHE_HOST, value: valkey}
+                - {name: REDIS_CACHE_DATABASE, value: "1"}
+                - {name: ALLOWED_HOSTS, value: "netbox.${ring_domain:=lab.vdh.test} netbox.vdh-netbox.svc.cluster.local netbox.vdh-netbox.svc"}
+                - {name: CSRF_TRUSTED_ORIGINS, value: "https://netbox.${ring_domain:=lab.vdh.test}"}
+                - {name: LOGIN_REQUIRED, value: "true"}
+                - {name: SKIP_SUPERUSER, value: "true"}         # ADR-0171: no superuser, no standing token
+                - {name: METRICS_ENABLED, value: "false"}       # health by a probe from the pane; no metrics endpoint
+                - {name: COPILOT_ENABLED, value: "false"}       # NetBox Labs' agent (default on): never
+                - {name: CENSUS_REPORTING_ENABLED, value: "false"}   # default on: no reporting home
+                - {name: ISOLATED_DEPLOYMENT, value: "true"}    # no function that needs the internet
+                - {name: GRANIAN_WORKERS, value: "2"}
+                - {name: MEDIA_ROOT, value: /opt/netbox/netbox/media}
+              securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}, readOnlyRootFilesystem: true}
+              resources: {requests: {cpu: 20m, memory: 256Mi}, limits: {memory: 512Mi}}
+              volumeMounts:
+                - {name: keys, mountPath: /run/secrets, readOnly: true}
+                - {name: tmp, mountPath: /tmp}
+                - {name: media, mountPath: /opt/netbox/netbox/media}
+                - {name: code, mountPath: /app, readOnly: true}
+          volumes:
+            - name: keys
+              secret:
+                secretName: netbox-keys
+                items:
+                  - {key: secret_key, path: secret_key}
+                  - {key: api_token_pepper_1, path: api_token_pepper_1}
+                  - {key: valkey_password, path: redis_password}
+                  - {key: valkey_password, path: redis_cache_password}
+            - {name: tmp, emptyDir: {}}
+            - {name: media, emptyDir: {}}   # no uploads, reports or scripts on the lab (scripts off, ADR-0171)
+            - {name: code, configMap: {name: netbox-code}}

@@ -1,0 +1,8 @@
+# Example advisory (illustrative, not a real CVE): a flaw in a parser module the release gateway never loads.
+id: EXAMPLE-2026-0002
+component: Apache Tika
+severity: critical
+exploited: false
+published: "2026-10-10T02:00:00Z"
+vex: {status: not_affected, justification: vulnerable_code_not_in_execute_path, evidence: "the affected parser module is excluded from the release gateway's Tika configuration"}
+source: "OSV.dev (example)"

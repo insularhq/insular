@@ -1,0 +1,12 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# Backup target on the lab (ADR-0113, roadmap): Garage as S3 object storage and the ObjectStore that points
+# CloudNativePG's Barman Cloud plugin at it. Secrets are created on the lab, never committed.
+resources:
+  - configmap-garage.yaml
+  - statefulset-garage.yaml
+  - service-garage.yaml
+  - objectstore-lab-store.yaml
+  - cronjob-offsite-backup.yaml
+  - serviceaccount-openbao-snapshot.yaml
+  - cronjob-openbao-snapshot.yaml

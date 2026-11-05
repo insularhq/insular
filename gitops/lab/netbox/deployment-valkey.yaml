@@ -1,0 +1,28 @@
+# NetBox's task queue and cache (ADR-0171): Valkey 9.0.6 (BSD-3-Clause), nothing on disk (tasks and cache are
+# rebuilt), a password from netbox-keys, reachable only inside the namespace
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: valkey, namespace: vdh-netbox, annotations: {vdh.component: "Valkey", vdh.app-version: "9.0.6"}}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector: {matchLabels: {app: valkey}}
+  template:
+    metadata: {labels: {app: valkey}}
+    spec:
+      automountServiceAccountToken: false
+      securityContext: {runAsNonRoot: true, runAsUser: 999, runAsGroup: 999, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: valkey
+          image: docker.io/valkey/valkey:9.0.6-alpine@sha256:187679e3bd4036959631e3f03983ab2ba503ab21e6fd0454d508e909db2ee989
+          command: ["valkey-server"]
+          args: ["--save", "", "--appendonly", "no", "--requirepass", "$(VALKEY_PASSWORD)", "--dir", "/data"]
+          env:
+            - {name: VALKEY_PASSWORD, valueFrom: {secretKeyRef: {name: netbox-keys, key: valkey_password}}}
+          ports: [{name: valkey, containerPort: 6379}]
+          readinessProbe: {tcpSocket: {port: 6379}, periodSeconds: 10}
+          securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}, readOnlyRootFilesystem: true}
+          resources: {requests: {cpu: 10m, memory: 32Mi}, limits: {memory: 128Mi}}
+          volumeMounts: [{name: data, mountPath: /data}]
+      volumes:
+        - {name: data, emptyDir: {}}

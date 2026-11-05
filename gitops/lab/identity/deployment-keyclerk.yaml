@@ -1,0 +1,67 @@
+# ADR-0177: KeyClerk on the Isle, beside the Keycloak it governs. One pod: the desk (records, people's
+# requests and approvals) and the reconciler (the only writer to Keycloak, through its scoped client, the same way as
+# tools/keyclerk_local.py). The image is a build of the signed 0.26.3 tag (ADR-0184 D5), carried onto the node
+# by digest (the lab tooling); IfNotPresent: a node without it fails to pull, loudly. Keycloak's clients, the
+# client secrets, the records key and the management token come from the lab tooling (Secret keyclerk).
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: keyclerk, namespace: vdh-identity, labels: {app: keyclerk}, annotations: {vdh.component: "KeyClerk", vdh.app-version: "0.26.3"}}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}   # one desk per store (desk.lock); RWO volumes
+  selector: {matchLabels: {app: keyclerk}}
+  template:
+    metadata: {labels: {app: keyclerk}}
+    spec:
+      automountServiceAccountToken: false
+      securityContext: {runAsNonRoot: true, runAsUser: 10001, fsGroup: 10001, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: desk
+          image: registry.vdh.lab/vdh-lab/keyclerk@sha256:33cc743f0c3dea7395edff51cef05fe249fc7878cbd86b17600cce96e57db5d0
+          imagePullPolicy: IfNotPresent
+          args: [keyclerk.api, --config, /etc/keyclerk/keyclerk.yaml, --store, /var/lib/keyclerk-desk,
+                 --signing-key, /run/secrets/keyclerk/records.key, --seed, /etc/keyclerk/keyclerk-seed.yaml,
+                 --broker-state, /var/lib/keyclerk,
+                 --host, "0.0.0.0", --port, "8091", --allowed-host, "access.${ring_domain:=lab.vdh.test}",
+                 --allowed-host, "keyclerk.vdh-identity.svc:8091",
+                 --oidc-public-issuer, "https://id.${ring_domain:=lab.vdh.test}/realms/vdh",
+                 --oidc-internal-issuer, "https://keycloak.vdh-identity.svc:8443/realms/vdh",
+                 --oidc-client, keyclerk-desk, --oidc-redirect, "https://access.${ring_domain:=lab.vdh.test}/callback",
+                 --mgmt-host, "0.0.0.0", --mgmt-port, "9091", --mgmt-token-file, /run/secrets/keyclerk/mgmt-token]
+          env: [{name: SSL_CERT_FILE, value: /etc/ring-ca/ca.crt}]   # Keycloak's internal listener, the ring CA only
+          ports: [{name: http, containerPort: 8091}, {name: keyclerk-mgmt, containerPort: 9091}]   # mgmt needs its token: the pane's scrape job is planned
+          readinessProbe: {httpGet: {path: /readyz, port: 8091}, periodSeconds: 10, failureThreshold: 60}
+          livenessProbe: {httpGet: {path: /healthz, port: 8091}, periodSeconds: 20}
+          resources: {requests: {cpu: 50m, memory: 256Mi}, limits: {memory: 512Mi}}   # access-lifecycle.yaml budget, row engine
+          securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}, readOnlyRootFilesystem: true}
+          volumeMounts:
+            - {name: config, mountPath: /etc/keyclerk, readOnly: true}
+            - {name: secrets, mountPath: /run/secrets/keyclerk, readOnly: true}
+            - {name: ring-ca, mountPath: /etc/ring-ca, readOnly: true}
+            - {name: desk, mountPath: /var/lib/keyclerk-desk}
+            - {name: state, mountPath: /var/lib/keyclerk, readOnly: true}
+        - name: reconciler
+          image: registry.vdh.lab/vdh-lab/keyclerk@sha256:33cc743f0c3dea7395edff51cef05fe249fc7878cbd86b17600cce96e57db5d0
+          imagePullPolicy: IfNotPresent
+          args: [keyclerk.reconcile, --config, /etc/keyclerk/keyclerk.yaml,
+                 --records, /var/lib/keyclerk-desk/records.yaml, --signing-key, /run/secrets/keyclerk/records.pub,
+                 --keycloak, "https://keycloak.vdh-identity.svc:8443", --realm, vdh,
+                 --client, keyclerk-writer, --secret-file, /run/secrets/keyclerk/writer,
+                 --reader-client, keyclerk-reader, --reader-secret-file, /run/secrets/keyclerk/reader,
+                 --approval-issuer, "https://id.${ring_domain:=lab.vdh.test}/realms/vdh", --approval-audience, keyclerk-desk,
+                 --state, /var/lib/keyclerk, --interval, "60", --apply]
+          env: [{name: SSL_CERT_FILE, value: /etc/ring-ca/ca.crt}]
+          resources: {requests: {cpu: 20m, memory: 96Mi}, limits: {memory: 256Mi}}
+          securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}, readOnlyRootFilesystem: true}
+          volumeMounts:
+            - {name: config, mountPath: /etc/keyclerk, readOnly: true}
+            - {name: secrets, mountPath: /run/secrets/keyclerk, readOnly: true}
+            - {name: ring-ca, mountPath: /etc/ring-ca, readOnly: true}
+            - {name: desk, mountPath: /var/lib/keyclerk-desk, readOnly: true}
+            - {name: state, mountPath: /var/lib/keyclerk}
+      volumes:
+        - {name: config, configMap: {name: keyclerk-config}}
+        - {name: secrets, secret: {secretName: keyclerk, defaultMode: 0440}}   # group-readable: the files belong to root and the pod's fsGroup
+        - {name: ring-ca, secret: {secretName: keycloak-internal-tls, items: [{key: ca.crt, path: ca.crt}]}}   # the CA only, never the key
+        - {name: desk, persistentVolumeClaim: {claimName: keyclerk-desk}}
+        - {name: state, persistentVolumeClaim: {claimName: keyclerk-state}}

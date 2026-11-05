@@ -1,0 +1,150 @@
+# Bill of materials: the whole platform on open source. Licence cost is zero for every software component; what costs
+# money is listed under 'paid' and is cloud, hardware, people or assurance, never a software licence.
+# 'agpl' components are run from upstream images and never vendored into a delivered bundle.
+software:
+  # plane: foundation
+  - {name: K3s, licence: Apache-2.0, plane: foundation, role: cluster}
+  - {name: Cilium, licence: Apache-2.0, plane: foundation, role: cluster networking and network policy}
+  - {name: Podman, licence: Apache-2.0, plane: foundation, role: Quadlet services}
+  - {name: OpenTofu, licence: MPL-2.0, plane: foundation, role: infrastructure as code}
+  - {name: Ansible, licence: GPL-3.0, plane: foundation, role: host configuration}
+  - {name: Caddy, licence: Apache-2.0, plane: foundation, role: TLS ingress}
+  - {name: step-ca, licence: Apache-2.0, plane: foundation, role: online CA, ACME, SSH CA}
+  - {name: OpenBao, licence: MPL-2.0, plane: foundation, role: KEK and secrets}
+  - {name: Zot, licence: Apache-2.0, plane: foundation, role: registry mirror}
+  - {name: mkosi, licence: LGPL-2.1, plane: foundation, role: image build}
+  - {name: RAUC, licence: LGPL-2.1, plane: foundation, role: A/B updates}
+  - {name: Aerleon, licence: Apache-2.0, plane: foundation, role: firewall generation}
+  # plane: access
+  - {name: Keycloak, licence: Apache-2.0, plane: access, role: ICAM, federation}
+  - {name: keycloak-config-cli, licence: Apache-2.0, plane: access, role: applies the realm from the model on every change}
+  - {name: libosdp, licence: Apache-2.0, plane: access, role: OSDP control panel for door readers at sites without a PACS (ADR-0173 section 14)}
+  - {name: cert-manager approver-policy, licence: Apache-2.0, plane: access, role: approves a certificate request only when a policy for its issuer allows it (ADR-0172)}
+  - {name: NetBird, licence: BSD-3-Clause + AGPL-3.0 (server), plane: access, role: VPN with posture, agpl: true}
+  - {name: WireGuard, licence: GPL-2.0, plane: access, role: infrastructure links}
+  - {name: Apache Guacamole, licence: Apache-2.0, plane: access, role: browser access to desktops}
+  - {name: Keylime, licence: Apache-2.0, plane: access, role: TPM attestation}
+  # plane: workspace
+  - {name: CryptPad, licence: AGPL-3.0, plane: workspace, role: E2EE vault and teams, agpl: true}
+  - {name: Synapse, licence: AGPL-3.0, plane: workspace, role: Matrix homeserver (community edition), agpl: true}
+  - {name: Element Web, licence: AGPL-3.0, plane: workspace, role: Matrix client, agpl: true}
+  - {name: ai-egress-gate, licence: own, plane: workspace, role: pseudonymisation and the AI egress gate}
+  - {name: Presidio, licence: MIT, plane: workspace, role: personal-data detection}
+  # plane: governance
+  - {name: OPA, licence: Apache-2.0, plane: governance, role: policy engine}
+  - {name: compliance-trestle, licence: Apache-2.0, plane: governance, role: OSCAL authoring}
+  - {name: FINOS CALM, licence: Apache-2.0, plane: governance, role: architecture as code}
+  - {name: sphinx-needs, licence: MIT, plane: governance, role: requirements as code}
+  - {name: CISO Assistant community, licence: AGPL-3.0, plane: governance, role: risk register view (optional), agpl: true}
+  - {name: Snipe-IT, licence: AGPL-3.0, plane: governance, role: asset view, agpl: true}
+  - {name: Zammad, licence: AGPL-3.0, plane: governance, role: service desk, agpl: true}
+  - {name: iTop, licence: AGPL-3.0, plane: governance, role: CMDB and ITSM (step 2), agpl: true}
+  # plane: assurance
+  - {name: OpenTelemetry Collector, licence: Apache-2.0, plane: assurance, role: telemetry}
+  - {name: Vector, licence: MPL-2.0, plane: assurance, role: event collection, OCSF, buffering}
+  - {name: VictoriaMetrics, licence: Apache-2.0, plane: assurance, role: metrics}
+  - {name: Loki, licence: AGPL-3.0, plane: assurance, role: logs, agpl: true}
+  - {name: Grafana, licence: AGPL-3.0, plane: assurance, role: pane of glass, agpl: true}
+  - {name: Gatus, licence: Apache-2.0, plane: assurance, role: status pages}
+  - {name: Sigma, licence: DRL-1.1 (rules) + LGPL-2.1 (pySigma), plane: assurance, role: detection rules}
+  - {name: Wazuh, licence: GPL-2.0, plane: assurance, role: SIEM (step 2)}
+  - {name: Syft, licence: Apache-2.0, plane: assurance, role: SBOM}
+  - {name: Grype, licence: Apache-2.0, plane: assurance, role: vulnerability scan}
+  - {name: Renovate, licence: AGPL-3.0, plane: assurance, role: dependency updates (CI job), agpl: true}
+
+  # added by the consolidation (ADR-0006)
+  - {name: Flux, licence: Apache-2.0, plane: foundation, role: pull-based reconciliation of signed OCI bundles (CNCF graduated)}
+  - {name: PostgreSQL, licence: PostgreSQL, plane: foundation, role: database for Keycloak and ITSM}
+  - {name: restic, licence: BSD-2-Clause, plane: foundation, role: encrypted backups}
+  - {name: cosign, licence: Apache-2.0, plane: assurance, role: signing and verification of bundles (CI and bootstrap)}
+  - {name: Trivy, licence: Apache-2.0, plane: assurance, role: SBOM and vulnerability scan (replaces Syft and Grype)}
+  - {name: VictoriaLogs, licence: Apache-2.0, plane: assurance, role: log store (replaces Loki)}
+  - {name: oauth2-proxy, licence: MIT, plane: access, role: identity-aware proxy for legacy backends}
+  - {name: gVisor, licence: Apache-2.0, plane: foundation, role: sandboxed containers}
+  - {name: Kata Containers, licence: Apache-2.0, plane: foundation, role: micro-VM isolation}
+  - {name: SPIRE, licence: Apache-2.0, plane: access, role: workload identity (SPIFFE)}
+  - {name: Falco, licence: Apache-2.0, plane: assurance, role: runtime detection}
+  - {name: Suricata, licence: GPL-2.0, plane: assurance, role: network IDS}
+  - {name: Zeek, licence: BSD-3-Clause, plane: assurance, role: network metadata}
+  - {name: NATS, licence: Apache-2.0, plane: assurance, role: store-and-forward for federation}
+  - {name: Forgejo, licence: GPL-3.0, plane: governance, role: forge for client instances and edge mirrors}
+  - {name: NetBox, licence: Apache-2.0, plane: governance, role: the site's DCIM/IPAM master (ADR-0077, ADR-0171)}
+  - {name: Valkey, licence: BSD-3-Clause, plane: governance, role: NetBox's task queue and cache}
+  - {name: ipam-drift, licence: own, plane: governance, role: address drift between the Isle and NetBox as findings}
+  - {name: GLPI, licence: GPL-3.0, plane: governance, role: ITSM, approvals and CMDB view (Teclib, France); git inventory stays the source of truth}
+  - {name: Argo Workflows, licence: Apache-2.0, plane: governance, role: event-driven runbooks and remediations with approval steps (CNCF graduated)}
+  - {name: Argo Events, licence: Apache-2.0, plane: governance, role: event triggers for workflows}
+  - {name: ntfy, licence: Apache-2.0, plane: assurance, role: push notifications from the management side}
+  - {name: Gammu, licence: GPL-2.0, plane: assurance, role: SMS through an on-site GSM modem (works without the network)}
+  - {name: Asterisk, licence: GPL-2.0, plane: assurance, role: automated voice calls}
+  - {name: Playwright, licence: Apache-2.0, plane: governance, role: captures onboarding screenshots from a live instance per release (CI)}
+  - {name: renderfact, licence: own, plane: governance, role: renders onboarding packages to HTML and print-ready PDF (CI)}
+  - {name: evaluator, licence: own, plane: assurance, role: green light, federation and evidence evaluation on every instance}
+  - {name: Apache Tika, licence: Apache-2.0, plane: workspace, role: release gateway file-type identification}
+  - {name: ClamAV, licence: GPL-2.0, plane: workspace, role: release gateway malware scan}
+  - {name: YARA, licence: BSD-3-Clause, plane: workspace, role: release gateway rule matching}
+  - {name: Dangerzone, licence: AGPL-3.0, plane: workspace, role: release gateway content disarm and reconstruction, agpl: true}
+  - {name: mat2, licence: LGPL-3.0, plane: workspace, role: release gateway metadata removal}
+  - {name: gitleaks, licence: MIT, plane: workspace, role: release gateway secret scan}
+  - {name: Apicurio Registry, licence: Apache-2.0, plane: workspace, role: schema registry for data contracts}
+  - {name: Apache Camel, licence: Apache-2.0, plane: workspace, role: connectors as code (YAML DSL)}
+  - {name: Debezium, licence: Apache-2.0, plane: workspace, role: change data capture onto the backbone}
+  - {name: Garage, licence: AGPL-3.0, plane: workspace, role: S3-compatible object storage (Deuxfleurs, France), agpl: true}
+  - {name: Trino, licence: Apache-2.0, plane: workspace, role: query engine with OPA access control}
+  - {name: OpenMetadata, licence: Apache-2.0, plane: governance, role: data catalog and lineage}
+  - {name: Eclipse EDC, licence: Apache-2.0, plane: workspace, role: dataspace connector (Dataspace Protocol, ODRL)}
+  - {name: llama.cpp, licence: MIT, plane: workspace, role: CPU inference, also at the edge}
+  - {name: vLLM, licence: Apache-2.0, plane: workspace, role: GPU inference on demand}
+  - {name: MLflow, licence: Apache-2.0, plane: governance, role: model registry and evaluations}
+  - {name: NeMo Guardrails, licence: Apache-2.0, plane: workspace, role: input and output rails for conversational models}
+  - {name: pgBackRest, licence: MIT, plane: foundation, role: PostgreSQL point-in-time backups}
+  - {name: rest-server, licence: BSD-2-Clause, plane: foundation, role: append-only restic repository for the cyber vault}
+  - {name: Great Expectations, licence: Apache-2.0, plane: assurance, role: data quality checks as code}
+  - {name: Archivematica, licence: AGPL-3.0, plane: governance, role: OAIS-style digital preservation, agpl: true}
+  - {name: Proxmox VE, licence: AGPL-3.0, plane: foundation, role: hypervisor on dedicated, on-premise and edge hardware (Proxmox Server Solutions GmbH, Austria), agpl: true}
+  - {name: Proxmox Backup Server, licence: AGPL-3.0, plane: foundation, role: VM-level backups on Proxmox substrates, agpl: true}
+  - {name: OpenTDF, licence: BSD-3-Clause-Clear, plane: workspace, role: sealed artefacts and the key access service (Zero Trust Data Format)}
+  - {name: Envoy, licence: Apache-2.0, plane: access, role: "the proxy data plane under Envoy Gateway (CNCF); also the ring front and entry proxies"}
+  - {name: Envoy Gateway, licence: Apache-2.0, plane: access, role: consolidated API gateway cells (Kubernetes Gateway API) from M}
+  - {name: k3d, licence: MIT, plane: assurance, role: disposable K3s clusters for tests (CI and developers)}
+  - {name: Chainsaw, licence: Apache-2.0, plane: assurance, role: declarative end-to-end tests per capability interface (CI)}
+  - {name: Chaos Mesh, licence: Apache-2.0, plane: assurance, role: chaos and DDIL tests (CI, CNCF)}
+  - {name: OWASP ZAP, licence: Apache-2.0, plane: assurance, role: dynamic security testing of the gateway (CI)}
+  - {name: Schemathesis, licence: MIT, plane: assurance, role: API contract tests from OpenAPI (CI)}
+  - {name: cert-manager, licence: Apache-2.0, plane: foundation, role: ACME certificates for the gateway (CNCF)}
+  - {name: CloudNativePG, licence: Apache-2.0, plane: foundation, role: "PostgreSQL operator with replicas, backups and point-in-time recovery"}
+  - {name: Barman Cloud plugin, licence: Apache-2.0, plane: foundation, role: "CloudNativePG backup plugin: WAL and base backups to the object store"}
+  - {name: Backstage, licence: Apache-2.0, plane: governance, role: single pane of glass front door over the estate graph (CNCF)}
+  - {name: YARA-X, licence: BSD-3-Clause, plane: workspace, role: rule matching in the release gateway (successor of YARA)}
+  - {name: ExifTool, licence: GPL-1.0-or-later, plane: workspace, role: metadata removal in the release gateway (replaces mat2)}
+  - {name: SUSE Micro, licence: GPL-2.0, plane: foundation, role: host OS (openSUSE Leap Micro or SUSE Linux Micro; mixed open licences, kernel GPL-2.0)}
+  - {name: system-upgrade-controller, licence: Apache-2.0, plane: foundation, role: OS and K3s upgrades as plans from git}
+  - {name: Uyuni, licence: GPL-2.0, plane: governance, role: optional host fleet management}
+  - {name: enrolment-service, licence: own, plane: access, role: boot-stick enrolment sessions and officer approvals}
+  - {name: Warpgate, licence: Apache-2.0, plane: access, role: privileged-access bastion with session recording and approvals}
+  - {name: KeyClerk, licence: EUPL-1.2, plane: access, role: access requests, approvals, leases and certification for Keycloak; signed bundles for edges (ADR-0176, ADR-0182)}
+  - {name: ReliKey agent, licence: EUPL-1.2, plane: access, role: an edge site's lease enforcement on its bastion, from KeyClerk's signed bundle, working cut off (ADR-0182)}
+  - {name: Coraza, licence: Apache-2.0, plane: access, role: web application firewall in the gateway (Wasm)}
+  - {name: OWASP CRS, licence: Apache-2.0, plane: access, role: rule set for the web application firewall}
+  - {name: hawkBit, licence: EPL-2.0, plane: workspace, role: staged rollout server for boot-stick images (Eclipse Foundation)}
+  - {name: Knot DNS, licence: GPL-3.0-or-later, plane: foundation, role: "the Isle's authoritative signer: zones from git, DNSSEC under KASP, catalog zones (CZ.NIC, ADR-0155, ADR-0172)"}
+  - {name: Knot Resolver, licence: GPL-3.0-or-later, plane: foundation, role: "the validating site resolver, a part of Knot DNS in the core (CZ.NIC, ADR-0172 amendment)"}
+  - {name: session-agent, licence: own, plane: workspace, role: sign-in and tokens inside VDI desktops}
+  - {name: neko-rooms, licence: Apache-2.0, plane: workspace, role: one disposable Neko container per session}
+  - {name: Neko, licence: Apache-2.0, plane: workspace, role: disposable remote browser streamed as pixels}
+  - {name: Nextcloud, licence: AGPL-3.0, plane: workspace, role: files and office host for Internal teams (optional), agpl: true}
+  - {name: Collabora Online, licence: MPL-2.0, plane: workspace, role: office editing over WOPI for Internal teams (optional)}
+  - {name: OpenCloud, licence: Apache-2.0, plane: workspace, role: "file sharing: personal drives and project spaces for a tenant"}
+  - {name: decision-inbox, licence: own, plane: governance, role: plain-language decision cards for risk owners}
+  - {name: room-sender, licence: own, plane: observability, role: the ring's firing alerts into its Matrix alert room, ids and links only}
+
+# Allowed licence families (OSI-approved or open rule licences). Anything else fails the check.
+allowed_licences: [LGPL-3.0, PostgreSQL, Apache-2.0, MIT, BSD-3-Clause, BSD-2-Clause, MPL-2.0, LGPL-2.1, GPL-2.0, GPL-3.0, GPL-1.0, AGPL-3.0, EPL-2.0, DRL-1.1, EUPL-1.2, own]
+
+paid:   # cost classes, to verify per purchase; no software licences
+  cloud: "an EU cloud provider (and/or a second one): servers, volumes, object storage, traffic"
+  domains_dns: "domain registrations"
+  hardware: "Nitrokey HSM 2 (x2, root custody), FIDO2 keys (two per user), USB sticks for the boot route, optional managed devices for Restricted"
+  people: "operator time; second key custodian; independent witness at key ceremonies"
+  assurance: "external assurance and legal advice as the deployer chooses"
+  optional_support: "paid support from EU partners only when the deployer asks for it"

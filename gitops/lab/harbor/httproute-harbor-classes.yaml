@@ -1,0 +1,13 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata: {name: harbor-classes, namespace: vdh-harbor}
+spec:
+  parentRefs: [{name: harbor-gw, sectionName: harbor}]
+  hostnames: ["harbor.${ring_domain:=lab.vdh.test}"]
+  rules:
+    - matches: [{path: {type: PathPrefix, value: /data/docs}}]
+      backendRefs: [{name: shared-docs, port: 80}]
+    - matches: [{path: {type: PathPrefix, value: /_matrix}}]
+      backendRefs: [{name: matrix, port: 8008}]
+    - matches: [{path: {type: PathPrefix, value: /mgmt}}]
+      backendRefs: [{name: harbor-intake, port: 8080}]

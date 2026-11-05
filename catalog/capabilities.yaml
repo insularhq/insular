@@ -1,0 +1,42 @@
+# Capability catalogue: every service sorted into one of five planes, so the single pane of glass can show the
+# whole estate by plane x tenant x site. Each capability names its evidence sources, the events it emits and how it
+# behaves when its site is cut off (DDIL class).
+planes:
+  foundation:  "shared infrastructure: compute, network, DNS, NTP, PKI, registry, secrets, backup"
+  access:      "identity and access: ICAM, federation, VPN, VDI/browser isolation, endpoint assurance"
+  workspace:   "tenant workspaces: applications and workloads clients use"
+  governance:  "policy and governance: packs, risk register, autonomy matrix, inventory, exceptions"
+  assurance:   "observability and assurance: telemetry, evidence, SIEM, green light, audit chains"
+
+capabilities:
+  dns:            {plane: foundation, evidence: [dns-zone-watch, resolver-health], ddil: must-run-local}
+  ntp:            {plane: foundation, evidence: [clock-offset], ddil: must-run-local}
+  pki:            {plane: foundation, evidence: [cert-expiry, issuance-log, ceremony-log], ddil: degrade}
+  registry:       {plane: foundation, evidence: [image-digests, mirror-sync], ddil: must-run-local}
+  secrets-kek:    {plane: foundation, evidence: [openbao-audit], ddil: degrade}
+  icam:           {plane: access, evidence: [keycloak-realm, auth-events, access-review], ddil: degrade}
+  federation:     {plane: access, evidence: [idp-metadata-expiry, trust-list], ddil: central-only}
+  vpn:            {plane: access, evidence: [netbird-policy, posture-results, peer-inventory], ddil: degrade}
+  vdi:            {plane: access, evidence: [session-recording-index, clipboard-policy], ddil: degrade}
+  endpoint-assurance: {plane: access, evidence: [attestation-log, stick-versions], ddil: degrade}
+  vault:          {plane: workspace, evidence: [cryptpad-config, storage-usage], ddil: central-only}
+  chat:           {plane: workspace, evidence: [synapse-config, federation-off], ddil: degrade}
+  release-gateway: {plane: workspace, evidence: [release-manifests, release-run-audit], ddil: must-run-local}
+  ai-egress-gate: {plane: workspace, evidence: [ai-egress-gate-audit, egress-journal-seal, gate-heartbeat], ddil: degrade}   # ADR-0164: cut off, local models still pass the gate; without the gate AI egress is denied
+  packs:          {plane: governance, evidence: [profile-floor-check, bundle-signatures], ddil: must-run-local}
+  risk-register:  {plane: governance, evidence: [risk-appetite-check], ddil: central-only}
+  inventory:      {plane: governance, evidence: [inventory-invariants], ddil: degrade}
+  exceptions:     {plane: governance, evidence: [waiver-expiry], ddil: degrade}
+  telemetry:      {plane: assurance, evidence: [collector-heartbeat], ddil: must-run-local}
+  siem:           {plane: assurance, evidence: [rule-pack-version, alert-pipeline-heartbeat], ddil: must-run-local}
+  green-light:    {plane: assurance, evidence: [evaluator-heartbeat, signed-status], ddil: must-run-local}
+  audit-chains:   {plane: assurance, evidence: [chain-verify, head-anchoring], ddil: must-run-local}
+# Fail loudly: conditions that always raise an alert, at every level of the federation.
+loud_failures:
+  - a collector, evaluator or alert pipeline misses its heartbeat (silence is an alert, not an absence of alerts)
+  - any control is UNKNOWN or its evidence is older than the tier allows
+  - a policy decision denies, or a policy bundle is expired, unsigned or older than the floor
+  - drift between declared and observed state (config, firewall, flows, versions)
+  - an exception or break-glass rule past its expiry
+  - an audit chain fails verification or its head was not anchored upstream within the expected time
+  - a child site is silent longer than its offline grace

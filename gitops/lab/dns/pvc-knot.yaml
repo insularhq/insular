@@ -1,0 +1,6 @@
+# Knot's keys (KASP database) and journal: on the lab they live as long as the ring; size S recovers from git and the
+# KASP backup (ADR-0172 point 2), which is planned
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: {name: knot-storage, namespace: vdh-dns}
+spec: {accessModes: [ReadWriteOnce], resources: {requests: {storage: 256Mi}}}

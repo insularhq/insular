@@ -1,0 +1,130 @@
+# Data platform: build the integration once, for all data. Every source publishes ONCE as a data product with a
+# contract onto one backbone; every consumer subscribes through the same policy decision; no source ever talks to a
+# consumer directly. n systems need n connections instead of n*(n-1)/2 bilateral ones.
+backbone:
+  events: "NATS JetStream (Apache-2.0): subjects per data product, durable streams, leaf nodes at edge sites for DDIL (store and forward, replay on reconnect)"
+  envelope: "CloudEvents (CNCF) on every message: source, type, subject, time, plus extensions for label, product and trace id"
+  contracts: "Open Data Contract Standard (Bitol, Apache-2.0) per product; schemas (JSON Schema or Avro) in Apicurio Registry; channels described in AsyncAPI"
+  connectors: "Apache Camel routes in the YAML DSL (connectors as code, 300+ components) for files, APIs, queues and legacy systems"
+  change_data_capture: "Debezium Server streams database changes straight onto NATS JetStream"
+  storage: "Apache Iceberg tables on Garage (S3-compatible object storage, Deuxfleurs, France, AGPL-3.0); MinIO is not used (repository archived 2026)"
+  query: "Trino with its OPA access control for row and column filtering; DuckDB for local and edge analysis"
+  catalog_and_lineage: "OpenMetadata as the catalog and data-product marketplace; OpenLineage events from Camel, Debezium and Trino jobs"
+  sharing_between_organisations: "Eclipse Dataspace Components (Eclipse Foundation, Apache-2.0): the Dataspace Protocol with contract negotiation and ODRL usage policies, compatible with Gaia-X dataspaces"
+
+rules:
+  - "a source publishes once, as a product with a contract; there are no point-to-point integrations"
+  - "the product's label travels on every event and table; a consumer below that label never subscribes directly: the flow goes through the release gateway"
+  - "a subscription names its purpose; the purpose must be allowed by the product's usage policy"
+  - "the same identity model and policy decision point decide subscriptions as decide any other access"
+  - "schemas evolve compatibly (registry compatibility rules); a breaking change is a new product version"
+  - "every pipeline emits lineage, so every figure can be traced to its sources"
+
+products:   # examples (fictional)
+  hr-roster:        {assurance: signed, owner: hr-service-owner, owner_until: "2027-04-08", label: Sensitive, schema: hr-roster-v1, purposes: [scheduling, access-provisioning], ddil: degrade, retention_days: 365, releasable_to: tenant, originators: [hr-system]}
+  sensor-telemetry: {assurance: attested, owner: site-ops-owner, owner_until: "2027-04-08", label: Internal, schema: telemetry-v3, purposes: [operations, analytics], ddil: must-run-local, retention_days: 90, releasable_to: federation, originators: [site-sensors]}
+  case-files-index: {assurance: asserted, owner: case-owner, owner_until: "2027-04-08", label: Restricted, schema: case-index-v1, purposes: [case-handling], ddil: central-only, retention_days: 3650, releasable_to: site, originators: [case-system, case-officers]}
+  # platform data is data too (ADR-0096): infrastructure, governance, observability, security and logging
+  infra-inventory:    {assurance: signed, owner: platform-owner, owner_until: "2027-04-08", label: Sensitive, schema: inventory-v1, purposes: [operations, capacity-planning, audit], ddil: degrade, retention_days: 1825, releasable_to: tenant, originators: [tofu-pipeline, inventory-discovery], data_class: infrastructure}
+  change-records:     {assurance: signed, owner: governance-owner, owner_until: "2027-04-08", label: Sensitive, schema: change-record-v1, purposes: [operations, audit, compliance-evidence], ddil: degrade, retention_days: 3650, releasable_to: tenant, originators: [decision-inbox, change-pipelines, operators], data_class: governance}
+  platform-telemetry: {assurance: signed, owner: observability-owner, owner_until: "2027-04-08", label: Sensitive, schema: otel-v1, purposes: [operations, security-monitoring], ddil: must-run-local, retention_days: 90, releasable_to: site, originators: [otel-collector], data_class: observability, note: "raw metrics, traces and logs stay at the site; they can carry addresses and user ids"}
+  platform-health:    {assurance: signed, owner: observability-owner, owner_until: "2027-04-08", label: Internal, schema: health-v1, purposes: [operations], ddil: degrade, retention_days: 730, releasable_to: tenant, originators: [slo-aggregator], data_class: observability, note: "declassified aggregate of platform-telemetry (request_rules.declassification); what the pane shows across sites"}
+  security-events:    {assurance: attested, owner: security-officer-role, owner_until: "2027-04-08", label: Sensitive, schema: security-event-v1, purposes: [security-monitoring, incident-response], ddil: must-run-local, retention_days: 730, releasable_to: tenant, originators: [falco, hubble, wazuh-agents], data_class: security}
+  audit-log:          {assurance: signed, owner: security-officer-role, owner_until: "2027-04-08", label: Sensitive, schema: audit-v1, purposes: [audit, incident-response, compliance-evidence], ddil: must-run-local, retention_days: 3650, releasable_to: tenant, originators: [audit-chain, policy-decision-points], data_class: logging, note: "digests and pseudonyms only (ADR-0095 audit); hash-chained, append-only"}
+  policy-bundles:     {assurance: signed, owner: policy-owner, owner_until: "2027-04-08", label: Sensitive, schema: opa-bundle-v1, purposes: [enforcement, audit, compliance-evidence], ddil: must-run-local, retention_days: 3650, releasable_to: tenant, originators: [policy-authors, policy-compiler], data_class: policy, note: "the rules themselves (ADR-0092 bundle); chain: authors, change record, compile, signature"}
+  policy-decisions:   {assurance: signed, owner: policy-owner, owner_until: "2027-04-08", label: Sensitive, schema: decision-log-v1, purposes: [audit, incident-response, enforcement], ddil: must-run-local, retention_days: 730, releasable_to: site, originators: [policy-decision-points], data_class: policy, note: "every decision cites the bundle digest it was made under, so a corrected bundle taints the decisions it made (change: impact)"}
+  # sources of weaker assurance (ADR-0099): what people write, and physical items brought in as surrogates
+  analyst-chat:       {authored: true, assurance: asserted, owner: analysis-lead, owner_until: "2027-04-08", label: Sensitive, schema: chat-message-v1, purposes: [analysis, operations], ddil: degrade, retention_days: 365, releasable_to: tenant, originators: [analysts], data_class: business, note: "messages are attributable; a claim in one may rest on sources its author did not identify"}
+  physical-references: {assurance: transcribed, owner: analysis-lead, owner_until: "2027-04-08", label: Internal, schema: physical-surrogate-v1, purposes: [analysis, operations], ddil: degrade, retention_days: 1825, releasable_to: tenant, originators: [reference-desk], data_class: business, note: "maps, prints and paper: a registered physical item enters as a captured surrogate (photo or scan) with the item's id"}
+integrations:   # who connects to what: only to and from the backbone
+  - {from: hr-system, to: backbone, via: debezium}
+  - {from: site-sensors, to: backbone, via: camel}
+  - {from: case-system, to: backbone, via: camel}
+  - {from: backbone, to: scheduling-app, via: subscription}
+  - {from: backbone, to: analytics-lakehouse, via: subscription}
+  - {from: backbone, to: partner-dataspace, via: edc}
+  - {from: platform-sources, to: backbone, via: otel-and-events}
+  - {from: backbone, to: spog-pane, via: subscription}
+  - {from: backbone, to: soc-console, via: subscription}
+  - {from: backbone, to: audit-viewer, via: subscription}
+  - {from: backbone, to: site-pdps, via: subscription}
+
+consumers:   # ADR-0096: the ring each consumer sits in; a lease may not reach wider than its product's releasable_to
+  scheduling-app:      {ring: tenant}
+  analytics-lakehouse: {ring: tenant}
+  partner-dataspace:   {ring: federation}
+  spog-pane:           {ring: tenant}
+  soc-console:         {ring: tenant}
+  audit-viewer:        {ring: tenant}
+  site-pdps:           {ring: tenant}
+  case-officers:       {ring: site, kind: person-role}   # ADR-0104: people and roles hold leases too
+principals:   # ADR-0096: identities that originate or transform data and whom they act for (fictional examples)
+  hr-service-owner:       {kind: person-role, status: active}
+  site-ops-owner:         {kind: person-role, status: active}
+  case-owner:             {kind: person-role, status: active}
+  people-domain-lead:     {kind: person-role, status: active}
+  operations-domain-lead: {kind: person-role, status: active}
+  cases-domain-lead:      {kind: person-role, status: active}
+  data-governance-board:  {kind: board, status: active}
+  hr-system:              {kind: workload, acts_for: hr-service-owner, status: active}
+  site-sensors:           {kind: sensor, acts_for: site-ops-owner, status: active, note: "a contributor set: the site's sensor fleet"}
+  case-system:            {kind: workload, acts_for: case-owner, status: active}
+  case-officers:          {kind: person-role, status: active}
+  scheduler-agent:        {kind: agent, acts_for: hr-service-owner, status: active}
+  analytics-job-2025:     {kind: workload, acts_for: analyst-2025, status: retired, note: "retired job; stays in every chain it signed"}
+  analyst-2025:           {kind: person-role, status: vacant}
+  platform-owner:         {kind: person-role, status: active}
+  governance-owner:       {kind: person-role, status: active}
+  observability-owner:    {kind: person-role, status: active}
+  security-officer-role:  {kind: person-role, status: active}
+  platform-domain-lead:   {kind: person-role, status: active}
+  operators:              {kind: person-role, status: active}
+  tofu-pipeline:          {kind: workload, acts_for: platform-owner, status: active}
+  inventory-discovery:    {kind: workload, acts_for: platform-owner, status: active}
+  decision-inbox:         {kind: workload, acts_for: governance-owner, status: active}
+  change-pipelines:       {kind: workload, acts_for: governance-owner, status: active}
+  otel-collector:         {kind: workload, acts_for: observability-owner, status: active}
+  slo-aggregator:         {kind: workload, acts_for: observability-owner, status: active}
+  falco:                  {kind: sensor, acts_for: security-officer-role, status: active}
+  hubble:                 {kind: sensor, acts_for: security-officer-role, status: active}
+  wazuh-agents:           {kind: sensor, acts_for: security-officer-role, status: active}
+  audit-chain:            {kind: workload, acts_for: security-officer-role, status: active}
+  policy-decision-points: {kind: workload, acts_for: security-officer-role, status: active}
+  policy-owner:           {kind: person-role, status: active}
+  policy-authors:         {kind: person-role, status: active}
+  policy-compiler:        {kind: workload, acts_for: policy-owner, status: active}
+  analysis-lead:          {kind: person-role, status: active}
+  analysis-domain-lead:   {kind: person-role, status: active}
+  analysts:               {kind: person-role, status: active}
+  reference-desk:         {kind: person-role, status: active}
+  provenance-reviewer:    {kind: person-role, status: active}
+leases:   # ADR-0095: every use of a product is a lease its owner granted (policies/data-leases.yaml); the PDP checks it
+  - {id: DL-0001, kind: subscription, product: hr-roster, consumer: scheduling-app, purpose: scheduling, scope: "columns person_ref, shift, site; rows of the consumer's own site", granted_by: hr-service-owner, grant: new, onward: forbidden, obligation: none, status: active, from: "2026-10-01", until: "2027-03-30"}
+  - {id: DL-0002, kind: subscription, product: sensor-telemetry, consumer: analytics-lakehouse, purpose: analytics, scope: "all columns; all sites", granted_by: site-ops-owner, grant: new, onward: forbidden, obligation: none, status: active, from: "2026-10-01", until: "2027-09-30"}
+  - {id: DL-0003, kind: subscription, product: sensor-telemetry, consumer: partner-dataspace, purpose: operations, scope: "aggregates per site per hour; the EDC contract carries the same end date as an ODRL dateTime constraint", aggregated: true, min_group_size: 10, granted_by: site-ops-owner, grant: new, onward: forbidden, obligation: none, status: active, from: "2026-10-01", until: "2027-03-30"}
+  - {id: DL-0004, kind: subscription, product: platform-health, consumer: spog-pane, purpose: operations, scope: "health per site and component", granted_by: observability-owner, obligation: none, grant: new, onward: forbidden, status: active, from: "2026-10-01", until: "2027-09-30"}
+  - {id: DL-0005, kind: subscription, product: security-events, consumer: soc-console, purpose: security-monitoring, scope: "all events of the tenant", granted_by: security-officer-role, obligation: safety, grant: new, onward: forbidden, status: active, from: "2026-10-01", until: "2027-03-30"}
+  - {id: DL-0006, kind: subscription, product: audit-log, consumer: audit-viewer, purpose: audit, scope: "the audit chain, read-only", granted_by: security-officer-role, obligation: legal, grant: new, onward: forbidden, status: active, from: "2026-10-01", until: "2027-03-30"}
+  - {id: DL-0007, kind: subscription, product: policy-bundles, consumer: site-pdps, purpose: enforcement, scope: "the signed bundle for each site", granted_by: policy-owner, obligation: safety, grant: new, onward: forbidden, status: active, from: "2026-10-01", until: "2027-03-30"}
+  - {id: DL-0008, kind: subscription, product: case-files-index, consumer: case-officers, purpose: case-handling, scope: "the cases assigned to the officer", granted_by: case-owner, obligation: legal, grant: new, onward: forbidden, status: active, from: "2026-10-01", until: "2026-12-29"}
+
+# Data mesh (Zhamak Dehghani's four principles) mapped onto the platform:
+#   domain ownership              -> each product has a domain and a data owner (a person, not IT)
+#   data as a product             -> contract, discoverable (catalog), addressable (subject, table, dataspace asset),
+#                                    trustworthy (quality checks), secure (label and policy), self-describing (schema)
+#   self-serve data platform      -> a data product INTENT compiles into everything below (tools/dataproducts.py)
+#   federated computational governance -> global policy as code; domains may only tighten it (floor check)
+mesh:
+  domains:
+    people:     {owner: people-domain-lead, products: [hr-roster]}
+    operations: {owner: operations-domain-lead, products: [sensor-telemetry]}
+    cases:      {owner: cases-domain-lead, products: [case-files-index]}
+    platform:   {owner: platform-domain-lead, products: [infra-inventory, change-records, platform-telemetry, platform-health, security-events, audit-log, policy-bundles, policy-decisions]}
+    analysis:   {owner: analysis-domain-lead, products: [analyst-chat, physical-references]}
+  global_policy:   # every product, every domain
+    labels: [Internal, Sensitive, Restricted]
+    max_retention_days: {Internal: 1825, Sensitive: 3650, Restricted: 3650}
+    personal_data_masking_from: Sensitive
+    required: [owner, label, schema, purposes, quality_suite, lineage, retention_days, review_months]
+  domain_overlays:   # tighten only
+    people: {max_retention_days: {Sensitive: 730}, extra_rules: ["no export outside the EU"]}

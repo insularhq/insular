@@ -1,0 +1,11 @@
+# What this model requires of FTEF, the published form of its partner trust (ADR-0149, ADR-0150, ADR-0178). Each
+# obligation is bound to tests here that run against the vendored, hash-pinned FTEF files.
+name: ftef
+pin: frameworks/external-pins.yaml#ftef
+obligations:
+- id: FT-4
+  source: ADR-0173 section 23 risk_port
+  statement: 'KeyClerk''s acceptance lift follows FTEF 6.3: one band at most, never to high, never self-decided, lapsing on a situation rise'
+  tests:
+  - test_an_acceptance_lifts_one_band_never_to_high_never_for_privileged
+  - test_an_acceptance_lapses_on_a_situation_rise_and_is_void_when_self_decided

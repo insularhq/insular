@@ -1,0 +1,31 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace-cert-manager.yaml
+  - namespace-cnpg-system.yaml
+  - namespace-openbao.yaml
+  - namespace-envoy-gateway-system.yaml
+  - namespace-vdh-test.yaml
+  - namespace-vdh-backup.yaml
+  - namespace-vdh-forge.yaml
+  - namespace-vdh-netbox.yaml
+  - namespace-vdh-dns.yaml
+  - namespace-vdh-harbor.yaml
+  - namespace-vdh-identity.yaml
+  - namespace-vdh-nblogin.yaml
+  - namespace-vdh-nbmain.yaml
+  - namespace-vdh-pdp.yaml
+  - namespace-vdh-pharos.yaml
+  - namespace-vdh-telemetry.yaml
+  - namespace-vdh-tenant-demo.yaml
+  - ocirepository-chart-cert-manager.yaml
+  - ocirepository-chart-cloudnative-pg.yaml
+  - ocirepository-chart-plugin-barman-cloud.yaml
+  - ocirepository-chart-openbao.yaml
+  - ocirepository-chart-gateway-helm.yaml
+  - cert-manager.yaml
+  - ocirepository-chart-approver-policy.yaml
+  - approver-policy.yaml
+  - cnpg.yaml
+  - openbao.yaml
+  - envoy-gateway.yaml

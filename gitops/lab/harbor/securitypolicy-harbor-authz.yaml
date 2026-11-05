@@ -1,0 +1,6 @@
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata: {name: harbor-authz, namespace: vdh-harbor}
+spec:
+  targetRefs: [{group: gateway.networking.k8s.io, kind: Gateway, name: harbor-gw}]
+  extAuth: {failOpen: false, grpc: {backendRefs: [{name: harbor-pdp, port: 9191}]}}

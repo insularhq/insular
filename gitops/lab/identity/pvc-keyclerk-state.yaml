@@ -1,0 +1,5 @@
+# the reconciler's last run and snapshot
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: {name: keyclerk-state, namespace: vdh-identity}
+spec: {accessModes: [ReadWriteOnce], resources: {requests: {storage: 256Mi}}}

@@ -1,0 +1,9 @@
+# cert-manager's controller files the requests for Certificates; it may use exactly these policies
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata: {name: vdh-cert-policy-use}
+rules:
+  - apiGroups: [policy.cert-manager.io]
+    resources: [certificaterequestpolicies]
+    verbs: [use]
+    resourceNames: [bootstrap-ca, lab-probe, pane-gateway, ring-ca, barman-cloud]

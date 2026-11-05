@@ -1,0 +1,159 @@
+# Trust input of the demo tenant (keyclerk-trust-input-v1, ADR-0173 section 23 risk_port): what the risk and trust
+# source would deliver per person. With require_trust, a group member without an entry here stays dormant.
+trust:
+- anchor: idp:2b9e-owner
+  source: keyclerk
+  proof:
+    identity:
+      band: high
+      method: tenant_idp
+      valid_until: '2027-10-01T00:00:00Z'
+    likeness:
+      band: medium
+      method: in_person_live_match
+      valid_until: '2027-10-01T00:00:00Z'
+  risk_band: green
+  situation_level: normal
+  acceptances: []
+  inputs:
+    records: demo
+- anchor: idp:7c1f-ann
+  source: keyclerk
+  proof:
+    identity:
+      band: high
+      method: tenant_idp
+      valid_until: '2027-10-01T00:00:00Z'
+    likeness:
+      band: medium
+      method: in_person_live_match
+      valid_until: '2027-10-01T00:00:00Z'
+  risk_band: green
+  situation_level: normal
+  acceptances: []
+  inputs:
+    records: demo
+- anchor: idp:91d0-bert
+  source: keyclerk
+  proof:
+    identity:
+      band: high
+      method: tenant_idp
+      valid_until: '2027-10-01T00:00:00Z'
+    likeness:
+      band: medium
+      method: in_person_live_match
+      valid_until: '2027-10-01T00:00:00Z'
+  risk_band: green
+  situation_level: normal
+  acceptances: []
+  inputs:
+    records: demo
+- anchor: idp:44aa-dirk
+  source: keyclerk
+  proof:
+    identity:
+      band: high
+      method: tenant_idp
+      valid_until: '2027-10-01T00:00:00Z'
+    likeness:
+      band: medium
+      method: in_person_live_match
+      valid_until: '2027-10-01T00:00:00Z'
+  risk_band: green
+  situation_level: normal
+  acceptances: []
+  inputs:
+    records: demo
+- anchor: idp:55bb-eva
+  source: keyclerk
+  proof:
+    identity:
+      band: medium
+      method: tenant_idp
+      valid_until: '2027-10-01T00:00:00Z'
+  risk_band: green
+  situation_level: normal
+  acceptances: []
+  inputs:
+    records: demo
+- anchor: idp:66cc-finn
+  source: keyclerk
+  proof:
+    identity:
+      band: low
+      method: tenant_idp
+      valid_until: '2027-10-01T00:00:00Z'
+  risk_band: green
+  situation_level: normal
+  acceptances: []
+  inputs:
+    records: demo
+- anchor: idp:77dd-gina
+  source: keyclerk
+  proof:
+    identity:
+      band: medium
+      method: tenant_idp
+      valid_until: '2027-10-01T00:00:00Z'
+  risk_band: green
+  situation_level: normal
+  acceptances: []
+  inputs:
+    records: demo
+- anchor: idp:31ee-ingrid
+  source: keyclerk
+  proof:
+    identity:
+      band: high
+      method: tenant_idp
+      valid_until: '2027-10-01T00:00:00Z'
+    likeness:
+      band: medium
+      method: in_person_live_match
+      valid_until: '2027-10-01T00:00:00Z'
+  risk_band: green
+  situation_level: normal
+  acceptances: []
+  inputs:
+    records: demo
+- anchor: idp:bb11-kai
+  source: keyclerk
+  proof:
+    identity:
+      band: low
+      method: tenant_idp
+      valid_until: '2027-10-01T00:00:00Z'
+  risk_band: green
+  situation_level: normal
+  acceptances: []
+  inputs:
+    records: demo
+- anchor: idp:ee01-guard
+  source: keyclerk
+  proof:
+    identity:
+      band: medium
+      method: tenant_idp
+      valid_until: '2027-10-01T00:00:00Z'
+  risk_band: green
+  situation_level: normal
+  acceptances: []
+  inputs:
+    records: demo
+- anchor: vdh:operator
+  source: keyclerk
+  proof:
+    identity:
+      band: high
+      method: in_person_live_match
+      valid_until: '2027-10-01T00:00:00Z'
+    likeness:
+      band: medium
+      method: in_person_live_match
+      valid_until: '2027-10-01T00:00:00Z'
+  risk_band: green
+  situation_level: normal
+  acceptances: []
+  inputs:
+    records: demo

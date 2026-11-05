@@ -1,0 +1,10 @@
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: OCIRepository
+metadata: {name: chart-cert-manager-approver-policy, namespace: flux-system}
+spec:
+  interval: 1h
+  url: oci://registry.vdh-mirror.svc.cluster.local:5000/charts/cert-manager-approver-policy
+  ref: {tag: "v0.28.0"}
+  layerSelector: {mediaType: "application/vnd.cncf.helm.chart.content.v1.tar+gzip", operation: copy}
+  certSecretRef: {name: mirror-ca}
+  verify: {provider: cosign, secretRef: {name: cosign-pub}}

@@ -1,0 +1,4 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: {name: pdp, namespace: vdh-pdp}
+spec: {minAvailable: 1, selector: {matchLabels: {app: pdp}}}

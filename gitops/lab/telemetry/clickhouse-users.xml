@@ -1,0 +1,34 @@
+<!-- Pharos's read-only user (ADR-0152), declared here so every start applies it (an init script runs only on an empty
+     data directory). Its password comes from the ring secret through the environment; it may
+     read the events, never write them (readonly 2 lets the MySQL protocol set session settings, still no writes). -->
+<clickhouse>
+    <profiles>
+        <pharos_read>
+            <readonly>2</readonly>
+            <max_execution_time>30</max_execution_time>
+        </pharos_read>
+    </profiles>
+    <users>
+        <pharos>
+            <password from_env="PHAROS_PASSWORD"/>
+            <networks><ip>::/0</ip></networks>
+            <profile>pharos_read</profile>
+            <quota>default</quota>
+            <grants>
+                <query>GRANT SELECT ON otel.*</query>
+            </grants>
+        </pharos>
+        <!-- the backup job's user: BACKUP of the events through the Garage collection, nothing else (no
+             SELECT, no writes); its password is a required key of the ring secret, so it is never empty -->
+        <backup>
+            <password from_env="BACKUP_PASSWORD"/>
+            <networks><ip>::/0</ip></networks>
+            <profile>default</profile>
+            <quota>default</quota>
+            <grants>
+                <query>GRANT BACKUP ON otel.*</query>
+                <query>GRANT NAMED COLLECTION ON garage_backup</query>
+            </grants>
+        </backup>
+    </users>
+</clickhouse>

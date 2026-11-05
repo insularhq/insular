@@ -1,0 +1,11 @@
+# The public secondary (on the edge node's host network) pulls the federation zone from the signer: the node
+# may reach the signer on its DNS port and nothing else in the namespace; the signer still answers a transfer only to
+# the edge's TSIG key (config-federation/knot.conf)
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata: {name: edge-to-signer, namespace: vdh-dns}
+spec:
+  endpointSelector: {matchLabels: {app: knot}}
+  ingress:
+    - fromEntities: [host, remote-node]
+      toPorts: [{ports: [{port: "5353", protocol: TCP}, {port: "5353", protocol: UDP}]}]

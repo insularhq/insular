@@ -1,0 +1,29 @@
+# Size S (one node, the whole core; platform/sizes.yaml, ADR-0111 amended): a Kustomize component in the signed tree.
+# A ring of size S selects it in its own install config (the Flux Kustomizations' spec.components); everything it
+# renders was signed by the Chartroom, and the gate checks the rendering. M and L use the tree as it is (three
+# servers, one replica per node, required anti-affinity). S runs one replica of everything: no high availability, by
+# design of the size. The patches are no-ops where a build does not contain their target.
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+patches:
+  - target: {group: helm.toolkit.fluxcd.io, kind: HelmRelease, name: openbao}
+    patch: |-
+      - {op: replace, path: /spec/values/server/ha/replicas, value: 1}
+      - {op: replace, path: /spec/values/server/affinity, value: ""}
+  - target: {group: postgresql.cnpg.io, kind: Cluster}
+    patch: |-
+      - {op: replace, path: /spec/instances, value: 1}
+      - {op: replace, path: /spec/affinity/podAntiAffinityType, value: preferred}
+  - target: {group: apps, kind: Deployment, name: pdp}
+    patch: |-
+      - {op: replace, path: /spec/replicas, value: 1}
+      - {op: remove, path: /spec/template/spec/affinity}
+  # one replica cannot keep minAvailable 1 through a drain: S allows the outage (the gateway fails closed meanwhile)
+  - target: {group: policy, kind: PodDisruptionBudget, name: pdp}
+    patch: |-
+      - {op: remove, path: /spec/minAvailable}
+      - {op: add, path: /spec/maxUnavailable, value: 1}
+  # the children applied from layer1-config carry the component on, so the whole ring renders as S
+  - target: {group: kustomize.toolkit.fluxcd.io, kind: Kustomization, name: "^(identity|pdp|backup|pharos|segmentation|edge-demo|tenant-demo|netbird|harbor|telemetry|forge|netbox|cert-policy|backup-plugin|dns)$"}
+    patch: |-
+      - {op: add, path: /spec/components, value: ["../components/size-s"]}

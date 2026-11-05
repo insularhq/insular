@@ -1,0 +1,79 @@
+# Advisory posture per component over the 24 months before 2026-10-08: reviewed GitHub advisories by package plus
+# advisories the project published itself (re-measure before decisions). Counts measure disclosure as
+# much as quality: a mature project discloses more, and 'vendor channel only' means GitHub sees nothing (PostgreSQL,
+# Proxmox, GitLab and Garage publish through their own channels). Exposure comes from platform/seams.yaml zones.
+# tools/contracts.py ranks attack-surface priority = exposure x posture and checks compensations.
+measured: '2026-10-08'
+window_months: 24
+weights: {critical: 10, high: 3, medium: 1, low: 0}
+compensations_required_when: {priority_at_least: 30}   # needs WAF or gateway isolation, a pinned version and the patch SLA
+components:
+  "Apache APISIX": {critical: 0, high: 0, medium: 0, low: 0, last_critical_or_high: null, coverage: "repo"}
+  "Apache Camel": {critical: 0, high: 0, medium: 0, low: 0, last_critical_or_high: null, coverage: "package"}
+  "Apache Guacamole": {critical: 0, high: 0, medium: 0, low: 0, last_critical_or_high: null, coverage: "package+repo"}
+  "Apache Kafka": {critical: 1, high: 3, medium: 3, low: 1, last_critical_or_high: "2026-04-20", coverage: "package+repo"}
+  "Argo CD": {critical: 7, high: 6, medium: 5, low: 0, last_critical_or_high: "2026-10-07", coverage: "package+repo"}
+  "Backstage": {critical: 1, high: 19, medium: 31, low: 8, last_critical_or_high: "2026-10-07", coverage: "package+repo"}
+  "Calico": {critical: 0, high: 0, medium: 2, low: 0, last_critical_or_high: null, coverage: "package+repo"}
+  "Cerbos": {critical: 0, high: 0, medium: 0, low: 0, last_critical_or_high: null, coverage: "package+repo"}
+  "cert-manager": {critical: 0, high: 1, medium: 3, low: 0, last_critical_or_high: "2026-06-25", coverage: "package+repo"}
+  "Cilium": {critical: 1, high: 4, medium: 11, low: 2, last_critical_or_high: "2026-08-12", coverage: "package+repo"}
+  "CloudNativePG": {critical: 2, high: 1, medium: 1, low: 0, last_critical_or_high: "2026-06-29", coverage: "package+repo"}
+  "Collabora Online": {critical: 0, high: 2, medium: 6, low: 0, last_critical_or_high: "2026-09-03", coverage: "repo"}
+  "Coraza": {critical: 0, high: 2, medium: 11, low: 0, last_critical_or_high: "2026-10-08", coverage: "package+repo"}
+  "CryptPad": {critical: 0, high: 1, medium: 1, low: 1, last_critical_or_high: "2025-06-18", coverage: "repo"}
+  "Debezium": {critical: 0, high: 0, medium: 1, low: 0, last_critical_or_high: null, coverage: "package+repo"}
+  "Envoy": {critical: 0, high: 20, medium: 28, low: 1, last_critical_or_high: "2026-10-06", coverage: "repo"}
+  "Envoy Gateway": {critical: 2, high: 6, medium: 11, low: 0, last_critical_or_high: "2026-09-29", coverage: "package+repo"}
+  "Falco": {critical: 0, high: 0, medium: 0, low: 1, last_critical_or_high: null, coverage: "package+repo"}
+  "Flux": {critical: 0, high: 1, medium: 1, low: 0, last_critical_or_high: "2026-08-11", coverage: "package+repo"}
+  "Forgejo": {critical: 0, high: 0, medium: 0, low: 0, last_critical_or_high: null, coverage: "package"}
+  "Garage": {critical: 0, high: 0, medium: 0, low: 0, last_critical_or_high: null, coverage: "none: vendor channel only"}
+  "GitLab": {critical: 0, high: 0, medium: 0, low: 0, last_critical_or_high: null, coverage: "none: vendor channel only"}
+  "GLPI": {critical: 4, high: 31, medium: 40, low: 10, last_critical_or_high: "2026-10-07", coverage: "package+repo"}
+  "Grafana": {critical: 2, high: 6, medium: 9, low: 3, last_critical_or_high: "2026-06-22", coverage: "package+repo"}
+  "gVisor": {critical: 0, high: 0, medium: 0, low: 0, last_critical_or_high: null, coverage: "package+repo"}
+  "hawkBit": {critical: 0, high: 0, medium: 1, low: 0, last_critical_or_high: null, coverage: "package+repo"}
+  "Headscale": {critical: 0, high: 0, medium: 0, low: 0, last_critical_or_high: null, coverage: "package+repo"}
+  "K3s": {critical: 0, high: 0, medium: 2, low: 0, last_critical_or_high: null, coverage: "package+repo"}
+  "Kata Containers": {critical: 4, high: 3, medium: 4, low: 0, last_critical_or_high: "2026-08-20", coverage: "package+repo"}
+  "Keycloak": {critical: 1, high: 32, medium: 59, low: 15, last_critical_or_high: "2026-09-16", coverage: "package+repo"}
+  "Keylime": {critical: 2, high: 1, medium: 3, low: 0, last_critical_or_high: "2026-02-06", coverage: "package+repo"}
+  "kgateway": {critical: 1, high: 0, medium: 4, low: 0, last_critical_or_high: "2025-07-24", coverage: "package+repo"}
+  "Kopia": {critical: 1, high: 0, medium: 0, low: 0, last_critical_or_high: "2026-05-19", coverage: "package+repo"}
+  "llama.cpp": {critical: 1, high: 5, medium: 1, low: 1, last_critical_or_high: "2026-03-26", coverage: "repo"}
+  "Loki": {critical: 0, high: 0, medium: 1, low: 0, last_critical_or_high: null, coverage: "package+repo"}
+  "MLflow": {critical: 9, high: 17, medium: 10, low: 2, last_critical_or_high: "2026-09-01", coverage: "package+repo"}
+  "NATS": {critical: 1, high: 12, medium: 15, low: 0, last_critical_or_high: "2026-06-29", coverage: "package+repo"}
+  "Neko": {critical: 0, high: 1, medium: 1, low: 0, last_critical_or_high: "2026-04-21", coverage: "package+repo"}
+  "NetBird": {critical: 1, high: 5, medium: 4, low: 0, last_critical_or_high: "2026-09-01", coverage: "package+repo"}
+  "Nextcloud": {critical: 0, high: 8, medium: 45, low: 26, last_critical_or_high: "2026-09-17", coverage: "package+repo"}
+  "OPA": {critical: 0, high: 1, medium: 0, low: 0, last_critical_or_high: "2025-05-01", coverage: "package+repo"}
+  "OpenBao": {critical: 6, high: 10, medium: 17, low: 16, last_critical_or_high: "2026-09-23", coverage: "package+repo"}
+  "OpenFGA": {critical: 0, high: 0, medium: 16, low: 1, last_critical_or_high: null, coverage: "package+repo"}
+  "OpenMetadata": {critical: 1, high: 5, medium: 0, low: 0, last_critical_or_high: "2026-09-16", coverage: "package+repo"}
+  "OpenTDF": {critical: 0, high: 0, medium: 0, low: 0, last_critical_or_high: null, coverage: "package+repo"}
+  "OpenTelemetry Collector": {critical: 0, high: 0, medium: 0, low: 0, last_critical_or_high: null, coverage: "package+repo"}
+  "Ory Kratos": {critical: 0, high: 1, medium: 0, low: 0, last_critical_or_high: "2026-03-20", coverage: "package+repo"}
+  "Perses": {critical: 0, high: 3, medium: 0, low: 0, last_critical_or_high: "2026-09-18", coverage: "package+repo"}
+  "PostgreSQL": {critical: 0, high: 0, medium: 0, low: 0, last_critical_or_high: null, coverage: "none: vendor channel only"}
+  "Prometheus": {critical: 0, high: 2, medium: 2, low: 0, last_critical_or_high: "2026-05-05", coverage: "package+repo"}
+  "Proxmox VE": {critical: 0, high: 0, medium: 0, low: 0, last_critical_or_high: null, coverage: "none: vendor channel only"}
+  "restic": {critical: 0, high: 0, medium: 0, low: 0, last_critical_or_high: null, coverage: "package+repo"}
+  "RKE2": {critical: 1, high: 0, medium: 0, low: 0, last_critical_or_high: "2024-10-25", coverage: "package+repo"}
+  "SeaweedFS": {critical: 9, high: 12, medium: 5, low: 0, last_critical_or_high: "2026-09-23", coverage: "package+repo"}
+  "SPIRE": {critical: 0, high: 0, medium: 0, low: 0, last_critical_or_high: null, coverage: "package+repo"}
+  "step-ca": {critical: 2, high: 0, medium: 1, low: 1, last_critical_or_high: "2026-03-19", coverage: "package+repo"}
+  "Suricata": {critical: 3, high: 29, medium: 41, low: 27, last_critical_or_high: "2026-09-29", coverage: "repo"}
+  "Synapse": {critical: 0, high: 12, medium: 7, low: 2, last_critical_or_high: "2026-07-28", coverage: "package+repo"}
+  "Talos": {critical: 1, high: 1, medium: 4, low: 2, last_critical_or_high: "2026-09-18", coverage: "package+repo"}
+  "Traefik": {critical: 4, high: 36, medium: 27, low: 2, last_critical_or_high: "2026-10-07", coverage: "package+repo"}
+  "Trino": {critical: 0, high: 1, medium: 0, low: 0, last_critical_or_high: "2026-03-27", coverage: "package+repo"}
+  "Tuwunel": {critical: 0, high: 0, medium: 0, low: 0, last_critical_or_high: null, coverage: "repo"}
+  "Knot DNS": {critical: 0, high: 0, medium: 0, low: 0, last_critical_or_high: null, coverage: "none: vendor channel only (knot-dns.cz and knot-resolver.cz); not yet measured"}
+  "VictoriaMetrics": {critical: 0, high: 1, medium: 1, low: 1, last_critical_or_high: "2026-08-31", coverage: "package+repo"}
+  "vLLM": {critical: 9, high: 26, medium: 61, low: 6, last_critical_or_high: "2026-10-06", coverage: "package+repo"}
+  "Warpgate": {critical: 1, high: 2, medium: 8, low: 2, last_critical_or_high: "2026-08-20", coverage: "package+repo"}
+  "Wazuh": {critical: 9, high: 16, medium: 42, low: 2, last_critical_or_high: "2026-08-18", coverage: "repo"}
+  "Zalando postgres-operator": {critical: 0, high: 0, medium: 0, low: 0, last_critical_or_high: null, coverage: "package+repo"}
+  "ZITADEL": {critical: 7, high: 32, medium: 13, low: 5, last_critical_or_high: "2026-09-28", coverage: "package+repo"}

@@ -1,0 +1,47 @@
+# Workload isolation, firewalling and inspection limits per data label. A workload's label decides the minimum
+# isolation; the pack's floor check rejects a CALM node deployed below it.
+isolation_order: [container-hardened, sandboxed-container, microvm, dedicated-host]
+
+isolation_floor:   # minimum per label
+  Internal:     container-hardened
+  Sensitive: sandboxed-container
+  Restricted:   microvm            # and a dedicated host per tenant where the client's appetite is low
+
+isolation_levels:
+  container-hardened:
+    what: "shared kernel; rootless Podman or K3s with Pod Security 'restricted', seccomp RuntimeDefault, SELinux/AppArmor, read-only rootfs, no capabilities, user namespaces, signed images, distroless or minimal base"
+    limit: "a kernel exploit crosses tenants: acceptable only within one tenant or for platform services without tenant content"
+  sandboxed-container:
+    what: "gVisor (user-space kernel) via runsc RuntimeClass"
+    limit: "smaller kernel attack surface; some syscalls and performance costs"
+  microvm:
+    what: "Kata Containers (Cloud Hypervisor or Firecracker) RuntimeClass: own guest kernel per pod"
+    limit: "needs nested virtualisation or bare metal; check per host; hypervisor is the remaining shared boundary"
+  dedicated-host:
+    what: "own server or VM per tenant, own disk encryption keys"
+    limit: "cost; the hosting provider's hypervisor is still shared unless bare metal"
+
+tenancy_rules:
+  - no two tenants share a pod, a container or a database role
+  - tenant content workloads of different tenants never share a kernel below Sensitive's floor
+  - platform services that touch no content may run hardened containers on shared nodes
+  - confidential computing (AMD SEV-SNP, Intel TDX) is an option, not a floor, until EU clouds offer it broadly
+
+firewalling:   # all layers generated from CALM (gen_firewall.py), never hand-edited
+  - {layer: provider, tool: "the cloud provider's firewall via OpenTofu", role: "coarse ingress allow-list"}
+  - {layer: host, tool: "nftables (policy drop)", role: "per-host flows from CALM, reference-counted"}
+  - {layer: cluster, tool: "Cilium network policy (L3/L4, L7 for HTTP and DNS)", role: "per-app micro-segmentation, DNS-aware egress allow-lists"}
+  - {layer: overlay, tool: "NetBird policies and posture checks", role: "who may reach which service"}
+  - {layer: application, tool: "Envoy Gateway + Keycloak (identity-aware), rate limits", role: "per-request authorisation"}
+
+inspection:
+  allowed:
+    - "flow and metadata: Cilium Hubble flow logs, Suricata EVE protocol logs on north-south traffic"
+    - "network IDS: Suricata (GPL-2.0, OISF) on north-south traffic, rules as code, alerts to the SIEM"
+    - "DNS logging and egress allow-lists"
+    - "host and runtime: Falco (eBPF), file integrity monitoring (Wazuh agent where the optional SIEM module is enabled)"
+    - "content checks at the edge of the trust boundary: AI egress gate, upload type and malware scanning where the client decrypts (client side)"
+  forbidden:
+    - "TLS interception that would expose end-to-end encrypted tenant content (would break operator blindness)"
+    - "inspection that writes tenant content into platform logs"
+  note: "inspection sees who talks to whom, how much and when, never what; content inspection belongs to the client on its own endpoints"

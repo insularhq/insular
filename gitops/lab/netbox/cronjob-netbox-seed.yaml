@@ -1,0 +1,31 @@
+# The site's IPAM from the address plan, as pipeline-dcim (ADR-0171 point 4): creates what is missing, never changes or
+# deletes; without its token (bootstrap not run yet) it says so and ends
+apiVersion: batch/v1
+kind: CronJob
+metadata: {name: netbox-seed, namespace: vdh-netbox, annotations: {vdh.component: "NetBox"}}
+spec:
+  schedule: "7,37 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        metadata: {labels: {app: netbox-seed}}
+        spec:
+          automountServiceAccountToken: false
+          restartPolicy: Never
+          securityContext: {runAsNonRoot: true, runAsUser: 10001, runAsGroup: 10001, seccompProfile: {type: RuntimeDefault}}
+          containers:
+            - name: seed
+              image: docker.io/library/python:3.13-alpine@sha256:2d9aefe2fef018a7eb2c13064c89c71929800fd2e5dccdbf52ea5da5bb8d929a
+              command: ["python3", "-u", "/app/seed.py"]
+              securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}, readOnlyRootFilesystem: true}
+              resources: {requests: {cpu: 5m, memory: 16Mi}, limits: {memory: 64Mi}}
+              volumeMounts:
+                - {name: code, mountPath: /app, readOnly: true}
+                - {name: token, mountPath: /token, readOnly: true}
+          volumes:
+            - {name: code, configMap: {name: netbox-code}}
+            - {name: token, secret: {secretName: netbox-token-pipeline-dcim, optional: true}}

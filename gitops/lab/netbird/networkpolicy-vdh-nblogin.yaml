@@ -1,0 +1,13 @@
+# ADR-0122 and ADR-0134: NetBird the login network: devices' machine peers and the login entry in front of Keycloak, nothing else. Server config with its keys is a Secret made inside the ring
+# (by the lab tooling); TLS from the ring CA (ClusterIssuer ring-ca); trust for Keycloak's TLS through the
+# same CA bundle as OpenCloud.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: default-deny-ingress, namespace: vdh-nblogin}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    # inside the ring only: endpoints arrive through the ring front (the node's host network), never directly
+    - from: [{namespaceSelector: {}}]
+      ports: [{port: 443, protocol: TCP}, {port: 3478, protocol: UDP}]

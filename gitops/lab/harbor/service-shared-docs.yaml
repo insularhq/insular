@@ -1,0 +1,4 @@
+apiVersion: v1
+kind: Service
+metadata: {name: shared-docs, namespace: vdh-harbor}
+spec: {selector: {app: shared-docs}, ports: [{name: http, port: 80}]}

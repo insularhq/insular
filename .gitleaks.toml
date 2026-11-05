@@ -1,0 +1,12 @@
+# gitleaks settings for the public copy: the default rules, minus two known false findings.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "KeyClerk's conformance vectors: test keys, byte-identical to tests/conformance/edge.json in the public engine"
+paths = ['''frameworks/keyclerk/[^/]+/edge-conformance\.json''']
+
+[[allowlists]]
+description = "event type names read as an assignment to a key"
+regexTarget = "match"
+regexes = ['''keyclerk\.[a-z.]+\.v1''']

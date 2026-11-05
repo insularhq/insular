@@ -1,0 +1,26 @@
+# Channels (ADR-0105): which channel carries what, and the mail gate every mail passes.
+# Facts and records move by data logistics (products, subscriptions, leases, envelopes). Conversation (mail, chat,
+# rooms) is authored data that cites data by link instead of carrying it (ADR-0104). Outsiders are reached through
+# boundary gateways, and every crossing is a release.
+
+classes:
+  data_logistics: "facts and records between systems and people: products, subscriptions and leases (platform/data-platform.yaml); never mail attachments"
+  conversation: "mail, chat and rooms inside the tenant: authored units with their own envelope, citing data by link; the reader opens a link under their own lease"
+  boundary: "mail to outsiders, eDelivery, Peppol for invoices, dataspace contracts for partners: each crossing is a release through the release gateway"
+
+rules:
+  - "inside the tenant a labelled unit travels as a link, never as an attachment; an attachment must itself be a cited unit"
+  - "a message takes the label, ring and purpose of what it cites; its body is scanned in the ring, and uncited personal data holds it for the sender"
+  - "Restricted mail has a neutral subject; the subject and headers never carry what the message is about"
+  - "bounces and delivery reports carry a reason code and a request id, never the message or its subject"
+  - "the gate fails closed: when it cannot decide, the submission is deferred, not delivered"
+  - "Restricted mail is readable only in managed clients; IMAP, POP and ActiveSync show a placeholder, and notifications carry no preview"
+  - "server-side forwarding and redirect rules never act on labelled mail; a reply or forward is a new submission through the gate"
+
+mail_gate:
+  tenant_domains: [vdhome.example]
+  directory_max_age_hours: 24
+  max_archive_depth: 2
+  body_product: analyst-chat
+  dlp_key: "example-in-ring-key: the real key lives in the KMS inside the ring"
+  neutral_subject: {Internal: null, Sensitive: null, Restricted: "Restricted message: open it in the managed client"}

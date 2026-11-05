@@ -1,0 +1,11 @@
+# Upgradeability: an S instance becomes M and then L without refactoring. Every capability keeps the same primary
+# implementation in every size; an upgrade only ADDS (nodes, replicas, cells, modules, labels it may host).
+rules:
+  - "no size replaces a smaller size's component for the same capability (no swaps)"
+  - "scaling dimensions exist from day one: K3s with embedded etcd (servers join later), OpenBao with integrated Raft (peers join later), CloudNativePG (instances join later), Envoy Gateway (replicas and cells added), Keycloak with its distributed cache configured"
+  - "data moves only through the component's own native path (replication, Raft join, etcd join), never by export and re-import"
+  - "a higher size enables more labels only after its floors are present (gVisor and the boot stick for Sensitive, Kata and attestation for Restricted)"
+  - "the test pyramid proves S to M and M to L upgrades, not only version N-1 to N"
+transitions:
+  S-to-M: [add K3s servers to three, add OpenBao Raft peers, add CloudNativePG replicas, add gateway replicas and the Sensitive cell, enable gVisor, NetBird, Cilium, Falco, RAUC, Keylime, NATS, GLPI, ntfy, Gatus, rest-server]
+  M-to-L: [add the Restricted cell on a Proxmox substrate, enable Kata, SPIRE, the release gateway, OpenTDF, Guacamole, Suricata]

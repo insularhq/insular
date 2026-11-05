@@ -1,0 +1,4 @@
+apiVersion: v1
+kind: Service
+metadata: {name: pdp, namespace: vdh-pdp}
+spec: {selector: {app: pdp}, ports: [{name: http, port: 8181, targetPort: 8181}, {name: grpc, port: 9191, targetPort: 9191, appProtocol: kubernetes.io/h2c}]}

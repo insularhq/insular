@@ -1,0 +1,120 @@
+{
+  "ftef": "0.1",
+  "classes": {
+    "self-declared": {
+      "ceiling": "low",
+      "freshnessDays": 365
+    },
+    "self-measured": {
+      "ceiling": "medium",
+      "freshnessDays": 1
+    },
+    "observed": {
+      "ceiling": "low",
+      "freshnessDays": 7
+    },
+    "assessed-by-relying-party": {
+      "ceiling": "medium",
+      "freshnessDays": 365
+    },
+    "independently-assessed": {
+      "ceiling": "medium",
+      "freshnessDays": 365
+    },
+    "attested": {
+      "ceiling": "high",
+      "freshnessDays": 1
+    }
+  },
+  "acceptance": {
+    "maxDays": 90,
+    "maxBand": "medium"
+  },
+  "states": {
+    "member": {
+      "cap": "high",
+      "freshnessScale": 1.0
+    },
+    "watch": {
+      "cap": "high",
+      "freshnessScale": 0.5,
+      "upTo": "member",
+      "upWhen": "two fresh presentations on time and the outlook no longer negative",
+      "downTriggers": [
+        "registry status watch",
+        "negative outlook",
+        "late report"
+      ]
+    },
+    "restricted": {
+      "cap": "low",
+      "freshnessScale": 0.5,
+      "upTo": "watch",
+      "upWhen": "remediation milestones met and evidenced",
+      "limits": [
+        {
+          "type": "no-transit"
+        },
+        {
+          "type": "no-automatic-actions"
+        },
+        {
+          "type": "reduced-lease",
+          "value": 0.5
+        }
+      ],
+      "downTriggers": [
+        "registry status restricted",
+        "confirmed finding with a remediation plan"
+      ]
+    },
+    "suspended": {
+      "cap": "none",
+      "freshnessScale": 0.5,
+      "upTo": "watch",
+      "upWhen": "fresh evidence of the class it lost",
+      "downTriggers": [
+        "registry status suspended",
+        "confirmed security incident at the partner",
+        "unreported incident",
+        "missed milestone"
+      ]
+    },
+    "withdrawn": {
+      "cap": "none",
+      "freshnessScale": 0.0,
+      "upTo": "joining",
+      "upWhen": "re-admission with full evidence",
+      "downTriggers": [
+        "registry status invalid",
+        "repeated failure",
+        "oversight of the partner's domain failed"
+      ]
+    }
+  },
+  "situationLevels": [
+    {
+      "level": "normal",
+      "freshnessScale": 1.0
+    },
+    {
+      "level": "elevated",
+      "freshnessScale": 0.5
+    },
+    {
+      "level": "high",
+      "freshnessScale": 0.33
+    },
+    {
+      "level": "severe",
+      "freshnessScale": 0.2
+    }
+  ],
+  "standingDecisions": [
+    {
+      "author": "security officer (fictional)",
+      "date": "2026-10-14",
+      "scope": "restore to watch when the registry restores status after a suspension caused by registry status"
+    }
+  ]
+}

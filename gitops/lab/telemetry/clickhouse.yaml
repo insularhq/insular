@@ -1,0 +1,43 @@
+# ClickHouse (Apache-2.0, ClickHouse, Inc.; CLA-enabled relicensing risk recorded in catalog/provenance.yaml), the
+# 26.3 LTS line pinned by digest: one replica per ring in the lab; events kept 7 days (the exporter's TTL).
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: clickhouse
+  namespace: vdh-telemetry
+  annotations: {vdh.component: "ClickHouse", vdh.app-version: "v26.3.39.7"}
+spec:
+  serviceName: clickhouse
+  replicas: 1
+  selector: {matchLabels: {app: clickhouse}}
+  template:
+    metadata: {labels: {app: clickhouse}}
+    spec:
+      securityContext: {fsGroup: 101, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: clickhouse
+          image: docker.io/clickhouse/clickhouse-server:26.3.39.7@sha256:3a91276f066905da0edbbd622d3fc2a2df632c87ea7fe32ef4e74fdf8c9567b0
+          env:
+            - {name: CLICKHOUSE_USER, value: otel}
+            - {name: CLICKHOUSE_DB, value: otel}
+            - {name: CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT, value: "1"}
+            - {name: CLICKHOUSE_PASSWORD, valueFrom: {secretKeyRef: {name: telemetry-users, key: otel}}}
+            - {name: PHAROS_PASSWORD, valueFrom: {secretKeyRef: {name: telemetry-users, key: pharos}}}
+            - {name: BACKUP_PASSWORD, valueFrom: {secretKeyRef: {name: telemetry-users, key: backup}}}
+            - {name: GARAGE_BACKUP_KEY, valueFrom: {secretKeyRef: {name: telemetry-backup, key: access_key_id, optional: true}}}
+            - {name: GARAGE_BACKUP_SECRET, valueFrom: {secretKeyRef: {name: telemetry-backup, key: secret_access_key, optional: true}}}
+          ports:
+            - {name: http, containerPort: 8123}
+            - {name: native, containerPort: 9000}
+            - {name: mysql, containerPort: 9004}
+          readinessProbe: {httpGet: {path: /ping, port: 8123}, periodSeconds: 10}
+          resources: {requests: {cpu: 100m, memory: 512Mi}, limits: {memory: 2Gi}}
+          volumeMounts:
+            - {name: data, mountPath: /var/lib/clickhouse}
+            - {name: config, mountPath: /etc/clickhouse-server/config.d/vdh.xml, subPath: clickhouse-vdh.xml}
+            - {name: config, mountPath: /etc/clickhouse-server/users.d/pharos.xml, subPath: clickhouse-users.xml}
+      volumes:
+        - {name: config, configMap: {name: clickhouse-config, defaultMode: 0555}}
+  volumeClaimTemplates:
+    - metadata: {name: data}
+      spec: {accessModes: [ReadWriteOnce], storageClassName: local-path, resources: {requests: {storage: 10Gi}}}

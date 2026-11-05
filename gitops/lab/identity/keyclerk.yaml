@@ -1,0 +1,530 @@
+# Rendered by tools/keyclerk_config.py from the registers; do not edit by hand (ADR-0176).
+# The KeyClerk engine reads this file; the registers are the source.
+roles:
+  infrastructure-admin:
+    plane: infrastructure
+    class: activation
+  site-sysadmin:
+    plane: infrastructure
+    class: activation
+    scope_max: isle
+  platform-admin:
+    plane: platform
+    class: activation
+  identity-admin:
+    plane: platform
+    class: activation
+  release-officer:
+    plane: platform
+    class: functional
+  pki-officer:
+    plane: infrastructure
+    class: activation
+  auditor-read:
+    plane:
+    - infrastructure
+    - platform
+    class: activation
+  service-desk:
+    plane: platform
+    class: functional
+  tenant-admin:
+    plane: tenant
+    class: functional
+  tenant-admin-privileged:
+    plane: tenant
+    class: activation
+  tenant-user:
+    plane: tenant
+    class: baseline
+  consultant:
+    plane: tenant
+    class: functional
+  security-officer:
+    plane:
+    - infrastructure
+    - platform
+    - tenant
+    class: special
+  dpo:
+    plane: tenant
+    class: special
+  recovery-contact:
+    plane: tenant
+    class: special
+  agent-owner:
+    plane:
+    - platform
+    - tenant
+    class: special
+  sponsor:
+    plane: tenant
+    class: special
+grant_limits:
+  activation_max_hours:
+    infrastructure-admin: 4
+    platform-admin: 4
+    identity-admin: 2
+    pki-officer: 2
+    tenant-admin-privileged: 8
+    auditor-read: 24
+  functional_max_hours:
+    on-call: 168
+    duty-officer: 24
+    release-officer: 8
+    tenant-admin: 720
+  phase_one: true
+  operator_kind: vdhome
+  subject_kinds:
+  - vdhome
+  - tenant
+  - external
+  - edge-born
+  scope_levels:
+  - federation
+  - tenant
+  - isle
+  - islet
+  - skiff
+  - resource
+  operator_tenant_roles:
+  - consultant
+  tenant_infrastructure_roles:
+  - site-sysadmin
+external_access:
+  categories:
+    visitor:
+      max_days: 1
+    contractor:
+      max_days: 90
+    partner:
+      max_days: 365
+  steps:
+    during:
+      reminder_days:
+      - 7
+      - 1
+    offboarding:
+      retention:
+        account_delete_days: 30
+  totals:
+    window_days: 365
+    max_days: 180
+    visitor_max_days: 30
+    tombstone_days: 365
+delegation:
+  max_include_depth: 3
+  max_delegation_days: 180
+  retire_grace_days: 14
+  widenings_per_deputy_per_day: 20
+  widenings_per_subtree_per_day: 60
+  max_direct_delegates: 10
+  root_max_membership_days: 365
+  rule_change_second_key_above: 25
+  review_days:
+    privileged: 30
+    elevated: 90
+    low: 180
+  second_key_standing: warn
+  reciprocity_days: 30
+  max_approver_days: 365
+attributes:
+  role:
+    provided_by:
+    - Keycloak
+    authority: tenant-admin via broker
+    ttl_hours: 24
+  tenant:
+    provided_by:
+    - Keycloak
+    authority: broker
+    ttl_hours: 24
+  clearance_internal:
+    provided_by:
+    - Keycloak
+    authority: tenant security officer
+    ttl_hours: 720
+  certification:
+    provided_by:
+    - Keycloak
+    authority: issuing body via verifiable credential
+    ttl_hours: 720
+  acr:
+    provided_by:
+    - Keycloak
+    authority: broker
+    ttl_hours: 1
+  device_posture:
+    provided_by:
+    - NetBird
+    - Keylime
+    authority: attestation (Keylime) and NetBird posture
+    ttl_hours: 1
+  evidence_state:
+    provided_by:
+    - evaluator
+    authority: green light evaluator
+    ttl_hours: 1
+  location_class:
+    provided_by:
+    - NetBird
+    authority: network and device
+    ttl_hours: 1
+  unit:
+    provided_by:
+    - HR source
+    - SCIM
+    authority: the tenant's HR source
+    ttl_hours: 24
+    self_write: false
+    pedigree: authoritative
+    may_widen: true
+    offline: absent
+  function:
+    provided_by:
+    - HR source
+    - SCIM
+    authority: the tenant's HR source
+    ttl_hours: 24
+    self_write: false
+    pedigree: authoritative
+    may_widen: true
+    offline: absent
+  upstream_group:
+    provided_by:
+    - corporate IdP
+    authority: the owner of that group in the corporate directory, an external authority
+      outside KeyClerk's tree
+    ttl_hours: 24
+    self_write: false
+    pedigree: derived
+    may_widen: true
+    offline: absent
+  stakeholder_level:
+    provided_by:
+    - Keycloak
+    authority: tenant service owner
+    ttl_hours: 720
+  break_glass_unlock:
+    provided_by:
+    - hardware
+    authority: break-glass tokens (2-of-3)
+    ttl_hours: 4
+  release_officer_qualified:
+    provided_by:
+    - Keycloak
+    authority: curriculum credential
+    ttl_hours: 720
+  tenant_unwrap_grant:
+    provided_by:
+    - OpenBao
+    authority: tenant key-share holders (signed, time-boxed)
+    ttl_hours: 1
+  agent_model:
+    provided_by:
+    - Keycloak
+    authority: agent owner
+    ttl_hours: 720
+situation:
+  floor_raise:
+    external:
+      normal: 0
+      elevated: 0
+      high: 1
+      severe: 2
+    tenant:
+      normal: 0
+      elevated: 0
+      high: 0
+      severe: 1
+  visitors:
+    normal:
+      visitor: open
+      contractor: open
+      partner: open
+    elevated:
+      visitor: escort
+      contractor: open
+      partner: open
+    high:
+      visitor: pre_registered_escort
+      contractor: escort
+      partner: open
+    severe:
+      visitor: suspended
+      contractor: suspended
+      partner: escort
+  lease_max_days:
+    normal: null
+    elevated: null
+    high: 30
+    severe: 7
+  pause_derived_rules_from: high
+  rate_factor:
+    normal: 1.0
+    elevated: 1.0
+    high: 0.5
+    severe: 0
+  surge:
+    max_hours: 72
+    review_days_after_fall: 7
+    max_days_per_person: 14
+  feed:
+    max_level: high
+    max_age_hours: 24
+    min_interval_hours: 6
+  confirm_hours: 12
+  min_dwell_hours: 6
+risk_port:
+  floor_by_risk:
+    low:
+      identity: low
+    elevated:
+      identity: medium
+    privileged:
+      identity: high
+      likeness: medium
+  usable_risk_bands:
+  - green
+  - amber
+  no_acceptance_for:
+  - privileged
+  acceptance_max_band: medium
+  acceptance_max_days: 90
+  situation_levels:
+  - normal
+  - elevated
+  - high
+  - severe
+  require_trust: true
+places:
+  kinds:
+  - region
+  - campus
+  - site
+  - building
+  - floor
+  - space
+  nest_same_kind:
+  - region
+  - campus
+  - building
+  - space
+access_paths:
+  min_independent_layers:
+    Internal: 1
+    Sensitive: 2
+    Restricted: 4
+  max_path_length: 24
+  scenarios:
+  - normal
+  - fire
+  - power
+  - cut_off
+  - break_glass
+  two_person_for:
+  - Restricted
+  obligations:
+  - read_only
+  - no_export
+  - masked
+  - view_only
+  - recorded
+  - escorted
+  - watermarked
+  - no_print
+  - no_clipboard
+  - remote_confirmed
+  - live_watched
+  - step_up
+  - review_24h
+  obligation_conflicts:
+  - - recorded
+    - unrecorded
+availability:
+  pool_factor: 2
+  site_office_entitlement: site-office
+  allowed_steps:
+    Internal:
+    - remote_confirm
+    - supervised
+    - deferred
+    Sensitive:
+    - remote_confirm
+    - supervised
+    - deferred
+    Restricted:
+    - remote_confirm
+    - deferred
+    - never
+  remote_steps_until_level:
+    Internal: severe
+    Sensitive: high
+    Restricted: elevated
+  steps:
+    remote_confirm:
+      obligations:
+      - recorded
+      - remote_confirmed
+    supervised:
+      obligations:
+      - recorded
+      - live_watched
+      - step_up
+      - review_24h
+    deferred:
+      obligations: []
+    never:
+      obligations: []
+reconcile:
+  max_removals_per_run: 50
+  max_removal_share: 0.25
+  logout_retry_minutes: 5
+  keep_runs: 5000
+  managed_marker: keyclerk.managed
+  logout_on_removal: false
+approvals:
+  proofs: required
+  max_age_seconds: 300
+  acr: approval
+  accepted_without_proof:
+  - record: A-vdh-demo-0001
+    by: idp:31ee-ingrid
+    sha256: c58f1bb7a0a89c6b7cb2dd34adafd2c97fce0f6b36de74332d9335b79ad7ef33
+  - record: D-vdh-demo-0001
+    by: idp:31ee-ingrid
+    sha256: 951815c652c613c2943b4ce7945c781ad96dd3ce218abed431a8a8483c2117dd
+  - record: G-vdh-demo-0001
+    by: idp:2b9e-owner-delegate
+    sha256: 2f42f735c2cb2eb7315c727965606d58c0f79e2566357a0250d59a7c849d85c2
+  - record: G-vdh-demo-0002
+    by: idp:2b9e-owner
+    sha256: 458872c4e6305608106456473bb9e5ff4b3e9b40c5ba968334d0a37f22370df8
+  - record: G-vdh-demo-0003
+    by: idp:2b9e-owner
+    sha256: 4ad94ab03ad53e8b25bc35b98b388264c93759e1711082ffa076111881a969ee
+  - record: G-vdh-demo-0004
+    by: idp:7c1f-ann
+    sha256: 01cc5261d058458613b23b0f6d430413a8ecdc4c0791c2fdb2571f465dcf8bd0
+  - record: G-vdh-demo-0005
+    by: idp:7c1f-ann
+    sha256: 54ba0cd63beaa280074d6937cd9f2eb9c7061382160396c280a094d0c72643fb
+  - record: L-vdh-demo-0001
+    by: idp:7c1f-ann
+    sha256: 5154e279d3aa31ab6f8152d37959171ab8cbe661630b04d7b3d921394fa7afef
+  - record: L-vdh-demo-0001
+    by: idp:91d0-bert
+    sha256: 5154e279d3aa31ab6f8152d37959171ab8cbe661630b04d7b3d921394fa7afef
+  - record: L-vdh-demo-0002
+    by: idp:2b9e-owner
+    sha256: b61c415ea86b6d2199259421bad9587d5d027c392e0757c2b47d1178a8b7156b
+  - record: L-vdh-demo-0002
+    by: idp:7c1f-ann
+    sha256: b61c415ea86b6d2199259421bad9587d5d027c392e0757c2b47d1178a8b7156b
+  - record: M-vdh-demo-0003
+    by: idp:91d0-bert
+    sha256: 3a390448ceceeeca846d09311e6402ec878f481f9a14562669afa95ce57977d7
+  - record: M-vdh-demo-0006
+    by: vdh:operator
+    sha256: 88110d0a456968562e6d1045ba21a9e9b15c6fbf92db812daca535a212774860
+  - record: M-vdh-demo-0009
+    by: idp:31ee-ingrid
+    sha256: 09ee7f3b2bc6cad3f3bea6ffcbb180b2d929e1d2f9a78138da2fa5a8b70c1ef7
+  - record: M-vdh-demo-0010
+    by: idp:31ee-ingrid
+    sha256: 1b49357a7035b68da86f36857440f4fea27321c6933906ab0ace86afef1b24a2
+  - record: M-vdh-demo-0011
+    by: idp:31ee-ingrid
+    sha256: dc7d4917d5814f8bb35fdd2459202dee6c4a84378ffb928f9c3ea74eaf095ccd
+  - record: M-vdh-demo-0012
+    by: vdh:operator
+    sha256: 93696e4aa98a45c90d6213d66c289c98435cf1ffdc147c40644a2902d10d6e82
+  - record: M-vdh-demo-0013
+    by: idp:31ee-ingrid
+    sha256: 32a6fb1749caa58d7b32cdd4aea075beb20e7eadd2bd23c4d37be08b2d24652c
+  - record: M-vdh-demo-0014
+    by: idp:31ee-ingrid
+    sha256: eb9c8bce6e7c157c7c249d5d9c1bee021b34bb2f1962061af1bdd18462acd183
+  - record: M-vdh-demo-0015
+    by: idp:31ee-ingrid
+    sha256: c0367bac6ab39f8b8b374fb22adaf6403567120770af81511f67ce0c364f42e2
+  - record: M-vdh-demo-0016
+    by: vdh:operator
+    sha256: a36c992cbcc24bcdb06cb9dc720075f88099592441587eddaf41becef417249c
+  - record: M-vdh-demo-0017
+    by: idp:31ee-ingrid
+    sha256: bf65b8a6017bfd26b5c708c080670803fbf4b99d69a102c89b08e7961ed826b7
+  - record: M-vdh-demo-0018
+    by: idp:31ee-ingrid
+    sha256: 0db894438ff5b782dbb05e0ca31e22e3118e9924e270a699fb02e86ae8505cf0
+  - record: M-vdh-demo-0019
+    by: idp:31ee-ingrid
+    sha256: c9a5e6645a5cdb3d226b59e93e731966b429cf0cf04e077f8c463d3271c08d22
+  - record: M-vdh-demo-0021
+    by: adm:operator
+    sha256: feac7d7f10cf4cde4c8cdf4a2758524673cc759b3efba9cc028d0c7ddabbe427
+  - record: M-vdh-demo-0022
+    by: adm:operator
+    sha256: 7cdd778ec3c693e5d1a7d0192ef3f35ab8a3eeb04bc20f3d8bbc02ff1d547324
+  - record: M-vdh-demo-0023
+    by: adm:31ee-ingrid
+    sha256: 21f30eb1f103c9211c755c9405a3f1a1b306d466c291a4a5012d549129c7c2e8
+  - record: M-vdh-demo-0024
+    by: adm:31ee-ingrid
+    sha256: f0f654299ae5e15ca922248b11672f18b5a75c2270c49ca694cf564e920490da
+  - record: M-vdh-demo-0025
+    by: adm:31ee-ingrid
+    sha256: 955ff53fc47f09451baa646270f791db6dcc4d9937092cab3bba480f69a12249
+  - record: M-vdh-demo-0026
+    by: adm:operator
+    sha256: 2bd77fc076a60e74039d24afb67615e6d93c071851da13638ed98edd8aebeca9
+  - record: M-vdh-demo-0027
+    by: adm:31ee-ingrid
+    sha256: 458d3f2668ce1e2bc3e855da9802851e662b5fda8fd0359975bee37eb8167d03
+  - record: M-vdh-demo-0028
+    by: adm:31ee-ingrid
+    sha256: 751cfddd92ad1661645263bcf5e06a9dc4e2501849e9aa77ef0bd20f617c0c55
+  - record: M-vdh-demo-0029
+    by: adm:31ee-ingrid
+    sha256: 161c53348fab473a26a741a9ceffeacf7e3fde1b88c89fede3ac5247bb447a79
+  - record: S-vdh-demo-0004
+    by: idp:2b9e-owner
+    sha256: 018dd545c12f512d895265c8c3ecec86bba5bdab8fe1cae97050f02bdf69dee8
+  - record: S-vdh-demo-0005
+    by: idp:2b9e-owner
+    sha256: 77d8076946cbaec56cf0e094fe08b8b91001bd9acb4bd5175cf369c1b4ce6544
+  - record: SP-vdh-demo-0001
+    by: idp:2b9e-owner
+    sha256: 569897c9eaef3c0f21e9bfda285de76ae87c3c3f9fb8317276547ac6fda5231c
+  - record: SP-vdh-demo-0001
+    by: idp:31ee-ingrid
+    sha256: 569897c9eaef3c0f21e9bfda285de76ae87c3c3f9fb8317276547ac6fda5231c
+identity_sources:
+- id: staff
+  name: Staff sign-in
+  kind: oidc
+  prefix: 'idp:'
+- id: guests
+  name: Guest accounts
+  kind: oidc
+  prefix: 'ext:'
+- id: operator
+  name: VDHome operator
+  kind: oidc
+  prefix: 'vdh:'
+- id: partner-entra
+  name: Partner directory (Entra, brokered)
+  kind: oidc
+  pattern: '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
+- id: admin
+  name: Admin accounts (privileged access devices)
+  kind: oidc
+  prefix: 'adm:'
+- id: workloads
+  name: Workload identities
+  kind: workload
+  prefix: spiffe://
+- id: agents
+  name: Agents
+  kind: agent
+  prefix: 'agent:'

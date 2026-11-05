@@ -1,0 +1,150 @@
+# Endpoint access: how a person on a device reaches the platform, per label, through VPN, posture, VDI or a fat
+# client. One decision point (OPA, tools/authz.py) for every route; posture is a fresh, timestamped signal like any
+# other; the routes differ only in where the data lives and which enforcement points are in the path.
+
+routes:   # the floors per label come from the pack (packs/vdhome-platform/pack.yaml); a tier may require more
+  browser:     {labels: [Internal], data_on_endpoint: "browser session only", path: "Envoy Gateway with OIDC (passkey)"}
+  vdi:         {labels: [Internal, Sensitive, Restricted], data_on_endpoint: "pixels only: no files, clipboard or printing unless the label allows", path: "NetBird, then Envoy Gateway, then Guacamole, then a non-persistent desktop", note: "the endpoint floor of the label still applies: VDI stops bulk exfiltration, not someone reading the screen"}
+  boot-stick:  {labels: [Internal, Sensitive], data_on_endpoint: "RAM only on a signed immutable boot", path: "NetBird, then Envoy Gateway or VDI"}
+  managed:     {labels: [Internal, Sensitive, Restricted], data_on_endpoint: "on the device, sealed", path: "NetBird, then Envoy Gateway, VDI or local workloads"}
+  fat-client:  {labels: [Internal, Sensitive, Restricted], data_on_endpoint: "on the device, sealed per segment (ZTDF); keys released per open by the key access service, cached grants expire", path: "the managed route plus local workloads: the device is an edge site of one"}
+
+layers:   # the same layers for every route; an empty cell means the route does not use that layer
+  identity:     {impl: Keycloak, how: "passkeys; acr per label; device-bound passkey and a device certificate (vdh-int-devices) on managed devices; step-up on risk"}
+  network:      {impl: NetBird, how: "people overlay with posture checks (OS and client version, network range, process); peers keep tunnels while management is down", alternatives: [Headscale, OpenZiti]}
+  posture:      {impl: "osquery on managed devices; boot-stick image attestation; NetBird checks; Keylime on Linux managed devices and Hulls (M, ADR-0125)", how: "Salt (Uyuni) pushes the osquery configuration, the OpenTelemetry Collector ships results, the evaluator turns them into timestamped context for OPA; stale is missing (ADR-0059: no osquery manager; Fleet only if Windows or macOS management is ever needed)"}
+  decision:     {impl: OPA, how: "one trust algorithm; posture, acr, label, tenant and freshness decide; deny overrides"}
+  enforcement:  {impl: "NetBird (network), Envoy Gateway (application), Guacamole (session: clipboard, file transfer, printing, recording per label), key access service (data), Keycloak (step-up)", how: "progressive per scope (platform/enforcement-rollout.yaml): announce, observe, warn, enforce"}
+  desktops:     {impl: "non-persistent Linux desktops (SUSE family, built as code) in Proxmox VMs or containers, served over RDP (xrdp or GNOME Remote Desktop) to Guacamole", how: "reset per session from a signed image; user data lives in the vault, never on the desktop", note: "Windows session hosts are possible but need paid licences (not open source)"}
+  device_management: {impl: "Uyuni with Salt for SUSE-family managed devices and fat clients (same tool as the hosts, ADR-0050)", gap: "no open-source, EU-supported management for Windows or macOS endpoints: those stay on the browser or VDI route"}
+
+exposure:   # what an endpoint on an untrusted (Internal, guest, home) network may reach before and beside the VPN
+  public_surfaces:   # the only VDHome services reachable without the tunnel
+    - "NetBird management (peer login with device-held keys, posture) on its own cell, rate-limited, behind the WAF"
+    - "NetBird signal and relay (STUN/TURN): carry only end-to-end encrypted WireGuard traffic"
+  third_party_pre_vpn:
+    - "NTS time servers (authenticated time, EU operators) so certificates and cached lists can be validated before the tunnel"
+    - "captive portals of the local network, only in the sandboxed captive-portal browser"
+    - "the tenant's RADIUS over 802.1X on tenant LANs (ADR-0054)"
+  through_the_vpn:   # beside VDI, as separate NetBird destinations per group; the tunnel itself grants nothing beyond these login surfaces
+    - "Keycloak (passkey sign-in, CIBA, token exchange)"
+    - "Guacamole (VDI)"
+    - "decision inbox (approvals)"
+    - "enrolment service, policy bundles, revocation lists, certificate renewal"
+  enrolment_bootstrap: >-
+    no public enrolment endpoint: the officer's console issues a one-off NetBird setup key (bootstrap group, single
+    use, 10 minutes) read out in full as about ten words with a checksum (ADR-0138 D6); the user types it on the stick, which joins a group that reaches only
+    the enrolment service
+  vpn_login: "the login network authenticates with a device-held machine peer key from enrolment (no IdP redirect before it, so Keycloak is never public); the main network is a user peer signed in through Keycloak over the login network (ADR-0122 amendment 3, ADR-0138 D7); every application still requires a passkey inside it"
+
+passwordless:   # passwords do not exist anywhere in the platform
+  keycloak: >-
+    password credential type disabled in every realm: there is no realm switch, so browser and registration flows are
+    built without the username-password form (passkey-only flows); attestation conveyance Direct is required for the
+    AAGUID allow-list of issued hardware keys to hold (no synced or phone passkeys; the packed self-attestation bypass
+    CVE-2026-6856 was fixed in April 2026, so pin a Keycloak release after the fix)
+  fewer_touches:
+    - "PIN per ceremony: systemd's unlock and the browser's WebAuthn each verify the PIN (no shared token between processes, verified); biometric keys make each verification a touch"
+    - "the VPN uses the device key: no separate VPN login"
+    - "VDI and apps inside it get a token by exchange: no second sign-in"
+    - "step-up only on risk or label change, by CIBA"
+  cryptpad: >-
+    SSO for sign-in plus a forced personal CryptPad passphrase (forceCpPassword) for the drive keys (ADR-0060): seven
+    generated words per user, filled in automatically from the stick's encrypted home, typed or taken from a password
+    manager on other routes, escrowed in OpenBao under a control group with the user's eID like the stick recovery
+    passphrase. Without it the key material would sit in the CryptPad server's store, which VDHome operates.
+    It is an encryption key, not a login.
+  keys_issued: "two standard FIDO2 keys with PIN and a PIV applet (ADR-0059); biometric keys are a per-tenant option"
+  biometric_option: "FIDO2 keys with a fingerprint reader (user verification without typing a PIN): removes shoulder-surfed and written-down PINs (RK-04); the fallback PIN stays long and is never written"
+  recovery: "the second hardware key, then the escrowed stick passphrase under four eyes and the user's eID (ADR-0057), else a new enrolment; never a login password, code sheet or e-mail link"
+
+verified_2026_10_07:   # research pass with primary sources (docs, changelogs, source)
+  keycloak: "DPoP supported since 26.4 (all bearer endpoints); standard token exchange (RFC 8693) supported since 26.2, same-realm only; CIBA endpoints exist but the authentication channel is an SPI we must provide (AuthenticationChannelProvider); no realm switch to disable passwords"
+  netbird: "peers enrolled with a setup key are exempt from periodic SSO re-authentication (matches the device-key tunnel); setup keys: one-off, expiry, auto-groups, usage limit, ephemeral; posture: client version, country, network range, OS or kernel version, process; self-hosted HA documented"
+  fido2: "no PIN token shared between systemd-cryptenroll and a browser: expect a PIN per ceremony"
+  homed: "FIDO2, PKCS#11 and recovery keys supported, user records signed; no dm-integrity option: the home is LUKS2 without authenticated encryption"
+  eid: "eid-mw (LGPL-3.0) packaged for openSUSE on OBS; ECC cards and pinpad readers still to confirm in its changelog"
+  openbao: "control groups (2.7.0): approvers are members of an identity group; a requester cannot authorise their own request"
+  guacamole: "no FIDO2 or smartcard redirection; open requests GUACAMOLE-1601 and GUACAMOLE-839 without a target release"
+  cryptpad: "the SSO plugin keeps the drive key password-derived only if the user sets a CryptPad password (cpPassword, forceCpPassword); without it the key derives from a secret held by the SSO administrators"
+  captive_portal: "captive-browser unmaintained since 2023: not used; NetworkManager connectivity check plus our own sandbox (separate user, bubblewrap)"
+
+authenticator_ceremonies:   # where every FIDO2 or smartcard touch happens; checked by tests
+  fact: >-
+    Guacamole forwards neither FIDO2 nor smartcards: its RDP client (FreeRDP) runs server-side in guacd and the
+    Guacamole protocol has no channel for them. FreeRDP's native client implements WebAuthn redirection (RDPEWA), but
+    only towards Windows session hosts; Linux RDP servers do not offer it (verify per release).
+  rule: "authenticator ceremonies happen on the endpoint, never inside a remote session; the session receives tokens, not touches"
+  mechanisms:
+    session-sso: >-
+      the VDI session starts after a passkey sign-in in the endpoint's own browser: Envoy Gateway runs the OIDC code
+      flow and passes the verified identity to Guacamole by header (Guacamole's own OpenID module is implicit-flow
+      only and is not used); inside the desktop a session agent signs in by CIBA at session start (one touch on the
+      endpoint), exchanges tokens for each app and serves them from memory
+    out-of-band-step-up-channel: "CIBA through the decision inbox, which implements Keycloak's authentication channel (ADR-0059)"
+    out-of-band-step-up: >-
+      a step-up or approval asked from inside a session goes out of band: Keycloak CIBA or the device authorisation
+      grant; the user touches their key in the endpoint's browser or the decision inbox opened there. Every request
+      shows what is approved (binding message: action, object, requesting session) and a number to match with the
+      session; requests are rate-limited and expire in 2 minutes; unanswered means denied (against prompt fatigue)
+    token-hardening: "tokens in a desktop are audience-restricted and short-lived; DPoP sender-constraint applies only to our own clients (session agent, decision inbox, enrolment service), because no third-party client in the stack supports it"
+    native-rdp-exception: "on a managed endpoint with the native FreeRDP client and a Windows session host, WebAuthn redirection (RDPEWA) may be used; never through Guacamole"
+  processes:   # where: endpoint (the ceremony runs locally), out-of-band (started inside a session, completed on the endpoint), forbidden-in-vdi
+    vdi-sign-in:                {where: endpoint, how: "passkey in the endpoint's browser before Guacamole"}
+    step-up-inside-vdi:         {where: out-of-band, how: "CIBA to the endpoint browser"}
+    officer-enrolment-approval: {where: endpoint, how: "enrolment console in the thin client's own browser (ADR-0053)"}
+    stick-enrolment-keys:       {where: endpoint, how: "the user enrols FIDO2 keys on the stick itself"}
+    stick-sign-in:              {where: endpoint, how: "the stick is the endpoint"}
+    risk-owner-approval:        {where: out-of-band, how: "decision inbox in the endpoint browser, or CIBA from inside a session; the WebAuthn assertion signs the approval"}
+    release-officer-approval:   {where: endpoint, how: "managed device in the secure room; from a session only through CIBA"}
+    break-glass:                {where: forbidden-in-vdi, how: "2-of-3 hardware tokens on the operator workstation, offline"}
+    operator-admin:             {where: endpoint, how: "operator workstation; SSH certificates after a local passkey sign-in"}
+    git-signing-and-merge-approval: {where: forbidden-in-vdi, how: "commits and approvals signed with hardware keys on the endpoint; a VDI developer desktop pushes unsigned work to a branch that a signed approval must merge"}
+    sealed-artefact-open:       {where: out-of-band, how: "the key access service asks for step-up through CIBA when the attribute policy requires a fresh touch"}
+    eid-document-signature:     {where: forbidden-in-vdi, how: "qualified signatures with the Belgian eID on the endpoint (or a remote qualified signing service), never through the VDI"}
+    nac-8021x:                  {where: endpoint, how: "the stick's certificate never leaves the stick (ADR-0054)"}
+  gaps:
+    - "CIBA and token exchange must be configured and tested per client in Keycloak (CIBA needs an authentication channel to the endpoint: the decision inbox or a push to the browser session)"
+    - "apps inside VDI desktops that hard-require WebAuthn (no OIDC) cannot be used there"
+    - "smartcard-based workflows inside VDI (eID, PIV signing) are not possible; they run on the endpoint"
+
+managed_device_image:   # what a SUSE-family managed device or fat client carries beyond the stick image
+  - {item: osquery, why: "posture collection; configuration pushed by Salt, results shipped by the OpenTelemetry Collector (ADR-0059)"}
+  - {item: Salt minion, why: "Uyuni management"}
+  - {item: OpenTelemetry Collector, why: "ships osquery results and logs"}
+  - {item: K3s, why: "fat client as an edge site of one"}
+
+fat_client:   # can the same stack run on a fat client? yes, by design choices already in the model
+  why_it_works:
+    - "every workload is a container on K3s, which runs single-node on a laptop: the device is an edge site of one (platform/edge.yaml)"
+    - "policy is evaluated locally by OPA from signed, cached bundles (DDIL design), so decisions do not need the centre"
+    - "data at rest is sealed per segment (platform/sealed-artefacts.yaml): the file carries its policy, keys come per open with expiring grants, and revocation is crypto-erasure"
+    - "the reconnect pipeline (tools/rejoin.py) re-profiles a device that was offline: drift, risk, then reconcile, quarantine or wipe"
+    - "the host OS family is the same as the servers (SUSE), updated through Uyuni and transactional updates"
+  gaps:
+    - "offline sign-in needs local verification (device-bound passkey plus device certificate) with a maximum offline period per label"
+    - "desktop applications do not open ZTDF natively: documents are opened through a local viewer or the vault, or via VDI"
+    - "Windows and macOS fat clients are out of scope without commercial management"
+  recommendation: "VDI for Sensitive and Restricted users on devices we do not manage; the fat client for people who need offline work, on SUSE-family managed devices with K3s as an edge site of one"
+
+radar_candidates:
+  Selkies:   {ring: assess, why: "WebRTC desktop streaming with GPU support (MPL-2.0); for graphics-heavy desktops where RDP struggles"}
+  FreeRDP:   {ring: adopt, why: "already inside Guacamole as its RDP client; its native client implements WebAuthn redirection (RDPEWA) for Windows session hosts"}
+  xrdp:      {ring: trial, why: "RDP server for Linux desktops (Apache-2.0)"}
+  osquery:   {ring: trial, why: "posture collection on managed devices (Linux Foundation)"}
+  Fleet:     {ring: assess, why: "osquery manager and MDM; MIT core with paid features; US"}
+  KasmVNC:   {ring: hold, why: "the VNC server is GPL, but Kasm Workspaces is not open source"}
+  RustDesk:  {ring: hold, why: "remote support tool, not a governed VDI; relay infrastructure to vet"}
+
+hull:   # ADR-0123: the trustworthy host that runs a Skiff as a virtual machine
+  what: "a KVM host on the user's machine whose job is to run the Skiff as a VM, isolated from whatever else runs on that machine"
+  trust: "measured boot and remote attestation (Keylime, as for platform hosts); the Skiff's screen and keyboard pass only between the Skiff VM and the attested Hull, so malware in a sibling VM or the user's own OS cannot read them"
+  unlocks: "the Restricted endpoint floor, like the boot stick; without attestation a Hull is just another base OS"
+  residual: "a compromised Hull firmware or a physical attacker; bounded by attestation freshness, which raises the band as it ages"
+
+internal_laptop:   # ADR-0123: existing Internal endpoints, no dedicated stick, VDI only
+  enrolment: "the organisation's MDM installs NetBird and pins its management URL; the user signs in by SSO once and the device becomes a user peer (ADR-0122); Linux machines get the config file instead"
+  route: vdi
+  labels: {Internal: allowed, Sensitive: "allowed with compensations", Restricted: "not allowed; needs an attested Hull or the boot stick"}
+  compensations_for_sensitive: ["no clipboard, files or printing", "sessions shortened by band", "watermarked screens with the user and time", "posture from NetBird and the MDM compliance signal; failing posture means Internal only"]
+  accepted_risk: "screen capture, keylogging and session hijack by malware in the base OS: VDI stops bulk exfiltration, not someone reading the screen; the tenant accepts this per label in its pack"

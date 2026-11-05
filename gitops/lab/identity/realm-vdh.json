@@ -1,0 +1,358 @@
+{
+ "accessTokenLifespan": 300,
+ "authenticationFlows": [
+  {
+   "alias": "vdh-passkey",
+   "authenticationExecutions": [
+    {
+     "authenticator": "auth-cookie",
+     "authenticatorFlow": false,
+     "priority": 10,
+     "requirement": "ALTERNATIVE",
+     "userSetupAllowed": false
+    },
+    {
+     "authenticatorFlow": true,
+     "flowAlias": "vdh-passkey forms",
+     "priority": 20,
+     "requirement": "ALTERNATIVE",
+     "userSetupAllowed": false
+    }
+   ],
+   "builtIn": false,
+   "description": "username, then a passkey; no password",
+   "providerId": "basic-flow",
+   "topLevel": true
+  },
+  {
+   "alias": "vdh-passkey forms",
+   "authenticationExecutions": [
+    {
+     "authenticator": "auth-username-form",
+     "authenticatorFlow": false,
+     "priority": 10,
+     "requirement": "REQUIRED",
+     "userSetupAllowed": false
+    },
+    {
+     "authenticator": "webauthn-authenticator-passwordless",
+     "authenticatorFlow": false,
+     "priority": 20,
+     "requirement": "REQUIRED",
+     "userSetupAllowed": false
+    }
+   ],
+   "builtIn": false,
+   "description": "username and passkey",
+   "providerId": "basic-flow",
+   "topLevel": false
+  },
+  {
+   "alias": "vdh-enrol",
+   "authenticationExecutions": [
+    {
+     "authenticator": "auth-username-password-form",
+     "authenticatorFlow": false,
+     "priority": 10,
+     "requirement": "REQUIRED",
+     "userSetupAllowed": false
+    }
+   ],
+   "builtIn": false,
+   "description": "one-time enrolment: the enrolment password, then register a passkey",
+   "providerId": "basic-flow",
+   "topLevel": true
+  },
+  {
+   "alias": "vdh-partner-first-login",
+   "authenticationExecutions": [
+    {
+     "authenticator": "idp-create-user-if-unique",
+     "authenticatorFlow": false,
+     "priority": 10,
+     "requirement": "REQUIRED",
+     "userSetupAllowed": false
+    }
+   ],
+   "builtIn": false,
+   "description": "a partner's user: created under the partner's prefix, never linked",
+   "providerId": "basic-flow",
+   "topLevel": true
+  }
+ ],
+ "browserFlow": "vdh-passkey",
+ "bruteForceProtected": true,
+ "clients": [
+  {
+   "attributes": {
+    "pkce.code.challenge.method": "S256",
+    "post.logout.redirect.uris": "https://pharos.${ring_domain:=lab.vdh.test}/*"
+   },
+   "clientAuthenticatorType": "client-secret",
+   "clientId": "pharos",
+   "directAccessGrantsEnabled": false,
+   "enabled": true,
+   "frontchannelLogout": true,
+   "implicitFlowEnabled": false,
+   "name": "Insular Pharos",
+   "protocol": "openid-connect",
+   "protocolMappers": [
+    {
+     "config": {
+      "access.token.claim": "true",
+      "id.token.claim": "false",
+      "included.client.audience": "pharos"
+     },
+     "name": "audience-pharos",
+     "protocol": "openid-connect",
+     "protocolMapper": "oidc-audience-mapper"
+    }
+   ],
+   "publicClient": false,
+   "redirectUris": [
+    "https://pharos.${ring_domain:=lab.vdh.test}/oauth2/callback",
+    "https://netbox.${ring_domain:=lab.vdh.test}/oauth2/callback"
+   ],
+   "serviceAccountsEnabled": false,
+   "standardFlowEnabled": true,
+   "webOrigins": [
+    "https://pharos.${ring_domain:=lab.vdh.test}"
+   ]
+  },
+  {
+   "attributes": {
+    "backchannel.logout.session.required": "true",
+    "backchannel.logout.url": "https://cloud.${ring_domain:=lab.vdh.test}/backchannel_logout",
+    "pkce.code.challenge.method": "S256",
+    "post.logout.redirect.uris": "https://cloud.${ring_domain:=lab.vdh.test}/*"
+   },
+   "clientId": "opencloud-web",
+   "directAccessGrantsEnabled": false,
+   "enabled": true,
+   "frontchannelLogout": false,
+   "implicitFlowEnabled": false,
+   "name": "OpenCloud web",
+   "protocol": "openid-connect",
+   "protocolMappers": [
+    {
+     "config": {
+      "access.token.claim": "true",
+      "claim.name": "roles",
+      "id.token.claim": "true",
+      "jsonType.label": "String",
+      "multivalued": "true",
+      "userinfo.token.claim": "true"
+     },
+     "name": "roles",
+     "protocol": "openid-connect",
+     "protocolMapper": "oidc-usermodel-realm-role-mapper"
+    }
+   ],
+   "publicClient": true,
+   "redirectUris": [
+    "https://cloud.${ring_domain:=lab.vdh.test}/",
+    "https://cloud.${ring_domain:=lab.vdh.test}/oidc-callback.html",
+    "https://cloud.${ring_domain:=lab.vdh.test}/oidc-silent-redirect.html"
+   ],
+   "serviceAccountsEnabled": false,
+   "standardFlowEnabled": true,
+   "webOrigins": [
+    "https://cloud.${ring_domain:=lab.vdh.test}"
+   ]
+  },
+  {
+   "attributes": {
+    "pkce.code.challenge.method": "S256"
+   },
+   "clientId": "OpenCloudDesktop",
+   "directAccessGrantsEnabled": false,
+   "enabled": true,
+   "implicitFlowEnabled": false,
+   "name": "OpenCloud desktop",
+   "protocol": "openid-connect",
+   "protocolMappers": [
+    {
+     "config": {
+      "access.token.claim": "true",
+      "claim.name": "roles",
+      "id.token.claim": "true",
+      "jsonType.label": "String",
+      "multivalued": "true",
+      "userinfo.token.claim": "true"
+     },
+     "name": "roles",
+     "protocol": "openid-connect",
+     "protocolMapper": "oidc-usermodel-realm-role-mapper"
+    }
+   ],
+   "publicClient": true,
+   "redirectUris": [
+    "http://127.0.0.1/*",
+    "http://localhost/*"
+   ],
+   "serviceAccountsEnabled": false,
+   "standardFlowEnabled": true
+  },
+  {
+   "attributes": {
+    "pkce.code.challenge.method": "S256"
+   },
+   "clientAuthenticatorType": "client-secret",
+   "clientId": "synapse",
+   "directAccessGrantsEnabled": false,
+   "enabled": true,
+   "frontchannelLogout": false,
+   "implicitFlowEnabled": false,
+   "name": "Matrix (Synapse)",
+   "protocol": "openid-connect",
+   "publicClient": false,
+   "redirectUris": [
+    "https://matrix.${ring_domain:=lab.vdh.test}/_synapse/client/oidc/callback"
+   ],
+   "serviceAccountsEnabled": false,
+   "standardFlowEnabled": true,
+   "webOrigins": [
+    "https://matrix.${ring_domain:=lab.vdh.test}"
+   ]
+  },
+  {
+   "attributes": {
+    "pkce.code.challenge.method": "S256"
+   },
+   "clientAuthenticatorType": "client-secret",
+   "clientId": "forgejo",
+   "directAccessGrantsEnabled": false,
+   "enabled": true,
+   "frontchannelLogout": false,
+   "implicitFlowEnabled": false,
+   "name": "Forge (Forgejo)",
+   "protocol": "openid-connect",
+   "publicClient": false,
+   "redirectUris": [
+    "https://git.${ring_domain:=lab.vdh.test}/user/oauth2/keycloak/callback"
+   ],
+   "serviceAccountsEnabled": false,
+   "standardFlowEnabled": true,
+   "webOrigins": [
+    "https://git.${ring_domain:=lab.vdh.test}"
+   ]
+  },
+  {
+   "attributes": {
+    "pkce.code.challenge.method": "S256"
+   },
+   "clientAuthenticatorType": "client-secret",
+   "clientId": "netbird-main",
+   "directAccessGrantsEnabled": false,
+   "enabled": true,
+   "implicitFlowEnabled": false,
+   "name": "NetBird main network",
+   "protocol": "openid-connect",
+   "publicClient": false,
+   "redirectUris": [
+    "https://nb.vdh.test/oauth2/callback"
+   ],
+   "serviceAccountsEnabled": false,
+   "standardFlowEnabled": true
+  }
+ ],
+ "displayName": "Insular (lab)",
+ "enabled": true,
+ "failureFactor": 5,
+ "passwordPolicy": "length(14) and notUsername",
+ "permanentLockout": false,
+ "realm": "vdh",
+ "registrationAllowed": false,
+ "rememberMe": false,
+ "requiredActions": [
+  {
+   "alias": "webauthn-register-passwordless",
+   "config": {},
+   "defaultAction": false,
+   "enabled": true,
+   "name": "Register a passkey",
+   "priority": 10,
+   "providerId": "webauthn-register-passwordless"
+  }
+ ],
+ "resetPasswordAllowed": false,
+ "roles": {
+  "realm": [
+   {
+    "description": "Insular Pharos view: board-and-risk-owner",
+    "name": "pharos-board-and-risk-owner"
+   },
+   {
+    "description": "Insular Pharos view: service-owner",
+    "name": "pharos-service-owner"
+   },
+   {
+    "description": "Insular Pharos view: security-officer",
+    "name": "pharos-security-officer"
+   },
+   {
+    "description": "Insular Pharos view: data-owner",
+    "name": "pharos-data-owner"
+   },
+   {
+    "description": "Insular Pharos view: operator",
+    "name": "pharos-operator"
+   },
+   {
+    "description": "Insular Pharos view: tenant-admin",
+    "name": "pharos-tenant-admin"
+   },
+   {
+    "description": "Insular Pharos view: auditor",
+    "name": "pharos-auditor"
+   },
+   {
+    "description": "Insular Pharos view: site-sysadmin",
+    "name": "pharos-site-sysadmin"
+   },
+   {
+    "description": "OpenCloud role opencloudAdmin",
+    "name": "opencloudAdmin"
+   },
+   {
+    "description": "OpenCloud role opencloudSpaceAdmin",
+    "name": "opencloudSpaceAdmin"
+   },
+   {
+    "description": "OpenCloud role opencloudUser",
+    "name": "opencloudUser"
+   },
+   {
+    "description": "OpenCloud role opencloudGuest",
+    "name": "opencloudGuest"
+   },
+   {
+    "description": "may see data labelled up to PUBLIC",
+    "name": "clearance-public"
+   },
+   {
+    "description": "may see data labelled up to Internal",
+    "name": "clearance-internal"
+   },
+   {
+    "description": "may see data labelled up to Sensitive",
+    "name": "clearance-sensitive"
+   },
+   {
+    "description": "may see data labelled up to Restricted",
+    "name": "clearance-restricted"
+   }
+  ]
+ },
+ "sslRequired": "external",
+ "ssoSessionIdleTimeout": 1800,
+ "ssoSessionMaxLifespan": 28800,
+ "webAuthnPolicyPasswordlessAttestationConveyancePreference": "none",
+ "webAuthnPolicyPasswordlessRequireResidentKey": "Yes",
+ "webAuthnPolicyPasswordlessRpEntityName": "Insular",
+ "webAuthnPolicyPasswordlessSignatureAlgorithms": [
+  "ES256",
+  "RS256"
+ ],
+ "webAuthnPolicyPasswordlessUserVerificationRequirement": "required"
+}

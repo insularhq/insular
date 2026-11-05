@@ -1,0 +1,9 @@
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata: {name: data-authz, namespace: vdh-demo-app}
+spec:
+  targetRefs: [{group: gateway.networking.k8s.io, kind: HTTPRoute, name: data}]
+  extAuth:
+    failOpen: false
+    grpc:
+      backendRefs: [{name: pdp, namespace: vdh-pdp, port: 9191}]

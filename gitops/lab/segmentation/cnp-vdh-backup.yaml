@@ -1,0 +1,31 @@
+# the encrypting S3 front takes requests only from the database namespace and its own; Garage keeps its
+# drill policy (only from inside vdh-backup).
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata: {name: ingress, namespace: vdh-backup}
+spec:
+  endpointSelector: {}
+  ingress:
+    - fromEndpoints: [{matchLabels: {k8s:io.kubernetes.pod.namespace: vdh-backup}}]
+    - fromEndpoints: [{matchLabels: {k8s:io.kubernetes.pod.namespace: vdh-test}}]
+      toPorts: [{ports: [{port: "8080", protocol: TCP}]}]
+    - fromEndpoints: [{matchLabels: {k8s:io.kubernetes.pod.namespace: vdh-identity}, matchExpressions: [{key: cnpg.io/cluster, operator: Exists}]}]
+      toPorts: [{ports: [{port: "3900", protocol: TCP}]}]   # kc-db's backups
+    - fromEndpoints: [{matchLabels: {k8s:io.kubernetes.pod.namespace: vdh-tenant-demo}, matchExpressions: [{key: cnpg.io/cluster, operator: Exists}]}]
+      toPorts: [{ports: [{port: "3900", protocol: TCP}]}]   # synapse-db's backups
+    - fromEndpoints: [{matchLabels: {k8s:io.kubernetes.pod.namespace: vdh-forge}, matchExpressions: [{key: cnpg.io/cluster, operator: Exists}]}]
+      toPorts: [{ports: [{port: "3900", protocol: TCP}]}]   # forgejo-db's backups
+    - fromEndpoints: [{matchLabels: {k8s:io.kubernetes.pod.namespace: vdh-netbox}, matchExpressions: [{key: cnpg.io/cluster, operator: Exists}]}]
+      toPorts: [{ports: [{port: "3900", protocol: TCP}]}]   # ADR-0171: netbox-db's backups
+    - fromEndpoints: [{matchLabels: {k8s:io.kubernetes.pod.namespace: openbao, app: openbao-snapshot}}]
+      toPorts: [{ports: [{port: "3900", protocol: TCP}]}]   # OpenBao's Raft snapshots
+    - fromEndpoints: [{matchLabels: {k8s:io.kubernetes.pod.namespace: vdh-nbmain, app: state-backup}}]
+      toPorts: [{ports: [{port: "3900", protocol: TCP}]}]   # application state
+    - fromEndpoints: [{matchLabels: {k8s:io.kubernetes.pod.namespace: vdh-nblogin, app: state-backup}}]
+      toPorts: [{ports: [{port: "3900", protocol: TCP}]}]   # application state
+    - fromEndpoints: [{matchLabels: {k8s:io.kubernetes.pod.namespace: vdh-tenant-demo, app: state-backup}}]
+      toPorts: [{ports: [{port: "3900", protocol: TCP}]}]   # application state
+    - fromEndpoints: [{matchLabels: {k8s:io.kubernetes.pod.namespace: vdh-forge, app: state-backup}}]
+      toPorts: [{ports: [{port: "3900", protocol: TCP}]}]   # application state
+    - fromEndpoints: [{matchLabels: {k8s:io.kubernetes.pod.namespace: vdh-telemetry}, matchExpressions: [{key: app, operator: In, values: [clickhouse, telemetry-backup]}]}]
+      toPorts: [{ports: [{port: "3900", protocol: TCP}]}]   # the event store's backups

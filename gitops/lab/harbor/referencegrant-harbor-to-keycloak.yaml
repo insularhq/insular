@@ -1,0 +1,8 @@
+# The Harbor's routes may reach exactly two services outside its namespace: this ring's Keycloak (the vdh realm only,
+# by path) and OpenCloud, for a partner's users (federation design, stages 5 and 6)
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata: {name: harbor-to-keycloak, namespace: vdh-identity}
+spec:
+  from: [{group: gateway.networking.k8s.io, kind: HTTPRoute, namespace: vdh-harbor}]
+  to: [{group: "", kind: Service, name: keycloak}]

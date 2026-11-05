@@ -1,0 +1,85 @@
+# The Isle's backups off the node (ADR-0139 amendment: layers per site). Every six hours: rclone
+# copies every bucket its read-only key may read (the databases, OpenBao's snapshots, the applications' state)
+# out of the ring's Garage into scratch space, then restic encrypts
+# them into every repository the site lists (layer 2: the offsite box over SFTP, layer 4: the second provider when it
+# is configured). The targets are data, not code: the Secret offsite-targets (made per site by
+# the lab tooling) holds rclone.conf, the repository list, the restic password, the SSH key and
+# the target's host key. A target that cannot be reached is skipped and retried next run; a disconnected site keeps
+# its layer-2 copy current, the later layers catch up.
+apiVersion: batch/v1
+kind: CronJob
+metadata: {name: offsite-backup, namespace: vdh-backup, annotations: {vdh.component: "restic", vdh.app-version: "0.19.1"}}
+spec:
+  schedule: "30 */6 * * *"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 3600
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 3000
+      template:
+        metadata: {labels: {app: offsite-backup}}
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext: {runAsNonRoot: true, runAsUser: 1000, runAsGroup: 1000, fsGroup: 1000, seccompProfile: {type: RuntimeDefault}}
+          initContainers:
+            - name: copy-from-garage
+              image: docker.io/rclone/rclone:1.75.1@sha256:45401ad7410db1d67ffdb58e19059ad20b0d8e0285a60e38bbec55cc1019c7a5
+              command: [sh, -c]
+              args:
+                - |
+                  set -eu
+                  # every bucket the read-only key may read: granting that key read on a bucket is what enrols it
+                  bs=$(rclone --config /targets/rclone.conf --cache-dir /work/.rclone lsd garage: | awk '{print $NF}')
+                  [ -n "$bs" ] || { echo "the read key sees no bucket"; exit 1; }
+                  for b in $bs; do
+                    echo "$(date -u +%T) copy $b"
+                    rclone --config /targets/rclone.conf --cache-dir /work/.rclone sync "garage:$b" "/work/data/$b"
+                  done
+              resources: {requests: {cpu: 50m, memory: 64Mi}, limits: {memory: 256Mi}}
+              securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+              volumeMounts: [{name: work, mountPath: /work}, {name: targets, mountPath: /targets, readOnly: true}]
+          containers:
+            - name: restic
+              image: docker.io/restic/restic:0.19.1@sha256:136600b6ff6843d61d355f7f71f460a166429f35de6fd11b568fece3c9a4d510
+              command: [sh, -c]
+              env: [{name: RESTIC_CACHE_DIR, value: /work/.restic-cache}, {name: HOME, value: /work}, {name: TMPDIR, value: /work/tmp}]
+              args:
+                - |
+                  set -u
+                  install -d -m 700 /work/.ssh /work/tmp && install -m 600 /targets/ssh_key /work/.ssh/id && install -m 600 /targets/known_hosts /work/.ssh/known_hosts
+                  # no brace expansions: Flux would substitute them (the unit takes no ring settings)
+                  fails=0
+                  isle=$(cat /targets/isle 2>/dev/null || echo isle)
+                  while read -r repo hostport; do
+                    [ -n "$repo" ] || continue
+                    [ -n "$hostport" ] || hostport=22
+                    kind=$(echo "$repo" | cut -d: -f1)
+                    echo "$(date -u +%T) backup to the $kind target"
+                    if [ "$kind" = sftp ]; then
+                      who=$(echo "$repo" | sed -E 's#^sftp:([^:]+):.*#\1#')
+                      set dummy -o "sftp.command=ssh -p $hostport -i /work/.ssh/id -o UserKnownHostsFile=/work/.ssh/known_hosts -o StrictHostKeyChecking=yes -o BatchMode=yes -o ConnectTimeout=20 $who -s sftp"; shift
+                    else
+                      set dummy; shift
+                    fi
+                    # a site's first run makes its repository (restic backup alone does not)
+                    restic -r "$repo" --password-file /targets/restic.password "$@" cat config >/dev/null 2>&1                       || restic -r "$repo" --password-file /targets/restic.password "$@" init
+                    if restic -r "$repo" --password-file /targets/restic.password "$@" backup /work/data --tag databases --host "$isle" --no-scan; then
+                      restic -r "$repo" --password-file /targets/restic.password "$@" forget --tag databases --keep-daily 14 --keep-weekly 8 --keep-monthly 12 --prune >/dev/null 2>&1 || true
+                      echo "$(date -u +%T) done $kind"
+                    else
+                      echo "$(date -u +%T) FAILED $kind (retried next run)"; fails=$((fails+1))
+                    fi
+                  done < /targets/repos
+                  [ "$fails" -eq 0 ]
+              resources: {requests: {cpu: 100m, memory: 128Mi}, limits: {memory: 512Mi}}
+              # OpenSSH refuses a uid with no passwd entry ("No user exists for uid 1000", ring S): nobody exists
+              # in the restic image; the pod's group 1000 (fsGroup) still reads the Secret
+              securityContext: {runAsUser: 65534, allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+              volumeMounts: [{name: work, mountPath: /work}, {name: targets, mountPath: /targets, readOnly: true}]
+          volumes:
+            - {name: work, emptyDir: {sizeLimit: 5Gi}}
+            - {name: targets, secret: {secretName: offsite-targets, defaultMode: 0440, optional: false}}

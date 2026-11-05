@@ -1,0 +1,184 @@
+# Where each service runs and how each kind of client reaches it. Four tiers: the VDHome core (provider), the tenant
+# instance (the tenant's core), the edge site (DDIL) and the endpoint (stick, thin client, fat client). Changes flow
+# down as signed artefacts and up as evidence and tickets; nothing is pushed into a tenant.
+
+tiers:
+  vdhome-core:    "the provider's management plane: VDHome's own forge, release signing (offline), registry, provider pane, VDHome's own service desk"
+  tenant-instance: "one instance per tenant (cloud dedicated or the tenant's data centre): the tenant's platform, overlays, ITSM and approvals"
+  edge-site:      "a site that must keep working during DDIL: local copies, queues and mirrors, never the source of truth"
+  drp-site:       "the disaster-recovery location at another provider: replicas, backup copies, the cyber vault, warm standbys, the off-instance evaluator and status page"
+  endpoint:       "boot stick, thin client (browser or VDI) or fat client (an edge site of one)"
+
+gitops:
+  vdhome-core:
+    forge: "a hosted forge, or Forgejo self-hosted on the VDHome core (ADR-0063); releases are signed offline, so the forge stays low-trust"
+    holds: [model, packs, rule packs, release definitions, VDHome's own issues]
+    signs: "release root offline; signed tags and OCI bundles (cosign) to the registry"
+  tenant-instance:
+    forge: "Forgejo (module client-forge) when the tenant changes its own overlays or wants feedback in git; otherwise none"
+    holds: [tenant overlays (tighten only), tenant issues, mirrors of signed releases]
+    reconcile: "Flux pulls the signed release bundle from the registry plus the tenant overlay; tenant overlays are signed by the tenant's approvers through the decision inbox"
+  edge-site:
+    forge: "a bare git mirror; no local authoring"
+    holds: [signed release and overlay mirrors, preloaded image archives]
+    reconcile: "Flux on the site reconciles from the local mirror; during DDIL it stays on the last signed tag; local changes are drift, except break-glass, which is reconciled on reconnect"
+  drp-site:
+    forge: "a mirror of the core forge and of every tenant forge, plus a registry mirror with all signed bundles"
+    reconcile: "warm standbys reconcile from the mirrors, so the DRP site can rebuild any instance without the core"
+  endpoint:
+    stick: "no git: the image arrives through RAUC and hawkBit, policy as a signed bundle"
+    fat-client: "K3s as an edge site of one: Flux pulls signed bundles over the VPN; no forge"
+    thin-client: "nothing local; developers use the forge's web UI through the VPN or a VDI developer desktop (signing on the endpoint, ADR-0055)"
+
+itsm:
+  vdhome-core:
+    what: "VDHome's own service desk for provider incidents and changes: GLPI on the management plane"
+    sees: "metadata only from tenants (states, tickets VDHome is assigned); never tenant content"
+  tenant-instance:
+    what: "GLPI per tenant (module itsm): the tenant's tickets, changes, approvals; the CMDB is a view built from the git inventory"
+    links: "a ticket for VDHome is mirrored up to the VDHome desk with the tenant's consent; status flows back"
+  edge-site:
+    what: "decided (ADR-0063): no full GLPI by default: tickets and change records are written to a local NATS JetStream queue (leaf node) and a read-only cache of open tickets and the CMDB view is served; on reconnect the queue replays into the tenant GLPI"
+    large_sites: "a site that must run its own service desk during long DDIL gets its own GLPI, synchronised one way through the same event log (no open-source ITSM does multi-master)"
+  drp-site:
+    what: "backup copies of the VDHome and tenant GLPI databases; restored on declaration, queues at the edge keep their tickets meanwhile"
+  endpoint:
+    stick: "GLPI and the decision inbox in the hardened browser, online only"
+    thin-client: "browser through the VPN, or inside VDI"
+    fat-client: "offline tickets into its local queue, replayed on reconnect; GLPI web when online"
+
+clients:   # how each client reaches the tiers
+  thin-client: {network: "NetBird to the tenant instance (and to the edge site it stands in)", ui: "the endpoint's own browser for sign-in and ceremonies; VDI for apps that are not web"}
+  boot-stick:  {network: "NetBird (802.1X on tenant LANs)", ui: "the stick's hardened browser for platform web apps; pixels only for anything else (browser section)"}
+  fat-client:  {network: "NetBird; works offline as an edge site of one", ui: "local apps and the hardened browser; local K3s workloads, queue and cached policy"}
+
+browser:   # the browser on a boot stick, thin client image or fat client
+  local:
+    what: "Firefox ESR, packaged in the image, locked by enterprise policies (policies.json)"
+    reaches: "only platform origins (allow-list in the policy, matched by NetBird destinations); everything else is blocked"
+    policies: [no extensions except an allow-list, no password manager, no sync or accounts, no telemetry, HTTPS-only, platform CA pinned through the policy, WebAuthn with CTAP2 PIN, downloads off or to the encrypted home for Internal only, profile in memory per session]
+    sandbox: "runs as the user inside the stick's session with Firefox's own content sandbox; the captive-portal browser is a separate instance and user"
+    data: "Internal and Sensitive pages render on the stick in memory; nothing Sensitive is written to the home"
+  pixels:
+    what: "a disposable browser on the platform, streamed as pixels (Neko over WebRTC through the VPN; a browser kiosk in VDI as the exit)"
+    when: "by default for every stick user, for any destination that is not a platform origin, only to the signed allow-list behind three perimeters (platform/egress.yaml, ADR-0063); also for Sensitive web apps a tenant wants kept off the stick"
+    limits: "no FIDO2 inside the remote browser (ADR-0055): it is signed in by token exchange from the session agent"
+  thin-client: "the same Firefox ESR policy set on managed thin clients; unmanaged devices use VDI or pixels"
+
+# Per runtime component: tiers, behaviour when cut off from the core (DDIL), buffer, federation, reconciliation after
+# the cut, and its role at the DRP site. HA per size lives in platform/resilience.yaml.
+ddil_models:
+  works: "keeps its full local function during isolation"
+  degraded: "reduced (read-only, cached or local-only) during isolation"
+  stops: "needs the core; users are told (fail loudly), work resumes on reconnect"
+buffer_models:
+  none: "nothing to buffer (stateless or rebuilt)"
+  queue: "store and forward: writes are queued locally and delivered on reconnect"
+  cache: "read-only copy with an age limit (policy bundles, zones, signatures, models)"
+  journal: "a local log of changes replayed or merged on reconnect"
+federation_models:
+  independent: "a full instance per site; sites exchange signed records, never share state"
+  leaf: "connected to a hub; publishes locally and catches up after a cut"
+  mirror: "one-way copy from the core (signed artefacts, bundles, zones)"
+  replica: "asynchronous replication of data to the DRP site or between zones"
+  central: "runs only at the core"
+reconcile_models:
+  auto: "converges automatically after reconnect"
+  gated: "reconciled through the reconnect pipeline: re-profile, drift, risk, then reconcile, quarantine or destroy (tools/rejoin.py)"
+  rebuild: "rebuilt from signed artefacts rather than merged"
+  none: "nothing to reconcile"
+drp_roles:
+  warm-standby: "installed and reconciled at the DRP site, takes over on declaration"
+  replica: "data replicated to the DRP site continuously"
+  snapshot: "consistent snapshots shipped to the DRP site"
+  backup-copy: "restorable from copies held at the DRP site"
+  cold: "rebuilt at the DRP site from code and artefacts when needed"
+  none: "not relevant at the DRP site"
+components:
+  "K3s": {tiers: [tenant-instance, drp-site, edge-site, endpoint], isolated: works, buffer: none, federation: independent, reconcile: rebuild, drp: warm-standby}
+  "Envoy Gateway": {tiers: [tenant-instance, drp-site, edge-site], isolated: works, buffer: none, federation: independent, reconcile: auto, drp: warm-standby}
+  "cert-manager": {tiers: [tenant-instance, drp-site, edge-site], isolated: degraded, buffer: none, federation: independent, reconcile: auto, drp: warm-standby}
+  "Keycloak": {tiers: [tenant-instance, drp-site, edge-site], isolated: works, buffer: journal, federation: mirror, reconcile: gated, drp: replica}
+  "PostgreSQL": {tiers: [tenant-instance, drp-site, edge-site], isolated: works, buffer: journal, federation: replica, reconcile: gated, drp: replica}
+  "CloudNativePG": {tiers: [tenant-instance, drp-site, edge-site], isolated: works, buffer: none, federation: independent, reconcile: auto, drp: warm-standby}
+  "OpenBao": {tiers: [tenant-instance, drp-site, edge-site], isolated: works, buffer: none, federation: independent, reconcile: gated, drp: snapshot}
+  "CryptPad": {tiers: [tenant-instance], isolated: stops, buffer: none, federation: central, reconcile: none, drp: backup-copy}
+  "OpenTelemetry Collector": {tiers: [tenant-instance, drp-site, edge-site, endpoint], isolated: works, buffer: queue, federation: leaf, reconcile: auto, drp: warm-standby}
+  "VictoriaMetrics": {tiers: [tenant-instance, drp-site, edge-site], isolated: works, buffer: journal, federation: leaf, reconcile: auto, drp: replica}
+  "VictoriaLogs": {tiers: [tenant-instance, drp-site, edge-site], isolated: works, buffer: journal, federation: leaf, reconcile: auto, drp: replica}
+  "Grafana": {tiers: [tenant-instance, drp-site, edge-site], isolated: works, buffer: none, federation: independent, reconcile: rebuild, drp: warm-standby}
+  "Flux": {tiers: [tenant-instance, drp-site, edge-site, endpoint], isolated: works, buffer: cache, federation: mirror, reconcile: auto, drp: warm-standby}
+  "restic": {tiers: [tenant-instance, drp-site, edge-site, endpoint], isolated: works, buffer: queue, federation: mirror, reconcile: auto, drp: backup-copy}
+  "decision-inbox": {tiers: [tenant-instance, drp-site, edge-site], isolated: degraded, buffer: journal, federation: independent, reconcile: gated, drp: warm-standby}
+  "Cilium": {tiers: [tenant-instance, drp-site, edge-site, endpoint], isolated: works, buffer: none, federation: independent, reconcile: rebuild, drp: warm-standby}
+  "OPA": {tiers: [tenant-instance, drp-site, edge-site, endpoint], isolated: works, buffer: cache, federation: mirror, reconcile: auto, drp: warm-standby}
+  "evaluator": {tiers: [vdhome-core, tenant-instance, drp-site, edge-site], isolated: works, buffer: journal, federation: leaf, reconcile: auto, drp: warm-standby}
+  "WireGuard": {tiers: [tenant-instance, drp-site, edge-site, endpoint], isolated: works, buffer: none, federation: independent, reconcile: rebuild, drp: warm-standby}
+  "Coraza": {tiers: [tenant-instance, drp-site, edge-site], isolated: works, buffer: none, federation: mirror, reconcile: auto, drp: warm-standby}
+  "OWASP CRS": {tiers: [tenant-instance, drp-site, edge-site], isolated: works, buffer: none, federation: mirror, reconcile: auto, drp: warm-standby}
+  "SUSE Micro": {tiers: [tenant-instance, drp-site, edge-site, endpoint], isolated: works, buffer: none, federation: independent, reconcile: rebuild, drp: warm-standby}
+  "system-upgrade-controller": {tiers: [tenant-instance, drp-site, edge-site], isolated: degraded, buffer: none, federation: mirror, reconcile: auto, drp: warm-standby}
+  "Backstage": {tiers: [tenant-instance], isolated: stops, buffer: none, federation: central, reconcile: rebuild, drp: cold}
+  "gVisor": {tiers: [tenant-instance, drp-site, edge-site], isolated: works, buffer: none, federation: independent, reconcile: rebuild, drp: warm-standby}
+  "NetBird": {tiers: [tenant-instance, drp-site, edge-site, endpoint], isolated: degraded, buffer: cache, federation: central, reconcile: auto, drp: warm-standby}
+  "Synapse": {tiers: [tenant-instance, edge-site], isolated: works, buffer: queue, federation: independent, reconcile: auto, drp: backup-copy}
+  "Element Web": {tiers: [tenant-instance, edge-site], isolated: works, buffer: none, federation: mirror, reconcile: rebuild, drp: cold}
+  "Falco": {tiers: [tenant-instance, drp-site, edge-site, endpoint], isolated: works, buffer: queue, federation: independent, reconcile: auto, drp: warm-standby}
+  "Forgejo": {tiers: [tenant-instance], isolated: stops, buffer: none, federation: central, reconcile: none, drp: backup-copy}
+  "NetBox": {tiers: [tenant-instance, drp-site, edge-site], isolated: works, buffer: none, federation: independent, reconcile: gated, drp: backup-copy}
+  "Valkey": {tiers: [tenant-instance, drp-site, edge-site], isolated: works, buffer: none, federation: independent, reconcile: rebuild, drp: cold}
+  "ipam-drift": {tiers: [tenant-instance, drp-site, edge-site], isolated: works, buffer: none, federation: independent, reconcile: rebuild, drp: cold}
+  "Gatus": {tiers: [vdhome-core, drp-site], isolated: works, buffer: none, federation: independent, reconcile: auto, drp: warm-standby}
+  "GLPI": {tiers: [tenant-instance, edge-site], isolated: degraded, buffer: queue, federation: central, reconcile: auto, drp: backup-copy}
+  "Argo Workflows": {tiers: [tenant-instance], isolated: degraded, buffer: none, federation: central, reconcile: none, drp: cold}
+  "Argo Events": {tiers: [tenant-instance], isolated: degraded, buffer: none, federation: central, reconcile: none, drp: cold}
+  "ntfy": {tiers: [vdhome-core, drp-site], isolated: works, buffer: queue, federation: independent, reconcile: auto, drp: warm-standby}
+  "Gammu": {tiers: [edge-site], isolated: works, buffer: queue, federation: independent, reconcile: auto, drp: none}
+  "libosdp": {tiers: [edge-site], isolated: works, buffer: queue, federation: independent, reconcile: auto, drp: none}
+  "Asterisk": {tiers: [tenant-instance, edge-site], isolated: works, buffer: none, federation: independent, reconcile: rebuild, drp: cold}
+  "SPIRE": {tiers: [tenant-instance, drp-site, edge-site], isolated: works, buffer: cache, federation: independent, reconcile: gated, drp: warm-standby}
+  "Kata Containers": {tiers: [tenant-instance, drp-site, edge-site], isolated: works, buffer: none, federation: independent, reconcile: rebuild, drp: warm-standby}
+  "Keylime": {tiers: [tenant-instance, edge-site], isolated: works, buffer: cache, federation: independent, reconcile: gated, drp: cold}
+  "RAUC": {tiers: [endpoint], isolated: works, buffer: none, federation: independent, reconcile: auto, drp: none}
+  "enrolment-service": {tiers: [tenant-instance, edge-site], isolated: degraded, buffer: none, federation: central, reconcile: none, drp: cold}
+  "hawkBit": {tiers: [tenant-instance], isolated: stops, buffer: none, federation: central, reconcile: none, drp: backup-copy}
+  "Apache Tika": {tiers: [tenant-instance], isolated: stops, buffer: none, federation: central, reconcile: none, drp: cold}
+  "ClamAV": {tiers: [tenant-instance], isolated: stops, buffer: cache, federation: central, reconcile: none, drp: cold}
+  "YARA-X": {tiers: [tenant-instance], isolated: stops, buffer: none, federation: central, reconcile: none, drp: cold}
+  "Dangerzone": {tiers: [tenant-instance], isolated: stops, buffer: none, federation: central, reconcile: none, drp: cold}
+  "ExifTool": {tiers: [tenant-instance], isolated: stops, buffer: none, federation: central, reconcile: none, drp: cold}
+  "gitleaks": {tiers: [tenant-instance], isolated: stops, buffer: none, federation: central, reconcile: none, drp: cold}
+  "Apicurio Registry": {tiers: [tenant-instance], isolated: degraded, buffer: cache, federation: central, reconcile: auto, drp: backup-copy}
+  "Apache Camel": {tiers: [tenant-instance, edge-site], isolated: works, buffer: queue, federation: leaf, reconcile: auto, drp: cold}
+  "Debezium": {tiers: [tenant-instance], isolated: degraded, buffer: journal, federation: central, reconcile: auto, drp: cold}
+  "Archivematica": {tiers: [tenant-instance], isolated: stops, buffer: none, federation: central, reconcile: none, drp: backup-copy}
+  "Great Expectations": {tiers: [tenant-instance], isolated: stops, buffer: none, federation: central, reconcile: none, drp: cold}
+  "Garage": {tiers: [tenant-instance, drp-site], isolated: degraded, buffer: none, federation: replica, reconcile: auto, drp: replica}
+  "Trino": {tiers: [tenant-instance], isolated: stops, buffer: none, federation: central, reconcile: none, drp: cold}
+  "OpenMetadata": {tiers: [tenant-instance], isolated: stops, buffer: none, federation: central, reconcile: none, drp: backup-copy}
+  "Eclipse EDC": {tiers: [tenant-instance], isolated: stops, buffer: none, federation: central, reconcile: none, drp: backup-copy}
+  "llama.cpp": {tiers: [tenant-instance, edge-site, endpoint], isolated: works, buffer: cache, federation: mirror, reconcile: auto, drp: cold}
+  "NeMo Guardrails": {tiers: [tenant-instance, edge-site], isolated: works, buffer: cache, federation: mirror, reconcile: auto, drp: cold}
+  "rest-server": {tiers: [drp-site], isolated: works, buffer: journal, federation: independent, reconcile: none, drp: backup-copy}
+  "vLLM": {tiers: [tenant-instance], isolated: stops, buffer: none, federation: central, reconcile: none, drp: cold}
+  "ai-egress-gate": {tiers: [tenant-instance], isolated: works, buffer: journal, federation: independent, reconcile: none, drp: backup-copy}   # ADR-0164: an Isle module in the tenant enclave; local models keep working when cut off; external routes never overflow to another site's gate
+  "MLflow": {tiers: [tenant-instance], isolated: stops, buffer: none, federation: central, reconcile: none, drp: backup-copy}
+  "Proxmox VE": {tiers: [tenant-instance, drp-site, edge-site], isolated: works, buffer: none, federation: independent, reconcile: rebuild, drp: warm-standby}
+  "Proxmox Backup Server": {tiers: [tenant-instance, drp-site, edge-site], isolated: works, buffer: queue, federation: mirror, reconcile: auto, drp: replica}
+  "OpenTDF": {tiers: [tenant-instance, edge-site], isolated: degraded, buffer: cache, federation: mirror, reconcile: gated, drp: warm-standby}
+  "Neko": {tiers: [tenant-instance], isolated: stops, buffer: none, federation: central, reconcile: none, drp: cold}
+  "neko-rooms": {tiers: [tenant-instance], isolated: stops, buffer: none, federation: central, reconcile: none, drp: cold}
+  "Knot DNS": {tiers: [tenant-instance, drp-site, edge-site], isolated: works, buffer: cache, federation: mirror, reconcile: auto, drp: none}
+  "Warpgate": {tiers: [tenant-instance, drp-site, edge-site], isolated: degraded, buffer: none, federation: central, reconcile: gated, drp: warm-standby}
+  "KeyClerk": {tiers: [tenant-instance, drp-site], isolated: degraded, buffer: queue, federation: central, reconcile: gated, drp: warm-standby}
+  "ReliKey agent": {tiers: [edge-site], isolated: works, buffer: cache, federation: independent, reconcile: gated, drp: cold}
+  "Apache Guacamole": {tiers: [tenant-instance], isolated: stops, buffer: none, federation: central, reconcile: none, drp: cold}
+  "session-agent": {tiers: [tenant-instance], isolated: stops, buffer: none, federation: central, reconcile: none, drp: cold}
+  "NATS": {tiers: [tenant-instance, drp-site, edge-site, endpoint], isolated: works, buffer: queue, federation: leaf, reconcile: auto, drp: replica}
+  "Wazuh": {tiers: [tenant-instance], isolated: degraded, buffer: queue, federation: central, reconcile: auto, drp: backup-copy}
+  "Suricata": {tiers: [tenant-instance, edge-site], isolated: works, buffer: queue, federation: independent, reconcile: auto, drp: cold}
+  "Uyuni": {tiers: [vdhome-core, tenant-instance], isolated: degraded, buffer: none, federation: central, reconcile: none, drp: cold}
+  "step-ca": {tiers: [tenant-instance], isolated: stops, buffer: none, federation: central, reconcile: none, drp: backup-copy}
+  "OpenCloud": {tiers: [tenant-instance, drp-site], isolated: stops, buffer: none, federation: central, reconcile: none, drp: backup-copy}
+  "Nextcloud": {tiers: [tenant-instance, drp-site], isolated: stops, buffer: none, federation: central, reconcile: none, drp: backup-copy}
+  "Collabora Online": {tiers: [tenant-instance], isolated: stops, buffer: none, federation: central, reconcile: none, drp: cold}

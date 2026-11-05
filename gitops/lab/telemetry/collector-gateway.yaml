@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: collector-gateway
+  namespace: vdh-telemetry
+  annotations: {vdh.component: "OpenTelemetry Collector", vdh.app-version: "v0.161.0"}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}   # one writer for the persistent queue; a rolling update deadlocks old and new
+  selector: {matchLabels: {app: collector-gateway}}
+  template:
+    metadata: {labels: {app: collector-gateway}}
+    spec:
+      serviceAccountName: collector-gateway   # watches events, read-only
+      securityContext: {runAsNonRoot: true, runAsUser: 10001, fsGroup: 10001, seccompProfile: {type: RuntimeDefault}}
+      # after a cold start (the whole Isle powered off and on) the collector exited when ClickHouse or DNS was not
+      # up yet and then waited out a growing restart backoff; it now waits for ClickHouse instead (the pinned
+      # ClickHouse image, for its bash; no new image in the tree)
+      initContainers:
+        - name: wait-for-store
+          image: docker.io/clickhouse/clickhouse-server:26.3.39.7@sha256:3a91276f066905da0edbbd622d3fc2a2df632c87ea7fe32ef4e74fdf8c9567b0
+          command: [bash, -c, "for i in $(seq 1 300); do (echo > /dev/tcp/clickhouse.vdh-telemetry.svc/9000) 2>/dev/null && exit 0; sleep 2; done; exit 1"]
+          resources: {requests: {cpu: 10m, memory: 16Mi}, limits: {memory: 64Mi}}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+      containers:
+        - name: otelcol
+          image: docker.io/otel/opentelemetry-collector-contrib:0.161.0@sha256:fd328de2552466ad78385e1b1289c3f2402b1c45f265b252aab1955b42845ac1
+          args: ["--config=/conf/gateway.yaml"]
+          env: [{name: CH_PASSWORD, valueFrom: {secretKeyRef: {name: telemetry-users, key: otel}}},
+                {name: FORGE_HOOK_TOKEN, valueFrom: {secretKeyRef: {name: forge-hook, key: token}}}]
+          ports:
+            - {name: otlp, containerPort: 4317}
+            - {name: metrics, containerPort: 8888}
+            - {name: forge-events, containerPort: 8088}
+          readinessProbe: {httpGet: {path: /, port: 13133}, periodSeconds: 10}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          resources: {requests: {cpu: 50m, memory: 128Mi}, limits: {memory: 512Mi}}
+          volumeMounts:
+            - {name: conf, mountPath: /conf, readOnly: true}
+            - {name: queue, mountPath: /var/lib/otelcol}
+      volumes:
+        - {name: conf, configMap: {name: collector-gateway}}
+        - {name: queue, persistentVolumeClaim: {claimName: collector-queue}}

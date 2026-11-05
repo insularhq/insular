@@ -1,0 +1,41 @@
+# Security labelling policy (ADR-0103): one canonical label per unit, rendered into every standard format.
+# The model's labels, rings, purposes, tenant and assurance (policies/data-provenance.yaml, packs/data-centric.yaml)
+# become a security label under the VDHOME policy. tools/security_labels.py generates:
+# - the policy as an XML SPIF (Open XML SPIF);
+# - labels in the STANAG 4774 confidentiality metadata label syntax;
+# - ESS security labels (RFC 2634);
+# - the SIO-Label mail header (RFC 7444);
+# - the XMPP security label element (XEP-0258);
+# - a Matrix event field;
+# - a STANAG 4778 metadata binding.
+# Alignment uses only publicly published editions (ADatP-4774 and ADatP-4778 Edition A Version 1 state that they are
+# authorized for public disclosure); no text of them is reproduced here. VDHOME is a business labelling policy: no
+# equivalence with any government or NATO classification is claimed, and none may be inferred from shared words.
+
+policy:
+  name: VDHOME
+  uuid: "e751d20d-8078-4632-807d-d0d6d0521217"
+  oid: "2.25.307476503447599251067651533654627324439"   # ITU-T X.667 UUID-based OID: needs no registration
+  originator: "VDHome"
+  version: 1
+
+classifications:   # model label -> SPIF classification and display marking (RFC 7444 colours: hex or HTML4 names)
+  Internal:   {name: INTERNAL,   lacv: 1, hierarchy: 1, marking: "VDHOME INTERNAL",   fgcolor: black, bgcolor: white}
+  Sensitive:  {name: SENSITIVE,  lacv: 2, hierarchy: 2, marking: "VDHOME SENSITIVE",  fgcolor: black, bgcolor: yellow}
+  Restricted: {name: RESTRICTED, lacv: 3, hierarchy: 3, marking: "VDHOME RESTRICTED", fgcolor: white, bgcolor: red}
+
+categories:   # STANAG 4774 category types; tag sets in the SPIF, each with an OID under the policy arc
+  releasable-within: {tag: "Releasable Within", type: PERMISSIVE, arc: 1, values: rings, meaning: "a reader within any listed ring; the widest is the unit's ring"}
+  purpose:           {tag: "Purpose", type: PERMISSIVE, arc: 2, values: purposes, meaning: "a reader holding a lease for any listed purpose"}
+  tenant:            {tag: "Tenant", type: RESTRICTIVE, arc: 3, values: tenants, meaning: "a reader of this tenant"}
+  assurance:         {tag: "Assurance", type: INFORMATIVE, arc: 4, values: assurance, meaning: "how far the provenance can be trusted (ADR-0099)"}
+  provenance:        {tag: "Provenance", type: INFORMATIVE, arc: 5, values: [complete, incomplete], meaning: "whether any source is unidentified"}
+
+renderings:
+  spif: {standard: "Open XML SPIF (xmlspif.org), namespace http://www.xmlspif.org/spif", use: "policy exchange with partners and label-aware products"}
+  stanag4774: {standard: "ADatP-4774 Edition A Version 1, namespace urn:nato:stanag:4774:confidentialitymetadatalabel:1:0", use: "the canonical XML label: carried by mail (type :xml), XMPP and Matrix"}
+  ess: {standard: "RFC 2634 ESSSecurityLabel, DER", use: "compact equivalent label: policy, classification and privacy mark; categories travel in the 4774 form"}
+  sio-label: {standard: "RFC 7444 SIO-Label header, RFC 2231 continuations for long values", use: "every mail the mail gate passes (to be decided with the channels design)"}
+  xep0258: {standard: "XEP-0258 urn:xmpp:sec-label:0", use: "XMPP interop; the 4774 label as <label>, the ESS label as <equivalentlabel>"}
+  matrix: {field: "org.vdhome.security_label", status: "provisional: event content field until the Matrix security-labels proposal lands in the spec, then migrated to its field", use: "room and message labels"}
+  stanag4778: {standard: "ADatP-4778 Edition A Version 1, namespace urn:nato:stanag:4778:bindinginformation:1:0", use: "binding the label to the unit; our envelope digest and signature travel as an extension of the container", status: "structural alignment; element attributes to verify against the published schema before claiming conformance"}

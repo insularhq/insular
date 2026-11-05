@@ -1,0 +1,9 @@
+# The tenant's PostgreSQL instances (CloudNativePG) talk to the Kubernetes API (the instance manager reads its Cluster
+# and reports status); nothing else of the tenant does. Platform-owned, beside the egress floor (ADR-0114).
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata: {name: database-to-api, namespace: vdh-tenant-demo}
+spec:
+  endpointSelector: {matchExpressions: [{key: cnpg.io/cluster, operator: Exists}]}
+  egress:
+    - toEntities: [kube-apiserver]

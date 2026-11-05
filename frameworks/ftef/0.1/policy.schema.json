@@ -1,0 +1,257 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ftef.vdhome.be/schema/0.1/policy.schema.json",
+  "title": "FTEF relying-party policy",
+  "description": "The values a relying party chooses within FTEF's invariants (FTEF 0.1, section 6). Annex C gives the RECOMMENDED defaults.",
+  "type": "object",
+  "required": [
+    "ftef",
+    "classes",
+    "acceptance",
+    "states",
+    "situationLevels"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "ftef": {
+      "const": "0.1"
+    },
+    "classes": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "ceiling",
+          "freshnessDays"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "ceiling": {
+            "enum": [
+              "none",
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "freshnessDays": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "0 means: only at the moment of access."
+          }
+        }
+      }
+    },
+    "acceptance": {
+      "type": "object",
+      "required": [
+        "maxDays",
+        "maxBand"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "maxDays": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maxBand": {
+          "enum": [
+            "low",
+            "medium"
+          ]
+        }
+      }
+    },
+    "states": {
+      "type": "object",
+      "required": [
+        "member",
+        "watch",
+        "restricted",
+        "suspended",
+        "withdrawn"
+      ],
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "cap",
+          "freshnessScale"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "cap": {
+            "enum": [
+              "none",
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "freshnessScale": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "limits": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/limit"
+            },
+            "description": "Limits that apply in this state whatever the band (restricted, 6.5)."
+          },
+          "upTo": {
+            "enum": [
+              "member",
+              "watch",
+              "restricted",
+              "suspended",
+              "joining"
+            ]
+          },
+          "upWhen": {
+            "type": "string"
+          },
+          "downTriggers": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": "Triggers that move a partner into this state (6.4)."
+          }
+        }
+      },
+      "propertyNames": {
+        "enum": [
+          "member",
+          "watch",
+          "restricted",
+          "suspended",
+          "withdrawn"
+        ]
+      }
+    },
+    "situationLevels": {
+      "description": "Ordered from calmest to most severe, each with the factor by which it scales freshness.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "level",
+          "freshnessScale"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "level": {
+            "type": "string",
+            "minLength": 1
+          },
+          "freshnessScale": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          }
+        }
+      }
+    },
+    "standingDecisions": {
+      "description": "Standing decisions that act as decider for registry-driven restorations up to watch (6.4).",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "author",
+          "date",
+          "scope"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "author": {
+            "type": "string",
+            "minLength": 1
+          },
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "scope": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "limit": {
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "enum": [
+            "data-ceiling",
+            "no-transit",
+            "no-automatic-actions",
+            "reduced-lease",
+            "release-on-attestation"
+          ]
+        },
+        "value": {
+          "type": [
+            "string",
+            "number"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "reduced-lease"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "value"
+            ],
+            "properties": {
+              "value": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "exclusiveMaximum": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "data-ceiling"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "value"
+            ],
+            "properties": {
+              "value": {
+                "type": "string",
+                "minLength": 1,
+                "description": "A label of the relying party's own classification scheme (6.5)."
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

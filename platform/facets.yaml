@@ -1,0 +1,169 @@
+# Facet data that no other register holds yet (ADR-0082): who owns each capability, which master or lever protects it,
+# its explicit risk links and trust anchor where no fact binding gives one, its resilience target.
+# Everything else in the facet matrix is resolved from the existing registers by
+# tools/facets.py. Owners are roles of governance/roles.yaml; in single-operator start-up mode one person holds them all (two_person_ready false).
+
+owners:
+  out-of-band-management: platform_operator
+  bare-metal-provisioning: platform_operator
+  orchestration: platform_operator
+  sandboxing: security_officer
+  host-os: platform_operator
+  host-updates: release_manager
+  ingress-and-api: security_officer
+  web-application-firewall: security_officer
+  overlay-vpn: security_officer
+  network-policy: security_officer
+  identity-broker: security_officer
+  secrets-and-pki: pki_custodian
+  policy-decision: security_officer
+  device-enrolment: security_officer
+  privileged-access: security_officer
+  access-governance: security_officer
+  edge-access: security_officer
+  reconciliation: release_manager
+  updates: release_manager
+  event-backbone: platform_operator
+  database: platform_operator
+  backup: platform_operator
+  telemetry: platform_operator
+  metrics-and-logs: security_officer
+  dashboards: platform_operator
+  status: platform_operator
+  alerting: security_officer
+  vault-workspace: owner
+  remote-browser: security_officer
+  runtime-detection: security_officer
+  itsm: owner
+  portal: owner
+  decision-inbox: owner
+  ai-egress-gate: security_officer
+
+masters_by_capability:   # capabilities whose primary implementation is a source of truth (policies/master-protection.yaml)
+  identity-broker: site Keycloak
+  secrets-and-pki: site OpenBao
+  device-enrolment: site enrolment service
+  itsm: tenant GLPI
+  metrics-and-logs: audit and telemetry store
+
+protection:   # capabilities that are levers, or protected another way than a master or the gateway
+  out-of-band-management: "lever: out-of-band management"
+  bare-metal-provisioning: "lever: out-of-band management"
+  policy-decision: "lever: policy and gateway config"
+  network-policy: "lever: policy and gateway config"
+  web-application-firewall: "lever: policy and gateway config"
+  alerting: "lever: alerting"
+  updates: "lever: device and network control"
+  overlay-vpn: "lever: device and network control"
+  reconciliation: "lever: control-plane code"
+  host-updates: "lever: control-plane code"
+  orchestration: "Kubernetes RBAC generated from git; admission control; the API only through the overlay and the bastion"
+  sandboxing: "RuntimeClass assignment by admission policy from the label; no per-workload override"
+  host-os: "transactional, read-only root; changes only through signed images and upgrade plans"
+  event-backbone: "NATS accounts and permissions generated from git; leaf credentials per site"
+  database: "CloudNativePG operator from git; credentials dynamic from OpenBao"
+  backup: "append-only repository; the backup identity cannot delete"
+  telemetry: "collector configuration from git; mTLS with SPIFFE identities"
+  runtime-detection: "rules as code, protected as control-plane code"
+  privileged-access: "Warpgate configuration from git; sessions recorded"
+  access-governance: "grants and leases are records in its signed change log, approved by passkey over the canonical record; it writes Keycloak only through its reconciler's scoped client"
+  edge-access: "the agent applies only bundles it verifies against the pinned key and refuses one older than its floor; it touches governed roles only"
+  remote-browser: "egress allow-list with two approvers and two independent pipelines (platform/egress.yaml); a disposable browser per session"
+  status: "runs outside the instance with read-only checks; its configuration from git"
+  decision-inbox: "records are signed git commits under master protection; the inbox holds no write path to any master"
+  ai-egress-gate: "the ai-egress perimeter set: only the gate's pods reach model hosts, two approvers and two independent pipelines (platform/egress.yaml); the gate's own floors deny on a broken policy (ADR-0164)"
+risk_links:   # risks a capability carries or treats, where no fact binding links it already
+  out-of-band-management: [RI-14, RI-01]
+  bare-metal-provisioning: [RI-14]
+  orchestration: [RI-02, RI-10]
+  sandboxing: [RK-13]
+  host-os: [RI-01, RI-02, RI-06]
+  host-updates: [RI-06]
+  ingress-and-api: [RK-07, RI-07]
+  web-application-firewall: [RK-07]
+  overlay-vpn: [RK-35, RK-34]
+  network-policy: [RK-14]
+  policy-decision: [RI-03, RI-09]
+  privileged-access: [RK-13, RI-13]
+  access-governance: [RI-13, RI-11]
+  edge-access: [RI-03, RI-09, RI-10]
+  reconciliation: [RI-04, RI-13]
+  updates: [RI-06]
+  event-backbone: [RI-10]
+  database: [RI-12]
+  backup: [RI-10]
+  telemetry: [RI-04]
+  dashboards: [RI-12]
+  status: [RI-10]
+  alerting: [RI-11]
+  vault-workspace: [RK-08]
+  remote-browser: [RK-14, RK-07]
+  runtime-detection: [RI-02]
+  portal: [RI-12]
+  decision-inbox: [RK-31]
+  ai-egress-gate: [RK-14]
+trust_anchor:   # what trust in the capability rests on (policies/model.yaml trust_anchors), where no fact binding gives it
+  out-of-band-management: hardware-attestation
+  bare-metal-provisioning: signature
+  orchestration: hardware-attestation
+  sandboxing: configuration
+  host-os: hardware-attestation
+  host-updates: signature
+  ingress-and-api: identity-assurance
+  web-application-firewall: signature
+  overlay-vpn: identity-assurance
+  network-policy: signature
+  policy-decision: signature
+  privileged-access: identity-assurance
+  access-governance: human-approval
+  edge-access: signature
+  reconciliation: signature
+  updates: signature
+  event-backbone: configuration
+  database: configuration
+  backup: signature
+  telemetry: signature
+  dashboards: configuration
+  status: self-report
+  alerting: configuration
+  vault-workspace: identity-assurance
+  remote-browser: configuration
+  runtime-detection: configuration
+  portal: configuration
+  decision-inbox: human-approval
+  ai-egress-gate: signature
+resilience:   # recovery: rebuilt from git (no state) or restored from its own backup, with the drill that proves it
+  out-of-band-management: "BMC settings reapplied from git; a host without a reachable BMC is managed in person"
+  bare-metal-provisioning: "rebuilt from git; hosts keep running without it"
+  orchestration: "rebuilt from git; etcd snapshot restore drilled per release (clean recovery)"
+  sandboxing: "rebuilt from git, no state"
+  host-os: "reimaged from the signed image; transactional rollback"
+  host-updates: "rebuilt from git, no state"
+  ingress-and-api: "rebuilt from git, no state; two gateway cells"
+  web-application-firewall: "rebuilt from git with the signed rule bundle"
+  overlay-vpn: "management state restored from backup; peers re-enrol if needed (federation gap: one management instance)"
+  network-policy: "rebuilt from git"
+  identity-broker: "restored from its PostgreSQL backup; people re-replicated by SCIM from the tenant IdP"
+  secrets-and-pki: "Raft snapshot restore under four-eyes unseal; drill per quarter"
+  policy-decision: "rebuilt from signed bundles"
+  device-enrolment: "restored from backup; enrolment records also in the audit chain"
+  privileged-access: "rebuilt from git; session recordings in the audit store"
+  access-governance: "its store and signed change log restored from the Isle's backups; the log verifies end to end after the restore"
+  edge-access: "rebuilt from its repository's reproducible build; a fresh agent pulls the bundle again and keeps its floor"
+  reconciliation: "rebuilt from git"
+  updates: "hawkBit state restored from backup; devices keep their last good slot (A/B)"
+  event-backbone: "JetStream streams replicated in the cluster; leaf nodes resync on reconnect"
+  database: "CloudNativePG point-in-time recovery from object storage; restore drill per release"
+  backup: "a second append-only copy at another provider (cyber vault)"
+  telemetry: "rebuilt from git, persistent queue on disk"
+  metrics-and-logs: "audit chain anchored off-site; metrics rebuilt, logs restored from snapshot"
+  dashboards: "rebuilt from the model (dashboards as code)"
+  status: "rebuilt from git; runs outside the instance"
+  alerting: "rebuilt from git; a second channel outside the instance"
+  vault-workspace: "restored from backup; documents are the tenant's (client-side encryption)"
+  itsm: "restored from its database backup; approvals also in git"
+  remote-browser: "rebuilt, no state (a disposable browser per session)"
+  runtime-detection: "rebuilt from git with the signed rules"
+  portal: "rebuilt from the model"
+  decision-inbox: "records in git; rebuilt from git"
+  ai-egress-gate: "rebuilt from git; the egress journal and mappings restored from the tenant's backup; while it is down AI egress is denied (fail-closed)"

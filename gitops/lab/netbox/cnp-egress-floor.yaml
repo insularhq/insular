@@ -1,0 +1,13 @@
+# NetBox reaches nothing outside the ring: the resolver, its own namespace, and the ring's Garage for its database's
+# backups (ISOLATED_DEPLOYMENT is set as well)
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata: {name: egress-floor, namespace: vdh-netbox}
+spec:
+  endpointSelector: {}
+  egress:
+    - toEndpoints: [{matchLabels: {k8s:io.kubernetes.pod.namespace: kube-system, k8s-app: kube-dns}}]
+      toPorts: [{ports: [{port: "53", protocol: UDP}, {port: "53", protocol: TCP}]}]
+    - toEndpoints: [{matchLabels: {k8s:io.kubernetes.pod.namespace: vdh-netbox}}]
+    - toEndpoints: [{matchLabels: {k8s:io.kubernetes.pod.namespace: vdh-backup, app: garage}}]
+      toPorts: [{ports: [{port: "3900", protocol: TCP}]}]

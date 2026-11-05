@@ -1,0 +1,39 @@
+# The public secondary of the federation zone: Knot DNS on the edge node's host network, bound
+# to the node's public addresses on 53 and serving only the ring's domain, pulled by TSIG from the Isle's signer, which
+# stays hidden. Who may ask is the node's admitted set (the lab tooling: the partners and the parent),
+# never the world. Like the ring front, root with only NET_BIND_SERVICE.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: knot-edge
+  namespace: vdh-dns
+  labels: {app: knot-edge}
+  annotations: {vdh.component: "Knot DNS", vdh.app-version: "3.6.0"}
+spec:
+  selector: {matchLabels: {app: knot-edge}}
+  template:
+    metadata: {labels: {app: knot-edge}}
+    spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      nodeSelector: {vdh.role/edge: "true"}
+      automountServiceAccountToken: false
+      securityContext: {seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: knot
+          image: docker.io/cznic/knot:v3.6.0@sha256:166fd8956f1a69eeb6558c28f65cedb4ea112d4689317f4a50c2f2787ee6a622
+          command: ["knotd", "-c", "/config/edge.conf"]
+          securityContext: {runAsUser: 0, runAsNonRoot: false, allowPrivilegeEscalation: false, capabilities: {drop: [ALL], add: [NET_BIND_SERVICE]}, readOnlyRootFilesystem: true}
+          resources: {requests: {cpu: 10m, memory: 32Mi}, limits: {memory: 128Mi}}
+          volumeMounts:
+            - {name: config, mountPath: /config, readOnly: true}
+            - {name: keys, mountPath: /keys, readOnly: true}
+            - {name: storage, mountPath: /storage}
+            - {name: rundir, mountPath: /rundir}
+            - {name: tmp, mountPath: /tmp}   # knotd loads the text config into a temporary database
+      volumes:
+        - {name: config, configMap: {name: dns-federation, items: [{key: edge.conf, path: edge.conf}]}}
+        - {name: keys, secret: {secretName: dns-edge-tsig, defaultMode: 0400}}
+        - {name: storage, emptyDir: {sizeLimit: 64Mi}}   # a secondary: rebuilt by transfer, nothing to restore
+        - {name: rundir, emptyDir: {}}
+        - {name: tmp, emptyDir: {sizeLimit: 64Mi}}

@@ -1,0 +1,12 @@
+id: custom-vdh-demo
+kind: customization
+version: 1
+add:
+  groups:
+    instance-specific:
+      - {id: C01, q: "Which client systems must the VDI and the bastion reach, and through which seam?", evidence: "instance:systems.yaml#targets", check: {min_items: 1}}
+      - {id: C02, q: "Who are this tenant's risk owners and security officers?", evidence: "instance:people.yaml#roles"}
+tighten:
+  - {question: P05, required_maturity: verified}
+waivers:
+  - {question: X10, reason: "usability review planned with the first pilot users", approved_by: {role: risk_owner, person: "demo risk owner"}, expires: "2027-03-31"}

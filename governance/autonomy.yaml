@@ -1,0 +1,128 @@
+# Autonomy as code (maturity phase 3 -> 4). Every remediation is an action with a direction; who or what may
+# execute it depends on the context (site state, data label) and the tier's risk appetite.
+#
+# Levels: forbidden < human (a person decides) < gated (system proposes, a person approves) <
+#         notify (system acts, a person is told at once and can undo) < autonomous (system acts, logged)
+#
+# Asymmetry principle: actions that REDUCE privilege or exposure (revoke, quarantine, isolate) may be automated
+# earlier than actions that INCREASE it (grant, release from quarantine, rejoin), which keep a human longer.
+# Irreversible actions are never autonomous.
+levels: [forbidden, human, gated, notify, autonomous]
+
+actions:
+  observe:            {direction: neutral,   reversible: true}
+  reconcile-config:   {direction: restore,   reversible: true}    # bring a resource back to its declared state
+  restart-workload:   {direction: restore,   reversible: true}
+  rotate-certificate: {direction: reduce,    reversible: true}
+  revoke-session:     {direction: reduce,    reversible: true}
+  revoke-user:        {direction: reduce,    reversible: true}
+  quarantine-host:    {direction: reduce,    reversible: true}    # isolate from the network, keep for forensics
+  isolate-site:       {direction: reduce,    reversible: true}
+  snapshot-forensics: {direction: neutral,   reversible: true}
+  release-quarantine: {direction: increase,  reversible: true}
+  grant-access:       {direction: increase,  reversible: true}
+  rejoin-site:        {direction: increase,  reversible: true}    # island back into the central topology
+  break-glass:        {direction: increase,  reversible: true}
+  wipe-host:          {direction: reduce,    reversible: false}
+  destroy-keys:       {direction: reduce,    reversible: false}
+  restore-from-backup: {direction: restore,  reversible: true}    # clean recovery promotion (ResOps)
+  raise-observation:  {direction: neutral,   reversible: true}    # watch in more detail: sampling, log level, flow capture (ADR-0085)
+  propose-change:     {direction: neutral,   reversible: true}    # draft a change record; a person or the approval flow decides (ADR-0088)
+  tighten-permission: {direction: reduce,    reversible: true}    # narrow RBAC or ABAC on the drifting component (ADR-0085)
+  unseal-store:       {direction: restore,   reversible: true}    # custodians enter their unseal shares (ADR-0134 manual Shamir; ADR-0159 SOP-005)
+
+# Maximum autonomy per action and tier. Contexts may lower it further (see context_caps).
+max_autonomy:
+  low-appetite:
+    observe: autonomous
+    reconcile-config: gated
+    restart-workload: notify
+    rotate-certificate: notify
+    revoke-session: autonomous
+    revoke-user: notify
+    quarantine-host: notify
+    isolate-site: gated
+    snapshot-forensics: autonomous
+    release-quarantine: human
+    grant-access: human
+    rejoin-site: human
+    break-glass: human
+    wipe-host: human
+    destroy-keys: human
+    restore-from-backup: gated
+    raise-observation: autonomous
+    propose-change: autonomous
+    tighten-permission: notify
+    unseal-store: human
+  medium-appetite:
+    observe: autonomous
+    reconcile-config: notify
+    restart-workload: autonomous
+    rotate-certificate: autonomous
+    revoke-session: autonomous
+    revoke-user: notify
+    quarantine-host: notify
+    isolate-site: gated
+    snapshot-forensics: autonomous
+    release-quarantine: gated
+    grant-access: gated
+    rejoin-site: gated
+    break-glass: human
+    wipe-host: human
+    destroy-keys: human
+    restore-from-backup: gated
+    raise-observation: autonomous
+    propose-change: autonomous
+    tighten-permission: notify
+    unseal-store: human
+  high-appetite:
+    observe: autonomous
+    reconcile-config: autonomous
+    restart-workload: autonomous
+    rotate-certificate: autonomous
+    revoke-session: autonomous
+    revoke-user: autonomous
+    quarantine-host: autonomous
+    isolate-site: notify
+    snapshot-forensics: autonomous
+    release-quarantine: gated
+    grant-access: gated
+    rejoin-site: gated
+    break-glass: human
+    wipe-host: gated
+    destroy-keys: human
+    restore-from-backup: gated
+    raise-observation: autonomous
+    propose-change: autonomous
+    tighten-permission: autonomous
+    unseal-store: human
+
+# Context caps: the situation can only lower autonomy, never raise it.
+context_caps:
+  ransomware-suspected:       # restore only after clean-room verification; nothing widens
+    restore: human
+    increase: human
+  island-disconnected:        # DDIL: no central oversight reachable
+    increase: human           # nothing that widens access without a person on site
+    restore: notify
+  label-restricted:
+    increase: human
+    restore: gated
+  tier0-target:               # the target is Tier 0 (policies/master-protection.yaml): a wrong reduce can stop the platform
+    reduce: gated
+    restore: gated
+  evidence-unknown:           # the system cannot see its own state: phase 1 failed
+    restore: gated            # do not 'fix' what you cannot observe
+    increase: forbidden
+
+# AI agents (phase 4) act only through this matrix: an agent proposes a plan, the policy engine authorises each step
+# against max_autonomy x context_caps, every step lands in the audit chain, a kill switch stops all agent actions,
+# and rate and blast-radius limits apply (max hosts per hour, never all sites at once).
+agent_limits:
+  max_actions_per_hour: 20
+  max_hosts_per_action: 3
+  never_all_sites: true
+  kill_switch: required
+
+# Actions that need approvals by more than one distinct person (keys counted once).
+min_approvers: {destroy-keys: 2, wipe-host: 2, break-glass: 2}

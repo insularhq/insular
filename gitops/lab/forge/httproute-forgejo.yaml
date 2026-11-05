@@ -1,0 +1,12 @@
+# git.<ring> through the ring gateway; Forgejo's /metrics is for Pharos inside the ring only, so the edge answers it
+# with 404 itself (Envoy Gateway's direct response) and never forwards it.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata: {name: forgejo, namespace: vdh-forge}
+spec:
+  parentRefs: [{name: pharos-gw, namespace: vdh-pharos}]
+  hostnames: ["git.${ring_domain:=lab.vdh.test}"]
+  rules:
+    - matches: [{path: {type: PathPrefix, value: /metrics}}]
+      filters: [{type: ExtensionRef, extensionRef: {group: gateway.envoyproxy.io, kind: HTTPRouteFilter, name: not-here}}]
+    - backendRefs: [{name: forgejo, port: 3000}]

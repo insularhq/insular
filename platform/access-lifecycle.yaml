@@ -1,0 +1,1105 @@
+# Access lifecycle per Isle (ADR-0173, proposed): joiners, movers and leavers, privileged and special roles,
+# for the digital infrastructure, the platform and inside a tenant; every decision is a policy decision fed by the
+# risk signals; grants federate as signed data and keep working cut off (DDIL).
+# Reviewed against prior art and by a review. Builds on identity.yaml accounts (ADR-0156), separation.yaml,
+# roles.yaml, autonomy.yaml,
+# adaptive-policy.yaml, time-gating.yaml, federation.yaml, edge.yaml and governance/hr-security.yaml; it repeats none of
+# their values and points at them instead.
+schema: access-lifecycle/0.2
+status: accepted
+
+# 0. Words used here, mapped to the registers that own them.
+glossary:
+  plane: "the three planes of this register (infrastructure, platform, tenant) group separation.yaml's planes: infrastructure = foundation; platform = assurance, governance and the platform side of access; tenant = workspace and the tenant side of access"
+  band: "the adaptive-policy.yaml band (green, amber, red, black); the trust_band of policies/model.yaml (none, low, medium, high) is a different axis and is not used here"
+  person: "a principal in the source; a persona is one of the person's accounts (identity.yaml personas); a privileged role is only ever activated on the person's admin persona; every persona beyond the base person is itself leased (section 15)"
+  justification: "the attributes a grant was justified by, recorded on the grant (unit, function, manager, Isle, project); every grant names at least one"
+  micro_review: "one question to one reviewer about one grant: keep or end, answered in the decision inbox; no answer by the deadline ends the grant"
+  appetite_tier: "the Isle's tier in packs/*/pack.yaml tiers (low-, medium-, high-appetite)"
+  step_up: "a fresh passkey authentication at the acr that icam.yaml names for the role's label ceiling"
+  review_period: "the quarterly access review of identity.yaml reviews"
+  officer: "the accountable security officer of section 4; distinct from the key officers of ADR-0138 D4 (at least three per tenant, who hold the tenant's officer keys); the security officer and the Isle deputies are appointed from those key officers"
+  grant_id: "a unique, never reused identifier; a grant revoked once never returns, a new grant takes a new id"
+
+# 1. Where a right applies. A grant always names one plane, one scope, one label ceiling and its justification.
+planes:
+  infrastructure:
+    holds: "hosts, out-of-band controllers, hypervisors and Kubernetes nodes, network and SDN, storage, PKI and OpenBao, DNS, NetBox, backups"
+    actors: [vdhome, site-sysadmin]   # site-sysadmin: the tenant's local technician where the hardware is the tenant's (ADR-0013 journeys)
+    never: "reads tenant content"
+    enforced_by:   # each claim names its control or is a disclosed residual
+      content_at_rest: "tenant-held keys (separation.yaml data_objects, vault_content): disks and backups hold ciphertext"
+      certificates: "every issuance for a tenant name is logged to a tenant-visible issuance log (CT shape); an issuance the tenant did not ask for is a finding"
+      residual: "a hypervisor administrator can read the memory of a running workload; disclosed until confidential computing is placed"
+  platform:
+    holds: "the broker, OPA and its bundles, GitOps and the pipelines, the registry, observability and the pane, the event store"
+    actors: [vdhome]
+    never: "holds a standing data-plane action (separation.yaml data_plane_actions); edits a tenant's groups (identity.yaml group_ownership)"
+    enforced_by: {logs: "content-free and redacted (separation.yaml logs)", groups: "the reconciler of section 10 refuses a platform persona as author of a tenant grant"}
+  tenant:
+    holds: "the tenant's people, groups, applications and data inside its Isles"
+    actors: [client]
+    never: "holds a platform or infrastructure role through its own groups"
+    exceptions: "site-sysadmin (an infrastructure role held by a tenant person, scope_max isle) and consultant (a tenant role held by VDHome) are the two named crossings; both are visible to the tenant and revocable by it"
+
+scope:
+  levels: [federation, tenant, isle, islet, skiff, resource]   # a grant at a level covers what lies under it in the same tenant only
+  home: "every scope has one home Isle that masters its grants (exactly one master per fact class and scope, sources-of-truth.yaml): the tenant's chosen Isle for tenant scopes, the Chartroom for VDHome's infrastructure and platform scopes"
+  succession: "a tenant names a standby home Isle; if the home is lost, the tenant's security officer and its owner sign a succession record and the standby becomes home; without it, eligibilities lapse at the horizon and only reductions and break-glass remain"
+  label_ceiling: "a grant carries the highest label it reaches (Internal, Sensitive, Restricted); token rules per label stay in icam.yaml"
+
+# 2. What a person holds. Four classes, from least to most dangerous.
+grant_classes:
+  baseline:
+    meaning: "what a person gets for being who they are in the source (birthright): sign in, own workspace, own team's resources"
+    from: "attribute rules in git (role from unit and function), evaluated by OPA; never assigned by hand"
+    widening: "a baseline that widens because an attribute changed is applied at once only for Internal resources; reaching Sensitive or Restricted, or a unit marked privileged-adjacent in the rules, waits for a micro-review by the role owner (autonomy.yaml increase)"
+    ends: "when the source attribute changes or the person leaves"
+  functional:
+    meaning: "a duty held for a time (identity.yaml functional_roles): on-call, duty officer, release officer, tenant administrator"
+    from: "a request and an approval (identity.yaml access_requests), applied as a broker group with an end"
+    max_hours: "identity.yaml functional_roles max_hours"
+  eligibility:
+    meaning: "the right to activate a privileged role; holds no power by itself"
+    from: "a request, two approvals for infrastructure and platform roles, one for tenant roles; an end of at most the review period"
+  activation:
+    meaning: "the privileged role in use: just in time, with a reason, a ticket or change and a step-up, on the person's admin persona"
+    max_hours: {infrastructure-admin: 4, platform-admin: 4, identity-admin: 2, pki-officer: 2, tenant-admin-privileged: 8, auditor-read: 24}
+    approval: "per autonomy.yaml grant-access at the Isle's appetite tier: human or gated, never autonomous"
+    carrier: "a short-lived credential (SSH certificate, OpenBao lease, Kubernetes binding with an end) issued only after the PDP finds the activation in the bundle's grant data; the broker group is a hint for applications, never the authority"
+    session: "recorded where session recording applies; a live session ends when the activation ends, the band falls to red or the person leaves"
+  break_glass:
+    meaning: "one definition only (ADR-0019, ADR-0128): 2 of 3 tokens, certificate at most 4 h, alert to the security officer, rotation after"
+    not_a_grant: "it is never requested in this register; its use opens a mandatory review (section 6)"
+
+# 3. The roles. Every role is (plane, kind); its holders come from governance/roles.yaml and separation.yaml.
+roles:
+  infrastructure-admin:  {plane: infrastructure, class: activation, eligible: platform_operator, two_person_for: [wipe-host, destroy-keys]}
+  site-sysadmin:         {plane: infrastructure, class: activation, eligible: "the tenant's named technician", scope_max: isle, may_not: [read tenant data, change PKI, change policy]}
+  platform-admin:        {plane: platform, class: activation, eligible: platform_operator}
+  identity-admin:        {plane: platform, class: activation, eligible: platform_operator, may_not: "separation.yaml identity-admin note"}
+  release-officer:       {plane: platform, class: functional, eligible: release_manager}
+  pki-officer:           {plane: infrastructure, class: activation, eligible: pki_custodian, quorum: "ceremonies.yaml"}
+  auditor-read:          {plane: [infrastructure, platform], class: activation, eligible: auditor, same_as: "separation.yaml platform-auditor", may: "read configuration, logs and evidence; never content"}
+  service-desk:          {plane: platform, class: functional, eligible: service_desk, may_not: "set, reset or read a credential (identity.yaml recovery helpdesk)"}
+  tenant-admin:          {plane: tenant, class: functional, eligible: tenant_admin, scope: "one broker organization (identity.yaml delegated_admin)"}
+  tenant-admin-privileged: {plane: tenant, class: activation, eligible: tenant_admin, may: "add identity providers, change claim mappings, change the tenant's policy pack", approval: "a second tenant administrator; a tenant with one administrator uses its security officer as second person"}
+  tenant-user:           {plane: tenant, class: baseline}
+  consultant:            {plane: tenant, class: functional, eligible: "granted by the tenant administrator (separation.yaml)"}
+  security-officer:      {plane: [infrastructure, platform, tenant], class: special}
+  dpo:                   {plane: tenant, class: special, holder: client-dpo}
+  recovery-contact:      {plane: tenant, class: special, from: "identity.yaml recovery"}
+  agent-owner:           {plane: [platform, tenant], class: special, from: "identity.yaml subject kind agent"}
+  sponsor:               {plane: tenant, class: special, from: "sources.externals"}
+  roles_yaml_gap: "governance/roles.yaml client stewardship names tenant_admin only; the tenant security officer, isle deputy, dpo, recovery contact, agent owner and sponsor are added there when this ADR is accepted (coupling)"
+
+# 4. Special roles: appointed, never requested. Powers are split so that no one holder detects, approves and accepts.
+special_roles:
+  security-officer:
+    instances: "one for VDHome (infrastructure and platform), one accountable officer per tenant (tenant plane)"
+    isle_deputy: "a named local deputy per Isle, answering to the tenant's officer, with local and cut-off powers only: second approver of envelope grants, suspend, start a break-glass review; never risk acceptance or appointments. An Isle without a local deputy cannot use the envelope"
+    appointed_by: "the owner (VDHome) or the tenant's owner, at a ceremony, from the tenant's key officers (ADR-0138 D4), recorded in git and signed"
+    deputy: "a named deputy at all times; a vacancy is a red finding on the pane and a disclosed risk (RI-11) until filled"
+    may:
+      - "suspend or put under review any person (persona_status, world_state): autonomous because it reduces, except as limited below"
+      - "approve as the second person for eligibilities, activations of infrastructure and platform roles, and recoveries"
+      - "accept a risk within the appetite (risk-cycle.yaml), time-gated (time-gating.yaml), with a second person as below"
+      - "receive every break-glass alert and run its review"
+    may_not:
+      - "set their own persona_status, approve a grant to themself, or hold an activation they approve"
+      - "suspend the owner, the auditor, their own deputy, an Isle deputy or another special-role holder without a second person (the owner or the auditor); a suspension of one of them by the officer alone is refused by the PDP"
+      - "lift a status (under-review or suspended back to normal) or lower world_state alone: lifting is a widening and needs a second person (autonomy.yaml increase)"
+      - "accept a risk that creates a grant outside the rules alone: a second person (owner or auditor), never for infrastructure or platform roles, never for a grant to the officer or the officer's deputy"
+      - "hold infrastructure-admin or platform-admin on a scope they review, unless phase 1 (section 4 phase_one)"
+      - "change the event store, the evidence archive or their own appointment"
+    oversight: "every officer act is visible to the owner and the auditor in the decision inbox and carries peer notification (ADR-0138); the auditor reviews officer acts at each review period"
+    removal: "by the owner with the auditor or the deputy as second person; removal ends every approval the officer had pending"
+  dpo: {appointed_by: "the tenant", may: "read the processing records and the access reviews of the tenant; approve disclosures (separation.yaml disclosures)"}
+  agent-owner: {rule: "an agent's grants are a subset of its owner's and end when the owner leaves or moves (time-gating.yaml delegation intersection)"}
+  sponsor: {rule: "an external's grants go to micro-review by the tenant administrator when the sponsor moves, and end when the sponsor leaves unless a new sponsor accepts within 5 working days"}
+  phase_one:   # single-operator start-up mode: one person holds owner, officer, operator, approver and identity root
+    flag: "rule data phase: one-operator, read by OPA; while it is set a rule that needs a second person runs on the compensating controls below, and the pane shows it (RI-11)"
+    review_by: "the next quarterly review"
+    ends_when: "a second person enrols in the identity root: the flag is then refused by the gate (test) and the two-person rules apply"
+    compensating: [every officer act notifies the external auditor contact with a 24 h delay, every self-approval is a pane finding, monthly self-review recorded]
+
+# 5. The lifecycle events. The source of a person decides who may start each event.
+sources:
+  tenant_people: "the tenant's identity provider via SCIM into its broker organization (identity.yaml person lifecycle); raci user-lifecycle: client A/R"
+  vdhome_people: "the identity root (estate-roles.yaml identity_root): a signed people register in git, changed by merge request and approved by the owner and the security officer"
+  externals: "a sponsor's invitation with an end date; the sponsor is accountable and must be a person in the same tenant; the provider is told in the contract to report a leaver within one working day (hr-security.yaml external_personnel)"
+  feed_limits:   # a poisoned or broken source feed is bounded
+    reductions: "more than 10 disables or 10 percent of a tenant's people in one hour pauses the feed and asks the tenant's officer (autonomy agent_limits shape); single leavers are never delayed"
+    special_holders: "the security officer, Isle deputies, recovery contacts and the tenant's key officers are never disabled by the feed alone: their disable waits for the officer or the owner (a leaver of theirs is a ceremony, hr-security.yaml)"
+anchor: "an immutable identifier from the source (source id or the upstream IdP's immutable object id); never a name or mail. A grant may be prepared before the first sign-in against the anchor (pre-assignment); the broker links on first sign-in"
+discovery:
+  rules_over_attributes: "most people need no individual record: the corporate IdP asserts attributes (groups, unit, employee type) as claims at sign-in or by scoped SCIM, and baseline rules map them to roles (members of a corporate group get a role on an application); OPA evaluates the rule from the token at the first request, without KeyClerk knowing the person beforehand"
+  people_picker: "an individual grant for someone not yet seen starts from a scoped directory search at request time (Microsoft Graph search, an LDAP query limited to the tenant's base and filter, or the IdP's own search API) by the requester; the requester chooses the person and only the immutable id (Entra oid, AD objectGUID or employeeID) is stored as the anchor; one lookup per request, never a copy of the directory; names and mail are only search terms, never keys"
+  first_login_linking: "Keycloak's identity provider mapper writes the IdP's immutable id claim into the user's anchor attribute (admin-only in the user profile); the first-broker-login flow links an existing pre-created user only by that anchor, never by mail or name; Keycloak's user-created event makes the reconciler reconcile that anchor at once, so pending group memberships follow within seconds"
+  authorisation_first: "a pre-assigned grant is honoured on the person's very first request: the token carries the issuer and the immutable id, and OPA decides on grant data keyed by (issuer, anchor, persona), so authorisation never waits for Keycloak to have created the user or for the reconciler to have run"
+  scoped_provisioning: "the people come to KeyClerk, KeyClerk never sweeps the directory: a cloud IdP's SCIM provisioning pushes only the users assigned to the application (a scoping group), and Keycloak's LDAP federation for an on-premises directory uses a custom user filter (for example membership of one group) in READ_ONLY edit mode"
+  scale: "OPA's data holds the rules and the grants of people who have individual grants, keyed by anchor, never a record per directory user"
+  test: "test_a_pre_assigned_grant_is_honoured_on_the_first_token (the KeyClerk engine's keyclerk/policy/access_test.rego, ADR-0176): a grant keyed by the IdP's immutable id allows the first request carrying that id, with no broker user involved"
+group_roles:   # one master for tenant groups
+  attribute_groups: "groups the tenant's IdP sends via SCIM are attributes (inputs to baseline rules), never grants"
+  grant_groups: "broker groups that carry functional, eligibility or activation grants are written only by the reconciler from the grant records; a membership the records do not hold is removed and is a finding"
+
+events:
+  joiner:
+    steps: [record in the source, broker account with baseline only, two passkeys enrolled at the person's own endpoint (identity.yaml self_service floor), pre-assigned grants become active only after the sponsor or manager confirms the person out of band]
+    never: "an eligibility or activation in the joiner itself; privileged access is a separate request after the first sign-in"
+    bound_connected: "account usable within 15 minutes of the source record"
+  mover:
+    trigger: "a change of unit, function, manager or Isle in the source"
+    steps:
+      - "baseline recomputed at once from the attribute rules (reduce is autonomous, widen per grant_classes.baseline.widening)"
+      - "every eligibility and functional grant whose justification names a changed attribute, or that names none, ends at once for infrastructure and platform, and after a grace for tenant grants: 14 days by default, set by the tenant between 0 and 30 in its policy pack, always 0 for privileged"
+      - "a micro-review goes to the new manager or role owner: keep, or the grant ends at the end of the grace"
+      - "authenticators are kept (the person is the same); a mover into a privileged unit enrols a new admin persona"
+    note: "a mover never keeps the old rights by default (no privilege creep)"
+  leaver:
+    trigger: "the source disables or removes the person, a sponsor's end date, or the security officer"
+    steps: [disable the broker account, end every session and refresh token, end every grant of every persona of the principal, end the NetBird lease (ADR-0122), stop certificate renewal, end or reassign agents and credentials the person owns (finding until reassigned), publish the revocation to every Isle that holds a grant for the person, start the hr-security.yaml leaver checklist]
+    bound_connected: "15 minutes from the source to every enforcement point, measured per channel"
+    channels:   # plain SCIM does not meet 15 minutes by itself
+      source_to_broker: "SCIM push from the tenant's IdP; where the IdP pushes slower than 15 minutes, the tenant's leaver form or the officer disables in the broker directly"
+      broker_to_relying_parties: "RISC account-disabled over Shared Signals where the relying party supports it (Keycloak transmits from 26.8; experimental); otherwise token lifetimes: access tokens 5 minutes (edge.yaml), privileged sessions at most 15 minutes before re-check"
+      to_isles: "the revocation list in the next bundle, pushed with priority"
+      test: "a leaver drill measures every channel against the bound on each test run"
+    bound_cut_off: "the shortest of: the revocation list arriving by any channel, the end of the grant, the end of the token, the label's offline grace (pack offline_grace_hours); never longer than the isolation horizon"
+  absence:
+    trigger: "no sign-in for 45 days (counted from shipped sign-in logs, so a cut-off Isle's sign-ins count once they ship), or leave recorded in the source"
+    steps: ["eligibilities and functional grants suspended (not ended)", "the account itself is disabled at 45 days without sign-in unless leave is recorded (CIS 5.3)", "on return: a fresh step-up and a micro-review re-enable them"]
+  return:
+    rule: "a returning person or site is classified and never silently trusted (test_return_after_absence_or_break_glass_is_classified_and_never_silently_trusted)"
+
+# 6. Fed by the policy and risk contracts. Nothing here decides; OPA decides, the risk register explains why.
+policy_feed:   # catalog/contracts.yaml policy-decision; policies/model.yaml rules; policy/vdh/decide.rego
+  request: "every grant, activation, approval, status change and recovery is an AuthZEN request: subject, action (request, approve, activate, revoke, suspend, lift), resource (role at scope), context (band, ring tier, connectivity, bundle age, clock state, approvers)"
+  transport: "AuthZEN Authorization API 1.0 at the PEP side; an adapter in front of OPA where OPA does not serve it natively"
+  rules_as_data:
+    - "separation of duties: the conflicts of separation.yaml and roles.yaml become deny rules; requester never approver"
+    - "lifetimes: the max_hours above are rule data, not code; a longer grant is a deny"
+    - "approvers: number and role per action from autonomy.yaml min_approvers and this register"
+    - "band floor: an activation needs the person's band green or amber; red allows only reductions; black ends every activation and lease (adaptive-policy.yaml band_effects)"
+    - "cut off: autonomy.yaml context_caps island-disconnected applies; a temporary Isle may revoke but never grant (ADR-0117)"
+    - "officer limits: section 4 may_not are deny rules keyed on the target's special roles"
+  data: "grants (by grant_id), eligibilities and revocations are OPA data in the signed bundle, so a local PDP decides without the home Isle"
+  bundle_integrity:
+    version: "every bundle and every envelope carries a monotonic version and a not_after; an Isle refuses a version lower than one it has seen (anti-rollback, TUF shape) and records the highest version in a TPM monotonic counter where the hardware has one"
+    freshness: "bundle age is a context attribute: past 24 h without a heartbeat from home, the Isle counts as disconnected (no stale intermittent mode); past the label's offline grace the label's after_grace applies (edge.yaml)"
+  logs: "every decision is logged (OPA decision logs, operational only: they are not tamper-evident and are not the audit record); every grant change is an event in the event store, OCSF 3005 for access grants and 3006 for group changes, 3001 for role grants (identity.yaml events)"
+risk_feed:   # platform/adaptive-policy.yaml, policies/risk-cycle.yaml, a private register
+  signals_in:
+    - "persona_status from the security officer: suspended is black, under review is red (hard rules)"
+    - "device posture, behaviour and world state set the band; an activation re-evaluates on every band change (continuous)"
+    - "the appetite tier of the Isle sets the autonomy ceiling for grant and revoke (autonomy.yaml max_autonomy)"
+  signals_out:
+    - "toxic combinations, standing privileged grants, orphan personas, overdue reviews and officer vacancies become findings that raise the residual of named risks (RI-08 broker compromised, RI-11 one person holds every role)"
+    - "a grant outside the rules is possible only as a risk acceptance by the security officer with a second person (section 4), time-gated, with a review_by, and shown loudly (ADR-0149 shape)"
+    - "access-review completion per owner is evidence for the controls that treat those risks"
+  bus: "CAEP and RISC events on the signal bus (adaptive-policy.yaml signal_bus); a grant revocation uses a VDHome event type, since the specifications define none; a foreign event is advisory and changes nothing without local policy (federation.yaml A08)"
+
+# 7. Federation: authentication and attributes federate, decisions and grants stay with their home (ADR-0078).
+federation:
+  in_tenant:
+    shape: "the home Isle masters the grants of its scope; child Isles, Islets and Skiffs receive them as signed data in their bundle"
+    authorise: "every PEP, at home and visiting, decides on grant data keyed on (issuer, subject), never on a role or group claim in a token (RI-07)"
+  parent_child:
+    shape: "the Chartroom masters VDHome's infrastructure and platform grants for every Isle; a tenant's Isle may narrow them (lockbox, separation.yaml access_request) and never widen them"
+    tenant_veto: "a platform activation inside a tenant's Isle that touches tenant-hosted resources needs the tenant's lockbox approval"
+  peer:
+    shape: "a partner tenant's people get grants only in the visited tenant, by a sponsor there; the partner's trust band follows ADR-0149"
+  propagation:
+    revoke_global: "only the subject's home (the source's Isle) or the scope's home revokes a subject or a grant everywhere; revocations are keyed by subject or grant_id with the revoking home's signature"
+    revoke_local: "any Isle may revoke or suspend locally, for its own scope, at once; a foreign revocation for a subject it does not home is advisory and raises a finding at the subject's home"
+    merge: "revocations merge as a union of grant_ids (a two-phase set: a revoked grant never returns); a rehire is a new grant_id, never a lifted revocation"
+    grant: "a grant applies only where its home signed it; on merge, a grant survives only if its home still holds it"
+
+# 8. DDIL: everything a cut-off site needs is already local, and nothing outlives the isolation horizon.
+ddil:
+  horizon_days: 7   # the isolation horizon (ADR-0172): no cached right outlives it without fresh evidence
+  offline_grace: "the pack's offline_grace_hours per label apply first (edge.yaml caches); the horizon is the outer cap, and a pack value above it is refused by the gate"
+  past_horizon: "degraded mode: sign-in with cached passkeys for Internal only, no Sensitive or Restricted, reductions and break-glass only; never a blackout of the whole Isle"
+  holds_locally: [the broker with passkeys and cached accounts, the signed bundle with grants and revocations, the revocation list, the step-up authenticators, the break-glass tokens]
+  time:
+    rule: "every end is judged on the earlier of the wall clock and monotonic elapsed time since the bundle was received (TPM or hardware counter where present)"
+    jump: "a clock jump (backwards, or forwards past the drift alarm, edge.yaml time_drift_alarm_seconds) denies every widening until reconnection; reductions still run"
+  connected:   {grant: "home Isle", revoke: "the subject's or scope's home, propagated at once; any Isle locally"}
+  intermittent:
+    rule: "decisions from the last bundle while heartbeats arrive; new grants queue at home; revocations are pushed with priority over everything else; no heartbeat for 24 h counts as disconnected"
+  disconnected:
+    reduce: "autonomous locally: suspend, revoke, end sessions"
+    widen: "no new eligibility, activation or platform grant; within a pre-signed envelope only (below)"
+    envelope:
+      meaning: "a signed allowance from the home Isle, issued while connected, naming which tenant roles the local tenant administrator and the Isle's security deputy may grant together while cut off, to any person known at home"
+      limits:
+        roles: "an explicit allowlist in the envelope of baseline and functional tenant roles; never activation or special roles (tenant-admin-privileged, recovery-contact, dpo, sponsor), never infrastructure or platform"
+        scope_max: isle
+        max_hours: 24
+        renewal: "never renewed locally; a second 24 h needs a new envelope grant with both approvers, and counts against the cap"
+        max_grants: "a count cap per Isle set in the envelope, counted in the hash-chained log (not a free counter)"
+        approvers: "2: the local tenant administrator and the Isle's security deputy, never the same person, never the grantee"
+        grantees: "people known at home (in the last bundle); never an edge-born person"
+        validity: "the envelope has its own id, version and not_after (at most the horizon); an expired or older envelope is refused"
+      log: "every envelope grant and every action under one is written to a signed, hash-chained local log (event store shape, ADR-0152); the signing key is held in the Isle's TPM or HSM, out of the site administrator's reach, and the chain head is sent to home and to a peer witness on every contact"
+      new_people: "the local tenant administrator and the Isle's security deputy together may add a person while cut off (edge.yaml identity-login); such a person is edge-born: baseline only, lease 24 h, not renewable locally, never an envelope grantee, confirmed by the source on reconnection or disabled"
+    expiry: "eligibilities need renewal from home within the horizon; past it they lapse (ddil.past_horizon)"
+  temporary_isle: "may relay and enforce revocations; never grants, renews or issues (ADR-0117)"
+  reconcile:   # reconciliation after reconnect is designed, not left to chance
+    order: [apply home revocations on first contact, ship the signed local log and check its head against the last anchored head, diff the broker's grant groups against the log and the home records, check every envelope grant, confirm edge-born people, ship decision logs and events, review break-glass use]
+    rules:
+      revocation_wins: "home revocations apply on first contact, before and in parallel with the log upload; a person revoked at home during the cut loses every local grant at once"
+      revoked_but_granted: "a local grant to a person revoked at home is a high finding with the actions taken under it listed"
+      envelope_grant: "within the envelope: stays until its own end and goes to the tenant's security officer for review within 24 h of reconnection; the officer adopts it as a home grant (new grant_id) or ends it; no answer ends it"
+      outside_envelope: "a grant outside the envelope (role, count, lifetime, approvers, grantee) cannot pass the local PDP; finding one in the log or in the broker diff is a security incident (tamper)"
+      broker_diff: "a broker grant-group membership that neither the home records nor the log hold is removed and is a security incident"
+      log_gap: "a broken hash chain, a head that does not extend the last anchored head, or a missing log is a security incident and every local grant of the cut is ended"
+      actions: "actions taken under envelope grants are flagged in the event store for the officer's review"
+      edge_born: "confirmed by the source within 24 h of reconnection or disabled"
+      other_isles: "envelope grants are scoped to their Isle, so two Isles cut off at the same time cannot conflict"
+      clock: "a clock jump or drift alarm during the cut is shown in the review; it never extended anything (ddil.time)"
+    pane: [envelope grants made during the cut, reviews pending and overdue, revoked-but-granted findings, broker-diff findings, log integrity and anchor]
+
+# 9. Encapsulating legacy ecosystems. A system that cannot take
+# part itself (no OIDC or SAML, no SCIM, local or shared accounts, no audit) is wrapped so that it inherits this
+# lifecycle from outside instead of being left out of it.
+encapsulation:
+  principle: "the governance (grants and reviews), the privileged access (bastion and vaulted credentials) and the enforcement (gateway and network) live around the legacy system; the only path in is the wrapper"
+  when: "an ecosystem that cannot speak the claims contract or take provisioning, or whose administration uses local or shared accounts (brownfield and foreign estate, ADR-0135)"
+  layers:
+    path: "the legacy system's network allows only the wrapper: Cilium or host firewall deny everything else, in and out; a direct path is a finding"
+    web: "Envoy Gateway in front with ext_authz to OPA (contract policy-decision), fail-closed when the PDP is unreachable (failure_mode_allow false, tested); the backend accepts the identity header only over mTLS from the gateway, never the person's token"
+    admin: "SSH, RDP, VNC, database and Kubernetes administration through Warpgate, one tool for every protocol it covers (warpgate README), sessions recorded"
+    credentials: "the legacy system's accounts live in OpenBao: issued per activation (SSH signed certificates; dynamic database credentials) or, for static accounts, rotated after each use; people never see them; a shared local account is a static exception in credentials.yaml with an owner, a replacement and an end; every shared password is rotated when the system is wrapped"
+    accounts: "where the system has per-person accounts, the grant reconciler (stage 1) or a midPoint connector (stage 2) creates and removes them from the grants; where it cannot, one mapped account per role behind the gateway, and the wrapper's session log is the per-person attribution"
+    policy: "the system's own older rules stay in the legacy-brownfield pack, each with a sunset and a risk acceptance (ADR-0070)"
+  recordings: "session recordings of tenant systems are tenant content: encrypted to the tenant's key, readable by the tenant's officer and, through the lockbox, by VDHome's auditor"
+  lifecycle: "a leaver, a mover or a falling band ends access at the wrapper at once and ends live sessions, even before the legacy account is removed; the reconciler removes or rotates the account after and a leftover is a finding"
+  resilience: "the wrapper runs per Isle with the Isle's HA and is a Tier 0 target (policies/master-protection.yaml); its own break-glass path to the legacy system is the ADR-0019 one, sealed and tested at each review period"
+  ddil: "the wrapper runs on the Isle with the signed bundle and the vaulted credentials, so encapsulation holds when cut off"
+  exit: "an encapsulated system carries a sunset or a plan to take part natively; leaving the wrapper is a decision with a test, never a drift"
+# 10. How it is carried out before an identity-governance suite exists, and when one arrives.
+implementation:
+  stage_1: "grants as code: grant records in git (Forgejo merge requests for VDHome, the ITSM form writing a merge request for tenants), each with grant_id, plane, scope, label ceiling, justification and end; a reconciler that applies them to broker grant groups with ends, removes what has ended and removes what the records do not hold (the drift-runner shape of ADR-0171); OPA data built from the same records"
+  stage_1_broker: "Keycloak Workflows (on by default since 26.6) for dormancy (disable at 45 days), joiner invite and notify, and leaver cleanup; never for grant groups, which have one writer, the reconciler; approvals stay in git and OPA"
+  adoption:   # what makes the stack pleasant to adopt
+    lifecycle: "SCIM inbound (supported from 26.8; switched on per realm) for the tenant's IdP; organization groups and delegated organization administration (26.7) for tenant administrators"
+    observability: "Keycloak's native metrics, user-event metrics, OpenTelemetry traces and JSON logs; a small event listener of our own writes admin and user events to the event store as OCSF (ADR-0152), since no healthy listener does"
+    automation: "keycloak-config-cli applies the realm from git (bill of materials); realm drift is found by the drift-runner shape (export and diff), since the operator's realm import only creates"
+    frontend: "Keycloakify (MIT) for the login, account and passkey pages in the platform's own look; the request and review portal is the one gap and goes to the portal module (Backstage, size M) or midPoint in stage 2"
+    avoid: ["Phase Two orgs and events extensions (Elastic License 2.0)", "unmaintained SCIM and metrics plugins", "Discord Access (Okta only)", "baton-keycloak (0.1.0, unused)"]
+  stage_2: "KeyClerk: requests, approvals, certification and micro-certification run in KeyClerk's core; midPoint only as an optional peer; OPA stays the decision point and git the record"
+  products: {broker: Keycloak, decision: OPA, record: git, requests: [Forgejo, GLPI], network_lease: NetBird, privileged_sessions: Warpgate, workload_identity: SPIRE, secrets: OpenBao}
+  version_pins: "Keycloak 26.8.x or later (SCIM supported, and the SCIM security fixes of issues 46658 and 47536) before SCIM is turned on"
+
+# 12. The access enclave: a thin Islet profile that carries only OPA, PKI, PEP, IGA and PAM.
+# Placement in sizes.yaml and the edge.yaml and icam.yaml changes
+# follow acceptance.
+access_enclave:
+  purpose: "an Islet that carries only what access control needs to hold on its own: wrapping a legacy or brownfield site without a full Isle, a forward site where only access must survive a cut, a front door for a partner"
+  runs:
+    decision: "OPA with the signed bundle (grants, revocations, envelope, passkey public keys)"
+    enforcement: "Envoy Gateway with ext_authz, fail-closed; Warpgate for SSH, RDP, VNC, databases and Kubernetes, sessions recorded; a session whose recording fails is refused"
+    pki_and_secrets: "OpenBao: a name-constrained intermediate CA for the enclave's own names, valid at most the isolation horizon (not the 30 days of edge.yaml), leaves at most 24 h; the SSH CA for activations; vaulted legacy credentials"
+    sign_in: "an edge Keycloak fed by the bundle applier (edge_sign_in below)"
+    trust_anchor: "TPM: the log-signing key and an NV counter that increments on every log entry and every bundle version"
+  not_here: "the IGA itself: grant records, the reconciler, requests, approvals and reviews stay at the home Isle (section 10); the enclave only consumes signed grant data and ships its hash-chained log; an enclave is never the home of anything"
+  budget: "floor 4 GB: Keycloak about 1250 MB per pod by the official sizing, PostgreSQL, OPA, Envoy, Warpgate and OpenBao, each with its own memory limit so one OOM cannot starve the others; a test run measures it"
+  at_rest: "the disk unlocks with the TPM plus a network-bound key (Clevis with Tang on a second device at the site), so a box taken away does not unseal; root on a running box can still use the TPM keys, so every envelope grant also carries the passkey assertions of both approvers over the grant's hash, which home verifies on reconnection"
+  tier: "Tier 0 target (policies/master-protection.yaml); the enclave itself is administered only from a privileged access workstation through the home bastion, never through its own Warpgate; while cut off only the break-glass path reaches it"
+  theft: "revoke the enclave intermediate, its NetBird peer and its token-signing key at home; rotate every vaulted credential it held; its tokens die with their minutes and its certificates with their hours"
+  phase_one: "no enclave is placed for a tenant while special_roles.phase_one is set, unless the tenant accepts it as a disclosed risk: one person would issue its intermediate, its applier account and the home broker"
+
+# 13. Sign-in at an edge site (access enclave and every Islet that runs identity-login, edge.yaml).
+edge_sign_in:
+  shape: "an independent Keycloak instance per edge site, never a member of the home cluster: Keycloak multi-site needs synchronous database replication (commit under 10 ms), which a cut breaks, and has no read-only or offline mode"
+  owns_no_users: "the edge Keycloak holds what the last bundle said plus two declared local sets, local reductions and edge-born people; everything else can be rebuilt from the bundle"
+  bundle_applier:
+    verifies: "the bundle's signature and version against the same TPM counter OPA uses; an older or unsigned bundle is refused"
+    does: "revocations first and atomically, with logout of every session of the person; then create or update users, groups and memberships, write passkey public keys as WebAuthn credentials, delete what the bundle no longer holds, clear the user cache"
+    never: "lifts a local reduction (a local disable or suspension is a sticky overlay until home confirms it), or deletes an edge-born person (reconciled by ddil.reconcile)"
+    mass_change: "more than 10 removals or 10 percent of the site's people in one bundle pauses the applier and asks the officer (sources.feed_limits shape)"
+    writes_through: "Keycloak's SCIM API (users, groups, memberships; from 26.8, switched on per realm, tokens with the SCIM base URL as audience; people found by externalId, which Keycloak keeps in the admin-only user-profile attribute anchor annotated kc.scim.schema.attribute: externalId; memberships read back through the admin API) and the import or admin path for passkeys, which SCIM cannot carry"
+    account: "a service account limited to the edge realm; writing credentials probably needs user management rights, broader than SCIM (unverified), so the credential check below is the control, not the account's scope"
+    credential_check: "after every apply and every 5 minutes, the WebAuthn credentials in Keycloak are compared with the bundle's; a credential the bundle does not hold is removed, the user's sessions end and it is a security incident"
+    watchdog: "a bundle older than the label's offline grace or the horizon switches sign-in to the degraded mode of ddil.past_horizon; because the watchdog can die, every PEP also checks bundle age per label through OPA, so a dead watchdog fails closed"
+    not_a_user_storage_plugin: "a plugin that serves users without importing them cannot serve passkeys: Keycloak's WebAuthn check reads public keys from its own credential store only; verifying passkeys in a plugin would fork security-critical code"
+  passkeys:
+    ship: "only public keys, credential ids and user handles travel in the bundle, for the people who hold grants on that site; no passwords or hashes at the edge, and no password fallback"
+    rp_id: "one RP ID per tenant, the same at home and at every edge site, because Keycloak does not support WebAuthn related origins (issue 39672): icam.yaml passkey_rp_id, a host per tenant under the instance's identity_domain"
+    user_verification: required
+    counter: "a signature counter that goes backwards is a finding; for Restricted, keys are device-bound with attestation and a regression denies step-up"
+    federated_people: "people who sign in through the tenant's own IdP enrol an Insular passkey only if they need an edge site while it is cut off; it is valid for edge sign-in only and is disabled with the person's IdP link"
+  tokens:
+    issuer: "the edge site's own issuer; the icam.yaml rule of exactly one issuer per tenant becomes one per tenant per site, applications at a site trusting the tenant's home issuer and that site's only"
+    signing_key: "in the TPM if Keycloak can use it (no native PKCS#11 or TPM key provider found: unverified); otherwise in Keycloak's database on the TPM- and Tang-sealed disk"
+    subject: "grants are keyed on the anchor carried as a claim, not on the edge-local sub, which SCIM assigns per site"
+    audience: "that site only; no other site accepts its tokens, so a captured edge cannot mint access elsewhere"
+    lifetime: "per label from icam.yaml access_token_max_min, sender-constrained per icam.yaml sender_constrained"
+    home_tokens: "accepted only with an audience that names the site, exp minus iat within the icam.yaml maximum for the label, and a signing key not in the revocation list; home key revocations travel in the revocation list"
+    daily_path: "local verification is the normal path, not a failover, so the cut-off path is exercised every day"
+  provisioning_cut_off:   # what a local IdP may provision while cut off
+    rule: "the bundle applier is the only automated provisioner while cut off; no other local identity provider is a source of people"
+    new_person: "only through an OPA-gated flow that needs passkey assertions of both the local tenant administrator and the Isle deputy, never Keycloak's own organization administration (no two-person step, bypasses OPA); the person's passkey is enrolled in person in front of both; edge-born people get a fixed minimal baseline that ignores locally set attributes"
+    leaver: "the officer, the deputy or the tenant administrator disables locally at once; disabling a special-role holder needs a second person (section 4)"
+    mover: "waits for the source; old grants end at their own end"
+    on_site_source: "where the tenant's directory already lives at that site (Active Directory, Samba AD, FreeIPA), the edge Keycloak may read it as LDAP federation for enabled status and attributes of anchors already in the bundle only: no import of unknown users, no password sign-in, and the home Isle stays the master"
+    reconnect: "the tenant's SCIM feed resumes after ddil.reconcile has applied home revocations and reviewed edge-born people"
+  fallback: "a purpose-built verifier (an established WebAuthn library and a minimal token issuer, no database) only if the measured Keycloak footprint does not fit; it is security-critical code of our own and needs its own review"
+  acceptance_test: "one test run: passkey public keys written by the applier sign a person in while the site's link is cut; Keycloak memory and cold start measured; a revoked passkey in the next bundle stops sign-in and ends the live session; a credential added outside the bundle is removed by the credential check; a forged home token with a long exp is refused; a dead watchdog fails closed at the PEP"
+# 14. External access: visitors, contractors and partners on an access lease: self-service request access, upload proof
+# (credentials, badge, picture, ...), then an approval flow, an access lease, automated onboarding with an info package,
+# and automated offboarding when the lease expires. The prior art (entitlement management, non-employee governance,
+# PIAM and visitor products, OSDP) is folded in.
+external_access:
+  principle: "an external holds one access lease: every grant, credential, network lease and badge of the person is issued with an end no later than the lease's, so the end of the lease is the end of everything, enforced locally from the bundle like any other end"
+  prior_art: "the shape follows identity-governance entitlement management (access packages per category with a fixed duration, connected organisations, sponsors, block then delete) and PIAM and visitor products (host notification, check-in and check-out, evacuation list, badge revoked in the same step); no open-source PIAM ties identity lifecycle to physical access, so the lease engine drives the door controllers itself"
+  categories:
+    visitor:    {max_days: 1, grants: "guest network only, and a badge for the visit; nothing else", approvals: "the host (sponsor) alone, the one exception to requester-never-approver, because the grant is the guest network only", escort: "required where the site marks an area escorted"}
+    contractor: {max_days: 90, grants: "functional and baseline tenant roles; eligibility for a privileged role only through the normal eligibility path, never standing", approvals: "the sponsor and the resource owner, two different people; the tenant's security officer for anything Sensitive or Restricted"}
+    partner:    {max_days: 365, grants: "as contractor", identity: "federated from a connected organisation's IdP", approvals: "as contractor", recertify: "the sponsor confirms every partner person monthly; no answer suspends"}
+  totals:
+    window_days: 365
+    max_days: 180
+    visitor_max_days: 30
+    rule: "at most 180 lease days per person per tenant in any 365 days (visitors 30 visit days); a lease past the total needs the security officer and fresh proof; the person is recognised across leases by a tombstone of the anchor and a keyed hash of the verified identity fact, kept for 365 days after the last lease"
+    tombstone_days: 365
+  sponsors: "a sponsor is a tenant person from tenant_people, never an external or an edge-born person, never the resource owner of the same request"
+  connected_organisations:
+    rule: "a partner's IdP is used only if the tenant lists the organisation as connected, with its issuer, its domains and a named contact; a tenant may also list organisations it refuses"
+    assurance: "the partner's token must show phishing-resistant multi-factor authentication (acr or amr); otherwise only Internal resources, or a step-up with an Insular passkey"
+    kill_switch: "the tenant's officer can suspend every person of a connected organisation at once (per issuer), which ends their sessions"
+  identity_first: "federate the external's own organisation where it is connected; a local account with an Insular passkey is the fallback for people without one"
+  steps:
+    request:
+      default: "the sponsor starts it: names the person, the category, the resources and the dates; the system sends a single-use invitation link, valid 72 hours, bound to the invited mail address"
+      self_service: "per tenant, a public form that must name a sponsor; it answers the same whatever the name, notifies the sponsor with a fixed template that carries no text from the requester, is capped per sponsor and per source address, and accepts no upload before the sponsor confirms"
+      escalation: "an approval not answered in 2 working days goes to the approver's deputy, then to the tenant administrator; no answer in 5 working days closes the request"
+    proof:
+      what: "per category and resource, from the tenant's policy pack: identity, company affiliation or letter of assignment, certificates the work needs (for example a safety certificate), a signed confidentiality undertaking, a picture for the badge, the screening result where the tenant's rules ask for one"
+      methods: "pluggable: an electronic identity check (national eID or an identity app) where available, an upload otherwise; verifiable credentials (OpenID4VP, the EU digital identity wallet) when the issuers and the broker support them (Keycloak's OID4VC support is preview in 26.8)"
+      upload: "after the sponsor confirms, through the invitation link into the tenant's storage, encrypted to the tenant's key (tenant content); allowed types and size limits, a malware scan and content disarm before anyone opens it, viewed in an isolated browser; never into tickets or mail"
+      verify: "by the sponsor or the tenant's security desk; for Sensitive and above the checker is not the sponsor; certificates are checked with the issuing body where it offers a register; each check records the fact, the checker, the date, the document's issuer, number and expiry and a keyed hash, never a copy"
+      minimise: "identity documents are deleted after the check and only the fact is kept; whether a copy of an identity document may be kept at all is the tenant's DPO's decision under its law; the badge picture is never used for face matching (that would make it biometric data under GDPR art. 9) unless the DPO has assessed it"
+      expiry_binding: "the lease cannot outlive the proof: its end is the earliest of the requested end, the category maximum, the contract end and the verified expiry of any certificate the grants depend on"
+      proof_contract:   # the contract is clear so other types of proof of identity can be easily added or combined
+        shape: "every proof method is a plugin with one contract, and every result is normalised into the OpenID Identity Assurance Schema (verified_claims; Final specification with errata set 1, also ISO/IEC 25831-2:2026): which claims were verified, under which trust framework and assurance level, by which evidence, when and by whom; KeyClerk signs the result as a proof fact (section 19 proof_fact), so the rest of KeyClerk never knows which method produced it"
+        claims:   # what a proof can assert; a method declares which it can verify
+          identity: "this is the person (name, birth date, a national or document identifier as a keyed hash only)"
+          likeness: "the person in front of the checker is the identified person (a live match)"
+          affiliation: "the person works for or is sent by an organisation"
+          qualification: "the person holds a certificate or competence the work needs, with its expiry"
+          undertaking: "the person signed a document (confidentiality, house rules), with its version"
+          screening: "a screening result the tenant's rules ask for (hr-security.yaml), fact only"
+        method:   # the plugin contract, the same shape as the connector contract of section 18
+          describe: "name, version, the claims it can verify, the assurance level it can reach per claim (eIDAS low, substantial, high; NIST SP 800-63 IAL as a mapping), the evidence type it produces (document, electronic record, vouch, electronic signature: the schema's evidence types), whether it needs a person present, and the data class of everything it touches (section 19)"
+          start: "begins a proof session for one lease and one claim set; returns what the person or the checker must do (a redirect, an upload slot, an in-person step)"
+          complete: "takes the method's response, verifies it and returns verified_claims with its evidence, or a refusal with a reason; it never returns raw documents to KeyClerk: copies go only into the vault through the upload pipeline when their class is sealed_proof"
+          refresh: "re-checks a claim whose source can be asked again (an issuer register, a connected organisation), for expiry_binding and recertification"
+          revoke: "marks a result void when its evidence is withdrawn (a revoked certificate, an affiliation ended); the lease re-evaluates at once"
+          rules: "a method runs as a separate process like third-party connectors, holds no keys of the vault, and is versioned; its results name the method and version so a method found weak can be retired and its results re-checked"
+        methods_now: [in-person check by the checker with live match, upload and check (section 14), issuer register lookup for certificates, connected organisation assertion (a partner's verified claims via federation), signed undertaking in the invitation flow]
+        methods_later: [national electronic identity (itsme, FAS) when a tenant contracts one, verifiable credentials over OpenID4VP and the EU digital identity wallet when issuers and the broker support them, a tenant's own vouching (an employer vouches for its contractor)]
+        combine:
+          policy: "an access package (section 16) names a proof policy: per claim, the minimum assurance level and the freshness, as rule data OPA evaluates; for example contractor = identity at substantial and likeness and affiliation and the qualifications its resources need and the current undertaking"
+          rules: "claims may be met by different methods; several methods may together lift an assurance level only where the policy's table says so (an upload checked and a live match together reach substantial for identity); when two results for the same claim disagree the lowest wins and the case goes to a decision card; a claim is met by one current result, never by an expired or revoked one"
+          lease: "the lease cannot activate until its package's proof policy is met, and ends when a binding claim lapses (expiry_binding)"
+        adding_a_method: "a new method is a plugin that passes the contract tests (describe matches what complete returns, data classes declared, no raw document leaves it, refusal paths covered) and a review by the tenant's DPO for its data classes; no change to KeyClerk's core is needed; its max_trust is a number the security officer approves in signed rule data, never what the plugin says of itself"
+    approval: "each approver answers in the decision inbox; OPA decides the approver set from the category, the labels and section 4; requester never approver except the visitor rule"
+    activation: "grants become active only after the person is matched live against the checked proof (in person, or by the electronic identity check) and has enrolled their passkeys"
+    lease:
+      record: "a grant record (section 10) per grant, all carrying the lease id and the lease end; one lease per person per tenant at a time; a person with leases at several tenants has one lease in each, never shared; a lease never moves between tenants: the second tenant starts its own"
+      carries: [broker account or federated link, baseline and functional grants, NetBird lease, Warpgate targets, certificates and OpenBao credentials with notAfter or TTL no later than the lease end, the physical badge]
+      physical:   # there is normally a real PACS between the IT and the physical access-control OT; both are supported
+        pacs: "where the site has a PACS, the lease engine talks only to its head-end through one connector: each lease becomes a cardholder, a credential and an access level per area, with the activation and expiry dates stored in the PACS, so the field controllers enforce the lease end on their own when the IT link is cut; removed in the same step as the logical access; door events (granted, denied, in, out) come back for the roll call (tools/piam/pacs.py)"
+        conduit: "the connector is the only conduit between the IT zone and the PACS zone (IEC 62443 zones and conduits shape): changes go down, events come up, nothing else crosses; a cardholder credential the leases do not hold is a finding"
+        no_pacs: "a small site without a PACS (an access enclave door) may use the platform's own OSDP controller for its readers, with the same allowlist and lease ends (tools/piam/osdp_controller.py on libosdp)"
+        not_integrated: "a badge from a PACS that is not connected shows its end date and is handed back on the last day"
+    onboarding:
+      automated: "after activation: the grants are written by the reconciler, the person accepts the current terms version (Keycloak terms and conditions required action; a new version asks again), acknowledges the info package and, for visitors, the host is notified on check-in"
+      info_package: "rendered per tenant and site from git through a two-person merge request and signed; contacts come from the role register, never free text; every field the requester supplied is escaped; it holds house rules and acceptable use, who to call, site and safety information, how to report a security event, what personal data is kept and when it is deleted, and the lease end"
+      presence: "check-in and check-out at the site (badge or reception) feed the visitor log and the live roll call for an evacuation (PE-8 shape); the log is kept for the tenant's retention class"
+    during:
+      reminders: "notify the external and the sponsor 7 days and 1 day before the end (Keycloak Workflows notify-user)"
+      reminder_days: [7, 1]
+      extension: "the external asks, the sponsor answers and OPA re-runs the approver set for the lease's labels; bounded by expiry_binding, the category maximum and totals; no answer means no extension"
+      sponsor_change: "special_roles.sponsor: the lease goes to review when the sponsor moves and ends when the sponsor leaves unless a new sponsor accepts"
+    offboarding:
+      automated: "at the lease end every grant ends from the bundle at every site, sessions end, the account is blocked (Keycloak Workflows disable-user as a backstop to the reconciler), the federation link is cut, the badge is removed, NetBird, certificates and credentials have already reached their notAfter"
+      return: "the leaver checklist for externals (hr-security.yaml): badge, keys, devices, material; an open line after 5 working days is a finding at the sponsor"
+      retention:
+        account: "blocked at the end, deleted 30 days later (tenant-settable)"
+        account_delete_days: 30
+        identity_fact: "the keyed hash and tombstone for totals: 365 days after the last lease"
+        confidentiality_undertaking: "as long as its post-termination duties last (hr-security.yaml terms)"
+        visitor_log: "the tenant's retention class for physical access records"
+        event_facts: "the event store's retention class for access events; never without a bound"
+  ddil: "a lease ends at its end while cut off; no new lease, extension or proof upload while cut off; an envelope (section 8) may pre-sign named externals already known at home so a contractor can keep working; reminders are queued and sent on reconnection"
+  pane: [active leases per tenant and site, leases ending in 7 days, extensions waiting, proof checks waiting, approvals past their escalation, people on site now (roll call), offboarding lines open, proof past retention]
+  events: "every step is an event in the event store: request, proof checked, approval, activation, check-in and check-out, extension, end, purge (OCSF 3001, 3005, 3006)"
+  build:
+    stage_1: "Keycloak Workflows (invite-user, notify-user, disable-user with after) and the terms required action; the request and approval as a form that writes a merge request of grant records with the decision inbox for approvals; proof storage in the tenant's encrypted storage; the physical adapter later"
+    stage_2: "KeyClerk's own requests, approvals and certification; the lease rules stay as data"
+  acceptance_test: "a test run: a contractor lease ends while the site is cut off and ends the Warpgate session, the NetBird peer, the certificate and the token; a used or forwarded invitation link is refused; the public form's caps hold and its answer does not reveal a sponsor; an extension past the certificate's verified expiry is refused; a sixth consecutive 90-day lease is refused without the officer"
+# 15. KeyClerk: persona leases and the access portal: a secure frontend for joiner, mover and leaver management
+# and for adding temporary persona leases to the local IdP. KeyClerk is the hotel clerk who receives people and
+# hands out the keys after registration.
+keyclerk:
+  persona_leases:   # not only grants are leased: the accounts themselves are
+    base_person: "created and ended by the source (the tenant's IdP via SCIM, the people register, a sponsor's invitation); it lives as long as the source says"
+    admin_persona: "a separate Keycloak user linked to the person's anchor (Keycloak has no native personas; CIS 5.4 dedicated administrative accounts): created with the person's first eligibility and deleted when the last one ends, so no admin account exists unless someone may use it"
+    external_persona: "created pending when an access lease is approved, so the person can enrol passkeys through Keycloak's own required action on Keycloak's own page (never relayed by the portal); usable only from activation (section 14), blocked at the lease end, deleted after the retention delay"
+    writer: "the reconciler is the only writer of personas and grant groups, through Keycloak's SCIM API with fine-grained permissions limited to managed users and groups; it never writes a credential at home: passkeys are enrolled only by the person through Keycloak (the edge import path of section 13 is the one exception, checked against the bundle); Keycloak Workflows are a named backstop writer for block and delete only"
+    leaver: "a leaver disables every persona that carries the anchor, not one broker account"
+    keys: "decisions key on (issuer, anchor, persona); the PEP passes the persona from the token; the anchor attribute is admin-only in the user profile; the reconciler refuses two personas of one kind for one anchor and two sources issuing the same anchor, and a collision is a security incident"
+    home_credential_check: "a daily diff of the WebAuthn credentials at home against the enrolment events; a credential without its enrolment event is a security incident"
+    finding: "a persona that no source record, eligibility or lease covers is a finding and is blocked; an admin persona found without an eligibility is a security incident"
+  portal:
+    what: "KeyClerk, the access portal: a request-and-approval surface for joiners, movers, leavers, activations and external leases, never an admin console"
+    no_admin_power: "the portal holds no Keycloak administrative role and no reconciler credential; it writes requests (grant and lease records as merge requests) and signed approvals only; only the reconciler changes the broker, from approved records"
+    signed_approvals:   # the page that shows a change can lie, so the approver confirms elsewhere
+      confirm_view: "the approver confirms on a separate confirmation page, not in the portal: its own origin, a few hundred lines with no framework and no dependencies, built reproducibly and pinned by hash; it fetches the canonical record itself by request id, renders it and computes its hash; the portal only hands over the request id (the transaction-signing pattern); an approver may instead confirm on the records repository's merge request diff"
+      challenge: "the assertion's challenge is the hash of the canonical record (JSON canonicalisation, RFC 8785) covering realm, tenant, request id, action, approver role, a nonce and not_after, prefixed with the purpose keyclerk-approval-v1, so a sign-in assertion can never pass as an approval"
+      verifier: "a named verifier service checks each assertion (exact confirmation-page origin, user verification, type webauthn.get, counter, credential bound to the approver's admin or person persona, nonce unused, not expired) and issues a signed verification statement that OPA checks with its JWT built-ins; OPA has no WebAuthn verification of its own"
+      record: "approvals are stored in the grant or lease record as objects (approver, role, assertion, verification statement), never as names; the checker and the reconciler re-verify before any widening, and a name without a verified assertion counts for nothing"
+      rp_id: "the external landing page and every other app live outside the tenant's RP ID suffix, so no page but sign-in and the confirmation page can ask for assertions under it"
+    tokens: "a backend-for-frontend holds the tokens server-side (OAuth 2.0 for browser-based apps best current practice) and is a Tier 0 target; the browser holds only a __Host- session cookie (Secure, HttpOnly, SameSite=Strict, Path=/), rotated at sign-in; every write checks Origin and Sec-Fetch-Site, because sibling hosts under identity_domain are same-site; tokens are sender-constrained per icam.yaml"
+    writes: "every portal write needs a fresh assertion from the confirmation page, reductions too, so a compromised backend cannot act for its signed-in users; portal writes fall under the mass-change pause of sources.feed_limits; the portal's repository credential can open merge requests and nothing else, and the records repository is separate from the repositories holding CI and policy"
+    browser: "strict Content Security Policy with Trusted Types, no third-party scripts or fonts, no inline script, frame-ancestors none; few dependencies, pinned in a lockfile, install scripts off, with an SBOM and provenance; the portal and the Keycloakify theme have separate dependency trees; per-role rate limits on every write and a queue per requester; approvals given in seconds are flagged and the auditor samples approvals"
+    uploads: "proof goes from the browser straight into the tenant's encrypted storage pipeline through a presigned URL for one object key, valid minutes, with size and type limits; scanned and disarmed before anyone opens it (section 14 proof.upload); never through the portal's own memory or disk; encryption happens in the pipeline, not in browser code"
+    landing: "the invitation page shows on GET and consumes the token only on POST, with Referrer-Policy no-referrer, so mail scanners and referrers cannot spend or leak the single-use link"
+    tenants: "one portal deployment and one records repository per tenant; every object check passes the tenant in the resource to OPA; a two-tenant test proves a tenant administrator cannot read or change another tenant's records"
+    leaver_without_portal: "leaver and suspend keep working without the portal (the source, the officer through the break-glass path): the portal is a convenience, never the only path to a reduction"
+    events: "every action is an event in the event store (OCSF 3001, 3005, 3006), with the signed approval attached"
+    cut_off: "on a cut-off Isle a local portal serves only the envelope flows (section 8) from the local bundle, approved by the local tenant administrator and the Isle deputy as section 8 says; everything else is queued with a not_after and re-evaluated against the home state on reconnection, never replayed blindly"
+    builds_on: "the decision inbox (ADR-0169, policy/vdh/inbox.rego): the inbox verifies the caller's token itself and takes the autonomy level from the bundle"
+    views:
+      everyone: "my access: personas, grants, leases and their ends; request an activation"
+      sponsor: "invite an external, my externals, extend, hand over to another sponsor"
+      approver: "the inbox: approve or deny with a passkey, with the escalation timers of section 14"
+      security_desk: "proof checks, check-in and check-out, today's roll call"
+    shift_handover:   # front-desk staff rotate: an easy 'rotate' dashboard of all people, events and things of importance at a shift change
+      shows: "on site now (staff, contractors, visitors), arrivals and proof checks due in the next shift, leases ending and badges to collect, escorts needed, events since the last handover (refused badge reads, leavers, extensions, check-ins), site status (connectivity, PACS link, reader health, the revocation list's age), and the open items"
+      open_items: "every open item carries over with the incoming shift as its owner; nothing is closed by the handover itself"
+      signing: "the outgoing desk person signs 'handed over' and the incoming signs 'taken over', each with a passkey on the confirmation page (section 15 signed_approvals); the desk role moves with the signature: the incoming person's desk role starts and the outgoing person's ends"
+      note: "a short free-text note about the site, escaped and kept with the handover for the presence class's retention; never about a colleague"
+      privacy: "the handover is a record of the site, never of the staff: it is not used to assess desk staff (presence class never); it shows each person only as far as the desk role needs"
+      ddil: "works on a cut-off site from the local bundle and the presence log; the signed handover ships home on reconnection"
+      tenant_admin: "people, movers waiting for a micro-review, envelope grants while cut off"
+      security_officer: "reviews, findings, suspend and lift (the second-person rules of section 4 enforced), leaver now"
+      external: "the invitation landing: proof upload, passkey enrolment, the info package"
+    joiner_mover_leaver: "joiners, movers and leavers come from the source, never from a portal form; the portal shows their effects and asks the right person (a micro-review for a mover, the return checklist for a leaver); only the security officer has a manual leaver-now action, with a second person for special-role holders"
+    stack: "React with TypeScript and a small backend-for-frontend; the same look as the Keycloakify login and account pages; English, Dutch and French from the start; a Backstage plugin only after its own review, since a plugin host must not gain more than the portal holds"
+  open_source:
+    package: "KeyClerk is the open-source package: access leases for Keycloak, made of the grant and lease records and their checkers (tools/grants.py, tools/leases.py), the OPA policy, the reconciler plan, the Workflow generator, the info package, the role guides and the portal"
+    niche: "nothing healthy fills approval-based access requests, time-bound grants and reviews for Keycloak, visitor and contractor leases, or an open-source link between identity lifecycle and physical access"
+    licence: "EUPL-1.2 or later (ADR-0183): copyleft that covers hosted use, Belgian law, every EU language, a patent grant; outside contributions under a licence-grant contributor agreement that keeps a dual licence possible"
+    kept_in_insular: ["the model's registers, review findings and residuals (a public repository carries a security summary only)", "the DDIL edge pieces: the access enclave, the bundle applier and the envelope", "the PIAM bridge until a real PACS connector exists"]
+    publish_when: "after a test run proves that removal works end to end (grant, persona and lease end in the broker and at the PEP) and the acceptance test below passes; a governance tool that has not shown it removes access is a liability"
+    release: "production refuses to start with phase_one or a demo flag set; examples use example.org; insecure options do not exist rather than default off"
+    prior_art_sweep: "a survey of GitHub, GitLab, npm and PyPI found nothing that does KeyClerk's combination. Closest: 4nass/keycloak-access-requests (Apache-2.0: a Keycloak provider with an entitlement catalogue, request and approval UI, expiry timer and audit, database-based; no grants as code, Rego, externals, proof, signed approvals, PACS or edge); patterns to learn from: discord/access (Apache-2.0, owner and approver model, Okta only), GoogleCloudPlatform/jit-groups (Apache-2.0, group-based just-in-time access), aws-samples/iam-identity-center-team (MIT-0, eligibility and activation); copied idea: never remove a membership KeyClerk did not create, which the grant-group prefix already gives (section 10); midPoint is the one full IGA alternative and a federation peer (section 17)"
+    prior_art_adopted:   # adopted patterns, named in the package README
+      discord_access: ["grant records carry created_actor, ended_actor, reasons and a derived_from pointer; a derived grant never outlives its source", "constraint tags (time limits, require reason, no self-add) with strictest-wins and propagation through roles, as rule data", "the approver set is computed (owners, owning-application owners, admins) and every notified approver can close the request; requester as approver is an explicit deny with a reason", "an approver may shorten the requested end; requested and resolved values are both kept", "pending requests expire after 7 days", "owner review of expiring access with bulk renew and an explicit reviewed-not-renewed outcome", "a typed audit event list with source (web, CLI, agent), actor and address", "repair tools with a dry run next to the reconciler; an agent interface that can only file requests"]
+      jit_groups: ["a policy hierarchy with inherited access lists and override by name, evaluated in OPA", "separate permissions: view, join, approve self, approve others, reconcile; approving others never covers yourself", "approve constraints bind the approver as well as the requester", "a mandatory expiry on every group, refused by the schema check when missing", "typed request inputs (justification, ticket) re-validated at approval time", "policy is re-evaluated at approval time, never trusted from a token", "a 'why can or can I not' analysis and a dry run in the portal"]
+      aws_team: ["request states (pending, approved, scheduled, active, rejected, cancelled, expired, revoked, ended, error) as derived views", "eligibility policy and approver policy as two rule-data files", "fail closed when the approver set is empty", "scheduled elevation: a grant with a future start", "revoke as one action by requester or approver, with revoker, time and comment", "session activity linked to a grant by its id over its window plus a grace period", "the token-lag caveat: removing a membership does not end live tokens, so lease groups get short token lifetimes and a revocation logs the person out", "an explicit rule on whether a scope includes its children"]
+      avoided: ["an external IdP or a database as the writer of memberships", "a workflow engine or timers as the holder of state", "a mutable status field written by several actors", "policy edited in a UI into a database", "secrets in settings", "plain-click approvals without a cryptographic binding", "in-process plugins and post-response hooks without delivery guarantee"]
+    name: "no GitHub repository, PyPI or npm package is named keyclerk; a trademark check comes before publication"
+  acceptance_test: "a test run: a confirmation over a changed record is refused; an assertion from another origin, or a sign-in assertion, is refused as an approval; a replayed approval is refused; a portal write without a fresh assertion is refused; a leaver disables the admin persona with the person; a credential planted at home is found by the daily diff; a tenant administrator cannot read another tenant's records"
+# 16. The authorisation model: what a grant points at, and how a decision is made: delegations, four eyes, shadow or
+# chaperone, RBAC, ABAC, groups and permissions. Names: "Escorted session", "two-key" in the portal.
+authorisation:
+  layers:   # from what an application can do to who may do it now; each layer points down, never sideways
+    entitlement:
+      meaning: "one thing an application lets someone do (a permission, an application role, a share, a database right), described once in the catalogue"
+      catalogue: "per application: its entitlements with an owner, a label ceiling, a risk class (low, elevated, privileged), the escorted flag, how it is carried and how it is enforced (PDP-checked or claim-trusted); records in git, changed by two-person merge request; the catalogue's hash travels in the bundle"
+      lowering: "lowering a risk class, a label ceiling or removing the escorted flag is a widening (autonomy.yaml increase): a second person who is not the owner approves it"
+      complete: "a complete catalogue is an onboarding gate per application; a permission found in the application but not in the catalogue is a finding and its holders are removed within 5 working days, or the application is encapsulated (section 9)"
+      claim_trusted: "an entitlement the application enforces from a token claim alone (no ext_authz) can never be privileged; privileged entitlements are PDP-checked"
+    role:
+      meaning: "a named bundle of entitlements: technical roles bundle one application's entitlements, business roles bundle technical roles for a job"
+      rules: "a role names its owner and its entitlements; a role whose entitlements cross planes is refused, except the roles section 3 names as spanning planes (auditor-read, security-officer, agent-owner), which are split per plane in the catalogue"
+      versions: "every grant pins the role or package version it was approved against (content hash); an addition is a new version whose existing holders each get a micro-review before it reaches them; a removal applies to every holder at once; the owner never approves a change to their own role"
+    access_package:
+      meaning: "a ready-made bundle for a purpose with its own policy: which roles, for whom (tenant people, externals of a category, a connected organisation), the approvers, the longest duration and the review interval; the template behind an invitation or a request"
+      lease: "an external's lease (section 14) is always made from an access package and pins its version; a widened package never widens existing leases"
+    grant: "sections 2 and 10: who holds a role or an entitlement (with its pinned version), at which scope, until when, approved by whom"
+    carrier:
+      meaning: "how a grant reaches the application"
+      kinds: [Keycloak group (grant groups, section 10), Keycloak client role or client scope for token-shaped claims, an application-local account or right written by a connector (midPoint in stage 2, encapsulation in section 9)]
+      rule: "a carrier is a hint for the application; the authority is the grant data at the PDP; tools/authz.py's role check moves from the token attribute to the grant data, matching the engine's keyclerk/policy/access.rego"
+  sod:
+    register: "conflicts are kept at entitlement level in a register owned by the security officer, not declared by role owners"
+    when: "checked at grant time and again on every catalogue, role or package change: a change that would give any current holder a toxic combination is refused; existing ones are findings (risk_feed.signals_out)"
+  decision:
+    rbac: "is there an active grant for (issuer, anchor, persona) on this role or entitlement at this scope (the KeyClerk engine's keyclerk/policy/access.rego, ADR-0176)"
+    abac: "do the attributes and context allow it: unit and function from the source, the data's label, the band, device posture, connectivity, time"
+    attributes: "every attribute a rule uses is in the attribute registry (identity.yaml attributes) with its source as authority, a writer and self_write false; unit and function are added there; a checker refuses rules on unregistered or self-writable attributes; widenings by attribute change fall under a rate limit like mass disables (sources.feed_limits)"
+    context: "context that the PEP passes (posture, connectivity, time) is signed by the sensor that saw it (NetBird posture, Keylime attestation, the Isle's time source); unsigned context counts as absent, which is the strictest value"
+    rebac: "relationships for sharing single objects (this folder is shared with that team) are kept by the application or a relationship store (Zanzibar shape, for example OpenFGA) and asked as a third check; every tuple names the anchor it grants to; a leaver or lease end deletes tuples by anchor; a share to an external or across tenants needs a grant; tuples are in the drift diff; a model test refuses platform and infrastructure object types"
+    combine: "deny overrides: RBAC, ABAC and, where used, ReBAC must all allow; the band can only narrow (tools/authz.py, ADR-0092 differential test)"
+  delegation:
+    stand_in:
+      meaning: "a stand-in for someone's approvals while they are away (leave, sick, travel)"
+      rules: "appointed by the role owner or the security officer, never self-chosen; holds the approver role (not only eligible for it); never reciprocal (two people cannot stand in for each other); never approves the absent person's own requests; at most 30 days within any 90; every act carries both names; a stand-in cannot name a stand-in"
+    on_behalf:
+      meaning: "acting for someone else (an assistant filing for a manager, an agent for its owner)"
+      rules: "the actor's effective rights are the intersection of both people's grants (time-gating.yaml delegation intersection), the chain is at most 2 long (tools/authz.py MAX_CHAIN), the actor chain is in every request and event; every actor in the chain counts as the requester, so the approver differs from all of them; approvals are never given on someone's behalf, enforced in access.rego and tested"
+  two_key:   # dual authorisation; "two-key" in the portal
+    meaning: "an act that needs two different people, each with a fresh signed assertion (section 15 signed_approvals)"
+    where: "autonomy.yaml min_approvers, eligibilities for infrastructure and platform roles, the special-role limits of section 4, Sensitive leases, and any entitlement the catalogue marks privileged"
+    rules: "the two are different persons, compared by the keyed hash of their verified identity fact, not by anchor, so one person with two anchors (a provider's staff member as provider person and as consultant) holds one key; the second key comes from a different unit or role than the requester; neither is the grantee; at most one is a stand-in; approvals given in seconds are flagged and canary requests are seeded for the auditor; while special_roles.phase_one is set two-key is unmet and disclosed"
+  escorted_session:   # shadow or chaperone
+    meaning: "a privileged session that a second person watches live and can end at once: the digital form of the escorted area of section 14"
+    when: "required for an external's privileged activation, for a site-sysadmin on a Restricted system, and wherever the catalogue marks an entitlement escorted; optional elsewhere"
+    how: "Warpgate's live view of a recorded session; an entitlement marked escorted reaches its application through Warpgate only, which the catalogue checker enforces (no web console or OIDC path around it)"
+    escort: "holds the escort role for that system, is not the person escorted and not from the same team, and for a tenant system is a tenant person (recordings are tenant content); the escort sends a heartbeat and the session pauses when the escort is gone; the escort may end the session and revoke that activation, a power section 4 grants the escort role for this purpose"
+  reviews:
+    certification: "owners confirm their roles' holders and their entitlements' roles at each review period; no one certifies their own grants; no bulk confirm for privileged entitlements; last use is shown, and an entitlement unused for 90 days defaults to removal; an unanswered item ends"
+    mining: "role mining (suggesting roles from who holds what) is a stage 2 aid (midPoint); a suggestion is never applied without its owner"
+  cut_off: "while a site is cut off, stand-ins, on-behalf acts, two-key and escorted sessions never widen anything; only the envelope approvers of section 8 may"
+  keyclerk: "the portal shows the catalogue, the packages and the reviews; requests start from an access package or a role, never from a free entitlement list; delegation, two-key and escorted sessions each have their own view"
+  build:
+    first: "the entitlement catalogue, the SoD register and access packages as records next to the grants (schema and checker), because leases and the portal already need them"
+    then: "delegation and two-key in the checker and access.rego; tools/authz.py aligned with the grant data; escorted sessions with Warpgate in a test run; ReBAC only when an application needs object sharing"
+
+# 17. KeyClerk alone and inside Insular: it fits Insular's OPA, risk and trust structure, can be addressed directly from
+# the Pharos SPOG, and can stand alone without Insular; it can also interface and federate with other IGA such as midPoint.
+# A portable core with ports, and adapters that use the Isle's resources when it runs in one.
+keyclerk_fit:
+  rule: "the KeyClerk core never imports or calls Insular, enforced by an import rule in CI; every Insular binding is an adapter behind a port, shipped with Insular (or a keyclerk-insular package), never in the core; both profiles are tested in CI on every change"
+  profile_check: "the profile is declared and checked at start: KeyClerk in standalone profile refuses to start inside an Isle (it finds the Isle's PDP and bundle); the bundle carries the records head hash and KeyClerk applies nothing while the PDP's head differs from its own"
+  profiles:
+    standalone: "KeyClerk with Keycloak and its own small parts: an embedded OPA with KeyClerk's policy pack, its own light store and event log, its own inbox and portal; a minimal risk input (the officer's persona_status and a manual world state)"
+    insular: "the same core with the Insular adapters: the Isle's PDP and signed bundle, the adaptive-policy band and the risk register, the event store and signal bus, the decision inbox and the Pharos pane"
+  ports:
+    decision:
+      contract: "AuthZEN requests (subject with issuer, anchor and persona; action; resource; context) and the rule data of sections 2, 4, 14 and 16"
+      standalone: "an embedded OPA loads KeyClerk's own bundle (the engine's keyclerk/policy/access.rego and its data, ADR-0176), signed with KeyClerk's key"
+      insular: "KeyClerk's rules are compiled into the Isle's bundle as package vdh.access (tools/policy_compile.py already does), and KeyClerk asks the Isle's PDP over the policy-decision contract; no second policy engine runs in an Isle"
+    risk_and_trust_in:
+      contract: "per subject: band, persona_status, sticky reasons; per site: appetite tier, connectivity, bundle age"
+      standalone: "persona_status and world state set by the officer in the portal; band derived from them only (no posture or behaviour)"
+      insular: "platform/adaptive-policy.yaml band and signals over the signal bus; autonomy.yaml caps by appetite tier"
+    risk_and_trust_out:
+      contract: "findings and an RTOP slice in the shape of platform/spog.yaml contributors.slice_shape"
+      slice:
+        trust:
+          enforcement: "removal proven by evidence KeyClerk does not produce itself: canary leavers whose removal Pharos checks at the PEPs and in Keycloak's own event log, the measured leaver bound per channel, and the age of the last drill; without that evidence the slice is labelled self-attested and is never green"
+          evidence: "signed approvals verified, review completion per owner, the acceptance tests last passed"
+          transparency: "escorted sessions, break-glass uses, envelope grants made while cut off, officer acts"
+        risk:
+          residual: "standing privileged grants, toxic combinations, orphan personas, overdue reviews, officer vacancies, externals past their totals (feeding RI-08 and RI-11)"
+          exceptions: "risk acceptances for out-of-rules grants with their review_by, the phase-one flag"
+        scope: "tenant, Isle, site"
+      standalone: "the same slice on KeyClerk's own dashboard and as an export (JSON) for any other pane"
+      insular: "a Pharos RTOP contributor like the AI egress gate; findings land in the risk register (risk_feed.signals_out)"
+    events:
+      contract: "CloudEvents envelopes carrying OCSF payloads (3001, 3002, 3005, 3006), at least once, idempotent by event id"
+      standalone: "KeyClerk's own append-only event log"
+      insular: "the event store (ADR-0152) and the signal bus; CAEP and RISC in and out (risk_feed.bus)"
+    inbox_and_ui:
+      standalone: "KeyClerk's portal, inbox and confirmation page (section 15)"
+      insular: "approvals become decision cards in the decision inbox (ADR-0169), one inbox for every decision of the estate, mirrored from KeyClerk; reductions and their second-person confirmations always work through KeyClerk's own confirmation page, so an inbox outage never stalls a suspension; the Pharos pane links into KeyClerk's views by entity and at sizes M and L embeds them read-only, calling with the viewer's exchanged token (audience keyclerk) and never a service account; every write happens on KeyClerk's origin"
+    identity: "Keycloak in both profiles; in Insular the tenant's broker organisation and the Isle's realm"
+    records: "a git repository per tenant in both profiles; in Insular the Isle's Forgejo"
+  ftef:   # shared core, two thin faces
+    decision: "KeyClerk is not FTEF's frontend: FTEF judges organisations and their evidence, KeyClerk people and their keys; a spec needs a reference tool without an IdP dependency; ingesting foreign evidence must not share a process with granting access"
+    shared_core: "a small Apache-2.0 decision core used by both: the confirmation page with passkey-signed approvals, the decision card, the risk-acceptance object (residual, budget, void conditions), trust-band evaluation, the CloudEvents and OCSF envelope; aligned with FTEF's schemas"
+    ftef_console: "a thin reference console in the ftef-spec organisation on the shared core, same design language: observe partners, their evidence, freshness and bands; act: request evidence, accept or void risk, downgrade, distrust an issuer"
+    keyclerk_role: "FTEF's first consumer: a trust_source port (FTEF partner bands) next to the risk and trust ports above; a partner's band change narrows its people's leases; deep links both ways; KeyClerk's core never ingests FTEF evidence itself"
+    insular: "both show in Pharos and the one decision inbox"
+  estate_graph: "in Insular, KeyClerk's catalogue, packages, roles and grant counts feed the estate graph (platform/spog.yaml estate_graph.sources) as a signed export, so the pane can answer who can reach what without querying KeyClerk live"
+  federation_with_other_iga:
+    principle: "one master per fact class (sources-of-truth.yaml): for each fact (people, the role catalogue, requests and approvals, grants, certifications) either KeyClerk or the other IGA is master, recorded per tenant; the other side consumes, never edits"
+    modes:
+      keyclerk_as_target: "the other IGA (midPoint, Syncope, a commercial one) masters people and requests and sends them to KeyClerk through SCIM or KeyClerk's API; a foreign grant or approval only ever counts as a request, decided by OPA and approved with KeyClerk-verified assertions; privileged grants, special roles and the envelope are never mastered outside KeyClerk; attributes from the peer are registered attributes with the registered rate limits"
+      keyclerk_as_source: "the other IGA reads KeyClerk's catalogue, grants and leases (SCIM, export, events) and runs certifications and analytics over them: KeyClerk masters, the IGA reports"
+      peer: "split by fact class, for example midPoint masters employees and roles while KeyClerk masters externals and leases; exchange by events and SCIM, each side writes only its own facts; a local reduction (suspend, persona_status, leaver now) is always allowed whoever masters the person; a silent peer feed raises an alarm and the leaver bound is measured end to end through the peer"
+    stage_2: "Insular runs requests, approvals and certification in KeyClerk; a tenant that already runs midPoint federates through this port as a peer"
+    one_writer: "in every mode each target (Keycloak, the PACS, every connector target) has exactly one writer, KeyClerk's reconciler; a peer IGA's connectors to those targets are read-only; a federation test fails when a second writer changes a managed object"
+    details: "connector-level design follows the connectors research"
+  tests:
+    - "standalone smoke: KeyClerk with Keycloak and nothing of Insular passes the section 14 and 15 acceptance tests"
+    - "insular adapter: the same tests with the Isle's PDP, event store, inbox and RTOP slice"
+    - "a federation test with a SCIM-speaking IGA as master of people: KeyClerk never writes a people fact back"
+
+# 18. The KeyClerk engine: state, connectors, events, store and concurrent change: a well-defined state machine,
+# incoming and outgoing connectors, event streaming, a light database, concurrent change buffering and resolution.
+# Built on public prior art.
+keyclerk_engine:
+  state:
+    principle: "no workflow engine in the core: state is derived, a pure function of the signed records, the time and the evidence; the reconciler is a level-triggered loop (the controller pattern tools/grants.py plan already has), so a lost event or a restart never loses state"
+    axes:
+      intent: "what the records say: requested, approved, revoked, suspended (stored, append-only)"
+      validity: "whether the window and the evidence hold now: not yet, valid, ended, lapsed past the horizon (derived)"
+      delivery: "whether the broker, the PEPs, the targets and the PACS match: in sync, pending, drifted (derived from diffs); a drift never widens: a missing reduction is re-applied and an unexplained widening is removed"
+    entities:
+      request: "draft, submitted, approving, approved, refused, expired (an approval past its not_after), withdrawn"
+      grant: "pending (before start), active, suspended (sticky until lifted by two people), ended, revoked (never returns)"
+      lease: "approved, pending-activation (persona pending, passkeys enrolled, live match due), active, ending (reminder groups), ended, purged"
+      persona: "pending, active, blocked, deleted; an admin persona is active only while an eligibility is"
+      activation: "requested, active, ended by time, ended by band, ended by revoke"
+      review_item: "open, kept, removed, removed by default (no answer)"
+      delegation: "appointed, active, ended, expired (30 days within 90)"
+    effective_status: "the midPoint shape (administrative status plus validity window gives the effective status) with one change: an administrative enable never overrides the end of the window, because nothing outlives its end"
+    timers:
+      ends: "starts and ends are data in the bundle, enforced by the PDP at decision time; no timer needs to fire for access to stop"
+      reminders: "derived lease groups (/leases/ending-Nd) that Keycloak Workflows react to (section 14)"
+      retention: "Keycloak Workflows after-delays, with the reconciler as an idempotent backstop"
+      wake: "the reconciler sleeps on a monotonic clock until the next record change or the next derived boundary, at most an hour, and re-checks the wall clock on waking; a backward step is a finding; ends are pushed into every target that can hold them, and an end bound is measured per target that cannot"
+      skew: "asymmetric: a widening is judged at now minus the allowed skew, a reduction at now plus it, so clock error always narrows (ddil.time)"
+    engines_rejected_for_the_core: "durable execution engines (Temporal MIT, DBOS MIT, Flowable Apache-2.0, Argo Apache-2.0; Restate BUSL 1.1) add a second source of truth and a runtime at the edge; a statechart library (XState) is kept for the portal's own screens only"
+    verification: "Hypothesis stateful tests over the record model now (nothing outlives its end, revocation wins, no widening without its approvals); a small TLA+ specification of the home and edge merge before the edge build; no public model check of a whole IAM lifecycle was found, so this is new work"
+  connectors:
+    contract:
+      roles: "source (people and attributes in) and target (grants out); a connector declares its role and capabilities (the ConnId capability model)"
+      operations: [describe, validate, schema, read_full, read_delta, verify_event, observe, plan, apply, expire]
+      rules: "full read-and-compare reconciliation is mandatory and authoritative, within a rate budget per connector so it never trips quotas or lockouts; deltas and signed events only make it faster; connector reads are untrusted; plan is pure and deterministic and the default is a dry run; apply carries an idempotency key; credentials are short-lived from OpenBao and scoped to the managed objects (an OU delegation, never domain admin); a target that stores end dates itself (a PACS) declares expiry_native and gets the lease end written into it"
+      isolation: "KeyClerk's own first connectors run in process (the tools/piam/pacs.py protocol plus capability flags); every connector KeyClerk did not write, Baton's from day one, runs as a separate process over gRPC (the go-plugin shape) with its own credentials and no access to the others"
+    reuse:
+      baton: "ConductorOne Baton connectors (Apache-2.0, about 60 for SaaS and databases) through an adapter, for targets KeyClerk does not ship itself"
+      connid: "ConnId connectors (CDDL 1.0, file-level copyleft) only as an unmodified sidecar, later, with the CDDL notices shipped in its image"
+      midpoint: "midPoint (EUPL-1.2) by its API only, never linked into an Apache-2.0 KeyClerk"
+    first: [git people register (source), SCIM (source), SCIM target with Keycloak as a SCIM target (target), PACS head-end (target, expiry_native), OSDP controller (target)]
+    via_scim: "SCIM can also provision Keycloak: the reconciler writes Keycloak through its SCIM API (users, groups, PATCH of members), so its account needs SCIM rights only and cannot write a credential (SCIM has no credential operation); one admin call remains, logging a person out on removal; the same SCIM target provisions any SCIM-capable application"
+    no_ldap_connector: "Keycloak handles LDAP and AD itself: people come from AD through Keycloak's LDAP federation in READ_ONLY edit mode with the MSAD account mapper, and KeyClerk reads them from Keycloak over SCIM; grant groups reach a dedicated AD OU through Keycloak's group mapper in LDAP_ONLY mode, so AD's writer is Keycloak driven by the reconciler; unverified: membership write-back while the user federation stays READ_ONLY (a ring test); fallback: an out-of-process LDAP connector (Baton's) scoped to that OU"
+    iga_peers: "with another IGA the one-master-per-fact rule of section 17 holds; a grant a peer asks for is still decided by OPA and enters as a record like any other; standards watched: SCIM (and the roles and entitlements draft), OpenID IPSIE, Shared Signals, AuthZEN"
+  events:
+    bus: "standalone, PostgreSQL tables with an outbox relay outside reductions (section 22 keyclerk_lean.core.events); in Insular, NATS JetStream, the model's one event bus (ADR-0152, ADR-0081); no second bus; Redpanda (BSL), KurrentDB (own licence) and Redis 8 (RSAL, SSPL, AGPL) were rejected on licence"
+    edge: "a NATS leaf node with its own JetStream domain at each edge site; streams kept for at least 10 days (the horizon plus margin) with a byte cap; on reconnection the edge's streams are sourced home and home revocations flow down first"
+    envelope: "CloudEvents 1.0, structured JSON, carrying one OCSF event as data (account change, group management, role management, authorise session, user access); CAEP and RISC arrive as signed tokens and are wrapped as CloudEvents with the token kept"
+    delivery: "at least once; publishers dedupe by message id; every consumer is idempotent by the CloudEvents id and keeps its seen-id table for the horizon plus 3 days, sized and alarmed"
+    events_never_widen: "an event never widens anything: only a reduction acts on an event, and only after its signature is verified; widenings come only from records"
+    accounts: "a NATS account per site, whose subject permissions cover only its own domain, so a leaf node cannot publish into home subjects; CAEP and RISC tokens are checked for jti, iat and audience, and events older than the horizon are refused"
+    store: "events land in the event store (ClickHouse, ADR-0152) in Insular; standalone, KeyClerk keeps its own append-only table"
+    pdp_note: "no second policy engine runs at home in an Isle; the edge OPA of section 8 is the same engine with the same bundle, not a second one"
+    to_test: "the leaf-node test runs for the full isolation horizon of 7 days"
+  store:
+    git: "the records: grants, revocations, approvals, leases, packages, the catalogue, overlays; one file per record (below); a records head that is not a fast-forward, or that drops a revocation, is refused; the set of revoked ids is a high-water set anchored off the box like the envelope log, and the gate rejects any change to a revocation file"
+    database: "the state in flight: sessions, nonces, approvals being collected, queues, the reconciler's last snapshot, seen-id tables; at home a separate PostgreSQL database keyclerk on Keycloak's server (never Keycloak's own schema); at the edge SQLite in WAL mode, copied to home by Litestream for restore only; after any restore an epoch bump invalidates every nonce, the seen-id table is rebuilt from the stream, the queue is re-evaluated and a full reconcile runs before any widening"
+    stream: "the events"
+    no_crdt: "no CRDT store: the site that issued a record owns it and home can only revoke it, which the revocation union already resolves"
+  concurrency:
+    principle: "every writer (source feeds, the portal, Workflows, edge sites, connectors) only appends immutable facts; only the reconciler changes Keycloak and targets; so a conflict is a rule over facts, never a race over the broker"
+    queue: "one queue per (realm, anchor), applied in order revocation, narrowing, leaver, renewal, widening; a reserved lane for reductions so a flood of widenings never starves them, and widenings are rate-limited; a source burst is classified after the diff and only widening diffs are debounced, so a leaver disguised as an attribute change is never delayed; outbox at the writers, inbox with dedupe at the reconciler; edge logs carry a hybrid logical clock"
+    leaver: "a forward-only saga: every step only narrows, each is retried until done, none is undone"
+    apply: "the reconciler takes per-anchor locks in anchor-id order with time-limited leases (so acts on two anchors, like delegation, escort, two-key and sponsorship, never deadlock), re-reads the broker state and compares it with the snapshot its plan was made from (Keycloak has no ETag on these objects), re-evaluates every approval at apply time (record hash, base version, not_after) and refuses what no longer holds"
+    resolution:
+      - {conflict: "a revocation and anything else", rule: "the revocation wins; a revoked grant id never returns", decides: rule}
+      - {conflict: "two narrowings", rule: "the narrower scope and the earlier end win", decides: rule}
+      - {conflict: "a narrowing and a widening", rule: "the narrowing applies now; the widening is re-evaluated after it", decides: rule}
+      - {conflict: "two widenings that disagree", rule: "both are parked as disputed", decides: "a human (the role owner, or the officer for privileged)"}
+      - {conflict: "a stale approval", rule: "refused when the record hash, the base version or not_after no longer match", decides: rule}
+      - {conflict: "a local reduction at an edge site and a home grant", rule: "the sticky overlay holds until home confirms it (section 13)", decides: "the officer on reconnection"}
+      - {conflict: "the source and a portal change to the same person", rule: "the source masters people facts and a portal change to them is refused, except a reduction (suspend, persona_status, leaver now), which is always allowed", decides: rule}
+      - {conflict: "a target drifted from the plan", rule: "a reduction is re-applied; an unexplained widening is removed and is a finding", decides: rule}
+    git_layout: "one file per grant, one per revocation named by its grant id, approvals and overlays in their own files, ULID ids; widenings land through a merge train against the latest state; revocations take a fast lane outside the train straight into the PDP's revocation list, so a red pipeline or a stopped runner never holds them back; every new grant id is checked against the whole revocation history; tools/grants.py moves from one file per realm to a loader over many files"
+  reconcile_limits:   # ADR-0178, the review of the whole stack
+    max_removals_per_run: 50       # above this a run stops until an override names the exact plan
+    max_removal_share: 0.25        # of the managed memberships it observed
+    logout_retry_minutes: 5        # a queued logout older than this is an alert
+    keep_runs: 5000                # run log lines kept
+    managed_marker: keyclerk.managed
+    logout_on_removal: false       # ADR-0181: the writer holds group membership only (fine-grained permissions); access tokens live 5 minutes
+  approvals:   # ADR-0180, engine decision 0006: an approval is the approver's own signature, made by the broker
+    proofs: required               # every approval key carries a broker-signed proof from a fresh sign-in
+    max_age_seconds: 300           # the sign-in at most this old when the broker issues the proof
+    acr: approval                  # ADR-0181: the level the realm binds to a passkey
+    accepted_without_proof: "rendered from the records each instance started from (reviewed in git), record by record"
+  identity_sources:   # ADR-0182: where accounts come from, drawn in the persona graph (engine decision 0009)
+  - {id: staff, name: "Staff sign-in", kind: oidc, prefix: "idp:"}
+  - {id: guests, name: "Guest accounts", kind: oidc, prefix: "ext:"}
+  - {id: operator, name: "VDHome operator", kind: oidc, prefix: "vdh:"}
+  - {id: partner-entra, name: "Partner directory (Entra, brokered)", kind: oidc, pattern: "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"}
+  - {id: admin, name: "Admin accounts (privileged access devices)", kind: oidc, prefix: "adm:"}   # engine decision 0011
+  - {id: workloads, name: "Workload identities", kind: workload, prefix: "spiffe://"}
+  - {id: agents, name: "Agents", kind: agent, prefix: "agent:"}
+  build_order: ["record loader over one file per record, with the state derivation (effective status) and Hypothesis stateful tests", "the per-anchor queue, outbox and inbox, and apply with snapshot re-check", "the connector protocol with the first six connectors", "the CloudEvents and OCSF envelope on PostgreSQL events, NATS only as the Insular adapter (section 22)", "delegated administration and nested groups (section 23)", "the TLA+ merge specification, then the edge module (bundle applier, envelope, local log, reconciliation) with SQLite, accepted only after the 7-day cut test"]
+
+# 19. Privacy by design and the sealed proof vault: identity proofs are protected in vaults that no one can read except in a
+# break-glass audit. Builds on separation.yaml (tenant-held keys, time-boxed unwrap grants), the one break-glass definition (ADR-0019,
+# ADR-0128), crypto-erasure (data-ai.yaml destruction) and the dpo special role. The tenant is the controller, the provider
+# or whoever runs KeyClerk the processor. Not legal advice: each tenant's DPO confirms the legal bases.
+privacy:
+  principle: "every piece of personal data KeyClerk touches has a purpose, a legal basis, a retention class and an owner before it is collected (GDPR art. 5 and 25); what is not needed is not collected, what is collected for proof is sealed, and what is sealed is destroyed by crypto-erasure at its end"
+  classes:   # per item of personal data; the tenant's policy pack may only narrow; defaults are product defaults, the tenant's DPO confirms them against its legal sources
+    operational: {what: "anchor, names, work mail, unit and function, grants, leases", readable_by: "the roles that need it, per section 16", retention_default: "while the person holds access, then 30 days"}
+    proof_fact: {what: "the fact of a check: claim, method and version, checker, date, issuer, expiry, the proof kind, its legal basis and its retention end (readable outside any seal, so an erasure or access request can be decided without unsealing), a keyed hash of a document number", readable_by: "sponsor, security desk, officer, auditor; the keyed hash is never shown", retention_default: "365 days after the last lease"}
+    sealed_proof: {what: "a copy of a proof the tenant must keep as evidence: a signed confidentiality undertaking, a letter of assignment, a certificate; an identity document only where a named statute allows a copy", readable_by: "nobody in normal operation; only through an unseal (below)", retention_default: "not kept unless the tenant's DPO sets a period and its legal source per proof kind"}
+    badge_picture: {what: "the picture printed on a badge and held by the PACS", readable_by: "the security desk and the PACS", retention_default: "the lease, then deleted from the PACS in the same step as the badge", never: "face matching (art. 9)"}
+    presence: {what: "door events, check-in and check-out, the roll call", readable_by: "the security desk; the roll call in an evacuation", retention_default: "30 days for door events, 180 days for the visitor log", never: "use for performance or working-time assessment without a separate decision by the tenant, informed to its employee representatives where its law requires"}
+    screening: {what: "a screening result (hr-security.yaml), fact only", readable_by: "the officer and the HR owner", basis_note: "criminal data only under the tenant's national rules on art. 10 (in Belgium the cases of the law of 30 July 2018), with a list of who may see it"}
+    health_revealing: {what: "a certificate that reveals health (a medical fitness certificate)", readable_by: "only as a fact (fit until a date); never stored as a copy", basis_note: "art. 9; the tenant's DPO decides whether it may be processed at all"}
+    approver_assertions: {what: "the signed approvals and their verification statements (section 15)", readable_by: "the auditor and the officer", retention_default: "as the grant or lease they approved, plus the event store's class"}
+    security_logs: {what: "portal and pipeline security logs with IP addresses", readable_by: "the security officer and the processor's operators for incidents", retention_default: "90 days"}
+    pipeline_artefacts: {what: "everything the upload pipeline derives (scanner verdicts, content-disarm output, renders for the viewer); no thumbnails or OCR text are kept", readable_by: "nobody after the check", retention_default: "deleted when the check ends; object versioning, soft delete and quarantine copies are off for proof buckets"}
+    backups: {what: "backups of every store above", rule: "hold only ciphertext for sealed proofs; follow the class of what they contain; restores follow the restore rule (epoch bump, seen-id rebuild)"}
+    discarded: {what: "everything seen at a check that no class above keeps: by default the identity document, and always the photo and the national register number of an identity card unless a named statute allows a copy", readable_by: "the checker during the check only", retention_default: "none"}
+  never: ["biometric matching on badge pictures or live photos without the DPO's art. 9 assessment", "criminal data except where the tenant's law allows it (art. 10)", "proof in tickets, mail, chat or logs", "personal data in event payloads beyond the anchor; names are resolved from the source when shown", "reading the photo or national register number from an electronic identity card in the electronic check, unless a statute allows it; an alternative without the identity card is always offered"]
+  vault:
+    intake: "the person's browser seals each upload to the tenant's intake key (HPKE) through a pinned uploader on its own origin, the confirmation-page pattern of section 15; the intake key lives only in the tenant's isolated viewer (a sandbox per tenant), which scans, disarms and renders the proof for the checker; this settles the question against separation.yaml's client-side default"
+    sealing: "after the check the viewer wraps the proof's own data key under the tenant's sealed-evidence key for its epoch (below) and forgets its copy; neither KeyClerk, the portal, the checker after the check nor the tenant's administrators hold either key in normal operation; VDHome holds no key, but as the processor running the infrastructure it could reach plaintext in the viewer's memory during a check: a disclosed residual (separation.yaml OB-6) until confidential computing is placed"
+    metadata: "object keys are random; the original file name lives inside the ciphertext; sizes are padded"
+    check_window: "the checker sees the proof in the isolated viewer only: server-rendered pixels, no download, no-store, a watermark naming the viewer; at most 24 hours after upload for identity documents and 72 hours for other proofs; a live check that stores nothing is preferred for identity; screen photos stay a stated residual"
+    epochs: "the sealed-evidence key is an epoch key per proof kind and retention bucket; when a bucket ends its key is destroyed with its HSM backups and shares, so old backups become unreadable"
+    custodians: "three distinct people, none of them the DPO: the tenant's security officer, its auditor or legal counsel, and a third it names (an HR lead or external counsel); three distinct people is a gate for using sealed proofs at all, a shortfall is a disclosed finding; a spare share is escrowed sealed with external counsel"
+    threshold: "a single data key is unwrapped inside an HSM that requires 2 of the 3 custodians' authentications for that one operation; shares are never combined in general-purpose software; where only a Shamir-split key is available, the key is rebuilt only on an offline ceremony device and the epoch key is rotated and every proof rewrapped after each ceremony, as ADR-0019 does for its CA"
+    custodian_change: "a custodian who leaves or loses a token triggers rotation of the epoch keys and a rewrap; re-sharing the same secret is never enough"
+    unseal:
+      purposes: "a data subject's access request (a standard purpose, answered within one month, third-party content redacted), a dispute or claim, an authority's lawful request, a security incident, a named audit finding (never a routine sample)"
+      how: "a request naming one proof and its purpose; two custodians authenticate in the HSM for that one data key; the proof is shown in the isolated viewer for 30 minutes, renewable only by a new ceremony; a non-incident unseal waits 24 hours with notice to the third custodian and the auditor; a duress PIN raises a silent alarm"
+      record: "every unseal is an event and a decision card visible only to the custodians, the DPO as reviewer and the auditor; the DPO reviews every unseal and is never a custodian; the data subject is told, unless a lawful purpose defers it, in which case the deferral has a review_by the auditor checks"
+      never: "an unseal by VDHome, by one custodian, for a bulk export, or to feed a model"
+    correction: "a sealed copy is never changed: a correction is a supplementary statement sealed next to it (art. 16)"
+    destruction: "at the end of a proof's retention its data key is destroyed, and at the end of its bucket the epoch key; a legal hold (data-ai.yaml legal_hold) suspends both until it is lifted; a signed certificate of destruction is written"
+    ddil: "proof uploads, checks and unseals happen at home only; edge viewers hold no proofs, and a cache sweep check proves it at each edge site"
+  gdpr_by_design:
+    records_of_processing: "KeyClerk ships one record of processing per flow (joiner, mover, leaver, activation, external lease, proof check, sealed proof, escorted session, physical access, presence) with purpose, categories, recipients, retention and a legal-basis field for the tenant's DPO; the processor's own record (art. 30.2) ships for the operator; in Insular they feed governance/privacy.yaml"
+    legal_bases: "the tenant's DPO decides them per proof kind; KeyClerk ships proposals to check, not answers: contract (art. 6.1.b) is mostly not available for externals, whose contract is with their employer; legitimate interest (6.1.f) with a balancing test, legal obligation (6.1.c) where a law requires the proof, contract with the signer for an undertaking; consent from employees is rarely free"
+    dpia: "a DPIA is required by default for the external lease, proof and presence flows (identity documents, possible art. 9 and 10 data, an imbalance of power, systematic presence monitoring); a tenant may skip it only with a reasoned, recorded exception; KeyClerk ships the template"
+    processor_terms: "a processor agreement template covering art. 28.3 (instructions, confidentiality, security, help with rights and the DPIA, deletion or return at the end, audits), the list of sub-processors with their role, location and transfer basis (hosting, mail relay for invitations, scan and disarm engine, PACS vendor), their flow-down terms and authorisation (art. 28.2, 28.4), and the processor's duty to tell the tenant of a breach within 24 hours (art. 33.2)"
+    transparency: "people are told before or at the first contact: as the sponsor supplies their data first, art. 14 applies as well as art. 13: what is collected, why, the legitimate interests relied on, whether providing it is required and what happens if not, recipients (the PACS, connected organisations), retention including the 365-day keyed hash, that proofs are sealed and how an unseal works, the DPO's contact and the right to complain to the supervisory authority"
+    rights: "a 'my data' view shows a person their operational data, their proof facts and whether a sealed proof exists; an access request that needs the copy is an unseal purpose answered within one month; rectification, erasure and objection go to the tenant's DPO as decision cards; erasure is crypto-erasure, balanced against retention a law requires"
+    minimisation: "every form field names its class; a field without a class cannot be added (the checker refuses it)"
+    location: "all personal data and keys stay in the tenant's Isle, in the EU; no sub-processor ever handles plaintext proofs: hosting holds ciphertext only, and the processor's residual is disclosed (vault.sealing)"
+    breach: "an unseal outside the rules, a key used without a ceremony or a proof found unsealed is a security incident with the art. 33 clock started (governance/incident.yaml)"
+  acceptance_test: "a canary proof's plaintext is searched for in storage, logs, caches and backups after its check and is not found; a key-copy inventory diff finds no copy outside the HSM; after destruction the oldest backup is restored and the unwrap fails; two custodians unseal exactly one proof for 30 minutes and the event, the card and the notice or its deferral exist; a non-incident unseal waits 24 hours; a form field without a class is refused"
+  note: "sealed copies are the DPO-approved exception to the 'never a copy' rule"
+
+# 20. Proof trust and leftover risk acceptance. Uses the model's
+# own terms: policies/model.yaml trust_bands and trust_anchors (a rule cannot claim more trust than its anchor gives),
+# is a loud, time-gated risk acceptance).
+proof_trust:
+  two_axes:   # two kinds of trust, never one scalar
+    proof_trust: "how sure we are who the person is and what they hold (identity assurance, IAL-like), per claim, from proof results: this section"
+    session_trust: "how sure we are of this session (authentication assurance and device posture, AAL-like): adaptive-policy.yaml signals and path_trust, unchanged"
+    decision: "a request needs both: its proof floor (below) and its session requirement (adaptive-policy path_trust, for example Sensitive write high); decide.rego takes proof_trust per claim and session_trust as separate inputs instead of one context.trust, and neither can stand in for the other"
+  anchors:   # each proof method's result is a trust anchor in the policies/model.yaml sense, per claim; added to policies/model.yaml trust_anchors through coupling.yaml on acceptance
+    principle: "a proof result gives trust for the claim it verified, at most its method's max_trust, only while fresh; when results for the same claim disagree, the lowest wins and the case goes to a decision card; for a request, the lowest over the claims it needs (the weakest link)"
+    max_trust: "a number per method id and version in signed rule data, approved by the security officer; the level a plugin or an issuer reports can only lower it, and KeyClerk stamps the method id from the plugin's process identity, never from the plugin's own output"
+    by_assurance: {high: high, substantial: medium, low: low}   # eIDAS levels (and the NIST IAL mapping), applied only below the method's max_trust
+    methods:
+      tenant_idp: {claims: [identity], max_trust: "set per tenant from its IdP's documented proofing (an HR onboarding with an in-person document check: medium), approved by the officer", freshness: "while the source keeps the person active", note: "tenant employees arriving by SCIM carry this result, so they do not start at none"}
+      in_person_live_match: {claims: [identity, likeness], max_trust: medium, freshness: "365d", note: "a trained checker against a document; high only with the document's chip read for authenticity, never its photo or register number copied (section 19)"}
+      upload_and_check: {claims: [identity], max_trust: low, freshness: "365d", note: "a copy can be forged; medium only together with a live match"}
+      electronic_identity: {claims: [identity], max_trust: "the number in rule data for that scheme (a notified scheme at substantial: medium; at high: high)", freshness: "365d"}
+      issuer_register: {claims: [qualification], max_trust: high, freshness: "until the register's own expiry, re-checked by refresh"}
+      connected_organisation: {claims: [identity, affiliation], max_trust: "the lower of the partner's evidenced trust band (ADR-0149) and medium unless that evidence is attested; a partner admitted by risk acceptance never feeds proof trust; the common-mode rule of ADR-0149 applies", freshness: "30d (monthly recertification)"}
+      signed_undertaking: {claims: [undertaking], max_trust: high, freshness: "until a new version"}
+      vouch: {claims: [affiliation], max_trust: low, freshness: "90d"}
+      verifiable_credential: {claims: "as the credential's issuer and type", max_trust: "the number in rule data for that issuer and type", freshness: "the earliest of the credential's validity, the status list's time to live as last fetched, and 30 days; a status list that cannot be refreshed caps the result at low"}
+    combined: "a result that combines methods (an upload checked plus a live match) expires at the oldest freshness of its parts, so a weaker re-proof never restarts the clock"
+    retired_method: "a method found weak gets its max_trust lowered in rule data; every result from it is re-evaluated at once and leases re-checked (proof_contract.method.rules)"
+  requirement:
+    where: "an access package's proof policy (proof_contract.combine) names a minimum trust per claim; a rule in a policy pack may name min_trust per claim"
+    by_label: "the default floor follows the data: Internal needs identity low, Sensitive needs identity and likeness medium, Restricted needs identity high and likeness medium; a tenant's pack may only raise it"
+    aggregate: "the floor is computed over the person's union of grants, not per request, with the same check as toxic combinations: many Internal grants whose data together reaches Sensitive need the Sensitive floor"
+  shortfall:   # what happens when the proof does not reach the requirement
+    narrow: "the default: the request is granted only up to the label the trust reaches (low trust: Internal only), never refused silently; the person sees which proof would lift it"
+    refuse: "for privileged entitlements, special roles and anything Restricted no shortfall is ever accepted; nor is a gap of more than one band, or a missing identity or likeness proof at all"
+    accept: "otherwise the gap may be taken as a risk acceptance in the policies/model.yaml shape (by, role, until, rationale, residual): signed by the owner of the highest-risk resource in the package and by the security officer, who is outside the sponsor's line; never the requester or the sponsor; at most until the lease end and at most 90 days; a consecutive acceptance for the same gap needs the officer and a dated plan for the missing proof"
+    budget: "acceptances count against a budget, not only a cap: the tenant's summed accepted residual and each person's summed residual and number of open acceptances have limits in its pack, so one large residual cannot be split into many small ones"
+    residual: "computed from tables in rule data, with golden tests: likelihood from the claim gap (one band short) and the method's known failure modes, impact from the label and the entitlement's risk class, on the model's 1-5 by 1-5 scale; an acceptance above the appetite or the budget is refused"
+    void: "an acceptance ends at once on the conditions of ADR-0149: the person's band going red or black, a world-state rise, the partner's downgrade, or a revoked proof result"
+    loud: "every accepted shortfall shows on the RTOP risk.exceptions view with its owner and until, in KeyClerk's slice (section 17), and expires by itself (ADR-0149 shape); it is never renewed silently"
+  decay: "trust decays with freshness: when a claim's result is no longer fresh the person's trust for it drops and their grants narrow at the next decision, with a reminder to re-prove before that (the reminder groups of section 14); nothing waits for a review to notice"
+  bundle: "trust per (anchor, claim) travels in the bundle as data with a valid-until of the earliest of its freshness, the isolation horizon and the label's offline grace; revoked proof results and retired methods travel in the revocation list, so a cut-off site stops trusting them at once"
+  pane: "KeyClerk's RTOP slice shows trust (how many active people and externals at each band per claim, proof methods in use, decays due) and risk (accepted shortfalls with residual, owner, until, and the share of the budget and the appetite they use)"
+  acceptance_test: "an external with an identity proof that a method caps at low requests a Sensitive resource and is narrowed to Internal; with a live match the Sensitive grant applies; a shortfall on a Restricted request is refused; a split into acceptances that together exceed the budget is refused; a lapsed proof narrows the grant at the next decision; a retired method lowers every result from it, at home and at a cut-off site through the revocation list; a plugin reporting a level above its rule-data max_trust is capped"
+
+# 21. KeyClerk highly available from the start, in containers: active-active or a 3-node witness setup, full container mode.
+# Uses the patterns of platform/resilience.yaml
+# (active-active, quorum, active-passive, leader-elected, independent) and its principles: replicate in the
+# application, never in stretched networks or shared storage; every site stands alone.
+keyclerk_ha:
+  minimum: "production KeyClerk runs on at least three nodes: three full nodes, or two full nodes and a witness; a single node is a development and demonstration profile only, and KeyClerk refuses to start in production with fewer than three members (the profile check); in Insular's size table that is the M shape, so an S Isle gets KeyClerk only by growing to it"
+  witness:
+    role: "the third Kubernetes control-plane member (etcd quorum); in Insular also the third NATS server with JetStream, holding replicas of KeyClerk's streams with disk for the 10-day retention; it holds no PostgreSQL data, so PostgreSQL failover is arbitrated by the Kubernetes quorum it helps form"
+    placement: "in a separate failure domain from the two full nodes (another rack, room or power feed; at an edge site another box on its own supply)"
+    protection: "etcd is encrypted at rest with a key from an external KMS, and the witness disk is sealed by its TPM, so a stolen witness carries no readable secrets"
+  containers:
+    images: "every component is an OCI image, signed (cosign) and pinned by digest in stack.lock; rootless, read-only root file system, no shell in production images"
+    orchestration: "Kubernetes (K3s or RKE2) in every profile, standalone too; the same images and manifests (a Helm chart rendered to kustomize) in Insular and outside it; no all-in-one container for production, a compose file only for demonstrations"
+    placement: "anti-affinity and topology spread so no two replicas of a component share a node; PodDisruptionBudgets keep a majority up during maintenance; readiness and liveness probes on every service"
+    upgrades: "rolling, one node at a time, with zero downtime; schema changes expand first and contract a release later; the policy and schema version travel in the reconciler's lease and in the bundle, an older reconciler refuses to act on a newer version, and enforcement points pin a minimum bundle revision, so two versions never decide the same request differently"
+  components:   # resilience.yaml patterns per component
+    portal_bff: {pattern: active-active, note: "stateless replicas; server-side sessions in PostgreSQL so any replica serves any request"}
+    confirmation_page_and_verifier: {pattern: active-active, note: "stateless; nonces and seen assertions in PostgreSQL under a unique constraint; every challenge is bound to the issuing site's audience, so an assertion replayed at another independent site fails"}
+    api_and_proof_plugins: {pattern: active-active}
+    connector_workers: {pattern: active-active, note: "work is taken per (realm, anchor) under the database lock below, so two workers never apply to the same person"}
+    reconciler:
+      pattern: leader-elected
+      election: "a Kubernetes Lease; one reconciler per realm and target acts, the others wait hot; a reconciler that loses or cannot renew its lease exits at once"
+      fencing: "the lease epoch is written with every per-anchor lock in PostgreSQL, the lock's time to live is shorter than the lease, and the epoch and the lock are re-checked in the same transaction immediately before each single call to Keycloak, so a paused or partitioned old leader cannot act on a lock that has lapsed; every apply is idempotent"
+      takeover: "within the lease duration (15 seconds) plus one plan cycle; a new leader first re-diffs every anchor the previous epoch touched, so a stale widening that slipped through is removed"
+    opa: {pattern: per-node, note: "a decision point beside every enforcement point, each with the signed bundle; it keeps deciding from its last bundle only while the bundle and the revocation list are within the label's maximum age, and fails closed beyond it, as resilience.yaml requires"}
+    postgresql:
+      pattern: active-passive
+      clusters: "two separate CloudNativePG clusters, one for Keycloak and one for KeyClerk, so neither's durability setting or point-in-time restore couples to the other"
+      keyclerk_db: "a primary and one synchronous standby (a second standby with three full nodes), failover inside the site arbitrated by the Kubernetes quorum, continuous WAL archive to object storage at a second location; durability required for widenings and approvals; a reduction commits with synchronous_commit local for its own transaction and is written at the same time to the reduction journal (below), so a missing standby never delays a narrowing"
+      keycloak_db: "durability preferred: Keycloak's state is derived from the records and re-applied by the reconciler, so a write lost in a failover is redone, never trusted; a reduction in Keycloak never waits for a standby"
+      rpo_rto: "per failure: one full node lost, no acknowledged widening or approval lost, failover inside 30 seconds; the standby lost then the primary, widenings since the standby left are lost and redone from the records, reductions are recovered from the journal; the witness down and then one full node lost, no quorum, enforcement fail-static within the bundle's maximum age, no new widenings"
+    reduction_journal: "every reduction (revocation, suspension, leaver, lease end) is appended to an append-only, signed journal: written to local disk on each full node, published to NATS, and its head anchored off the box with the revocation high-water set; the bundle builder and every restore take the union of the journal and the records, so a reduction that exists only in the journal while the forge is down is never lost"
+    nats: {pattern: quorum, impl: "in Insular only (section 22): three NATS servers with JetStream, KeyClerk's streams replicated three times; the witness is the third; standalone, the witness is only the third Kubernetes member"}
+    keycloak: {pattern: active-active, impl: "at least two replicas per site on their own PostgreSQL cluster with persistent sessions (Keycloak's current default; resilience.yaml's row is updated when KeyClerk's rows are added); a replica whose cache cluster splits from its peers fails its readiness check and stops serving, and the PDP's revocation check at token use backs that up"}
+    records_git: {pattern: active-passive, note: "the forge may be down: the reconciler keeps enforcing the last fetched head plus the reduction journal; new widenings wait"}
+    hsm: {pattern: active-passive, note: "two HSMs per tenant holding the same keys, or one HSM and the offline ceremony (section 19); a key destruction completes on both devices with attestation, and a device that missed one is wiped before it rejoins"}
+  revocation_paths:   # a reduction reaches every enforcement point by two independent paths
+    push: "a speed-up: standalone the outbox relay (section 22), in Insular the reduction journal over NATS, into every OPA's revocation list"
+    pull: "the guarantee: every OPA pulls the revocation list from the bundle service, which reads the out-of-database journal; a list only grows, and a pull that would drop an id is refused with an alarm"
+    max_age: "per label, the revocation list's maximum age (Internal 1 hour, Sensitive 15 minutes, Restricted 5 minutes, from rule data); an OPA whose list is older fails closed for that label"
+  restore:   # with the restore rule for KeyClerk's own database
+    keycloak: "after any restore or point-in-time recovery of Keycloak's database: push a realm not-before, rotate the realm's signing keys and replay the revocation high-water set and the reduction journal before the realm is opened to sign-ins"
+    keyclerk: "the restore rule (epoch bump, seen-id rebuild, queue re-evaluation, full reconcile before any widening), plus the union with the reduction journal"
+  multi_site:
+    pattern: independent
+    rule: "each site runs its own full stack (Keycloak, reconciler, PostgreSQL, NATS, OPA) and applies the same signed records to its own Keycloak: one writer per target holds, and people are served at every site at once (active-active at the service level, never a stretched cluster); unlike resilience.yaml's PostgreSQL L row, KeyClerk's databases are never replicated across sites"
+    exchange: "records come from the realm's home; events and the edge logs travel between sites over NATS leaf nodes and sourcing; a site cut off decides from its last bundle (section 8)"
+  edge:
+    enclave: "an access enclave may run as two boxes and a witness device on site, because a cut-off site must hold its own quorum; it then runs PostgreSQL like home; a single-box enclave stays allowed as a disclosed residual (fail-static on its last bundle) and keeps SQLite as section 18 says"
+    budget: "the 4 GB per box floor of section 12 is re-measured for the HA enclave (etcd, NATS with JetStream, PostgreSQL, Keycloak and OPA on each full box) in a test run before it is offered"
+  failure_rules:
+    - "a reduction never waits for a widening, the forge, a standby, a full quorum or a failover: it commits locally, enters the reduction journal and reaches every OPA by two paths"
+    - "losing one node of three changes nothing a person can see; losing quorum leaves enforcement fail-static within the bundle's and the revocation list's maximum age, with no new widenings, and fail-closed beyond it"
+    - "a failover never replays an approval: nonces and seen assertions are in the synchronously replicated database and bound to the site"
+  acceptance_test: "a chaos run on three nodes, with every operation's history recorded and checked afterwards for linearisability of approvals and for no revocation lost (Jepsen and Elle style), and the TLA+ specification extended to leader handover, a paused leader and a partition where the old leader reaches Keycloak but not the API server: the leader is killed or paused mid-apply and no membership is written by a stale epoch; the PostgreSQL primary is killed with and without its standby and the RPO and RTO above hold; the witness is cut off and then a full node, and enforcement stays within its maximum age; in Insular one NATS server is lost, and standalone the outbox relay is stopped, and the pull path keeps every revocation list current; Keycloak's database is restored to an older point and no revoked membership or session comes back; a rolling upgrade under load keeps the portal answering and never decides one request two ways; the leaver bound holds with one node down"
+  insular: "in Insular, KeyClerk follows the size table: M and L Isles run it as above; an S Isle grows to the M shape to run it; platform/resilience.yaml gains KeyClerk's rows (and the Keycloak session note) when KeyClerk's images exist"
+
+# 22. A lean core, and the contracts for what grows on top: the solution stays lightweight, with contracts for an event
+# timeline (browsing back and forward through events) and for live sensor and metrics feeds that can fill a database
+# queryable by AI and feeding automated processes. The contracts are defined now and built when needed.
+# They follow the model's own: CloudEvents and OCSF (ADR-0136, ADR-0152), one entity key and decision-record-v1 (ADR-0154).
+keyclerk_lean:
+  core:
+    containers: "four small KeyClerk containers, each its own image and keys: the engine (reconciler, API, bundle service; leader-elected where it writes), the verifier (it alone holds the key that signs verification statements), the portal (the BFF), and the confirmation page (its own origin and its own deployment, so a compromised BFF server cannot change what an approver sees); OPA beside each enforcement point; still two images more than a lean pair, because a merge would undo the separation of the confirmation page and give one process the power to forge and apply"
+    database: "two PostgreSQL clusters, as section 21 decided: per-role synchronous_commit is a session setting any session can override and gives no guarantee, and one cluster couples every point-in-time restore of Keycloak's database with KeyClerk's; the second cluster is small"
+    events: "standalone, the event log and the outbox are PostgreSQL tables (append-only, partitioned by month); a relay outside the reducing transaction reads the outbox and notifies listeners (LISTEN and NOTIFY only from the relay, never inside a reduction); in Insular, NATS JetStream, which already runs there (ADR-0152), is the event adapter"
+    journal: "the reduction journal is never only a database table: each reduction is appended to the out-of-database signed journal (node-local files on every full node and its head anchored off the box, section 21 reduction_journal) before it is acknowledged; the table is an index of it"
+    revocations: "the pull path is the guarantee and the push path a speed-up: every OPA pulls its revocation list within the label's maximum age (Restricted 5 minutes, which is inside the leaver bound for Restricted access), a list only ever grows (a union with the high-water set of revoked ids), and a pull that would drop an id is refused and raises an alarm; standalone, the push path is the outbox relay, in Insular NATS"
+    load: "the reconciler and Keycloak use the primary; timeline and query reads use a separate read-only role on an asynchronous replica, with a statement timeout, so a large query never starves enforcement; partition drops follow each data class's retention (section 19) and never touch the journal or its index"
+    footprint: "on top of the Keycloak a tenant already runs: four small containers and one small database cluster; about 1.1 GB requested and 2.2 GB at the limit per node, budgeted below (budget), measured in a test run and stated in the README"
+  budget:   # tools/footprint.py checks it and judges a test-run measurement against it
+    basis: "estimates, not measurements: a test run with all modules off measures each figure, and a measured value replaces the estimate in the same change that records the run; from then on a container over its limit, or KeyClerk's share over its share, fails"
+    unit: "memory in MiB, disk in GB"
+    node: {ram: 8192, disk: 40, headroom_ram: 1024}   # a full node in the 3-node layout; headroom stays free for spikes and the page cache
+    witness: {ram: 1024, disk: 20}                    # the witness of the 2-plus-witness layout holds no PostgreSQL data (section 21)
+    keyclerk:   # KeyClerk's own containers, per full node; OPA once beside the engine and once beside the portal
+      - {name: engine, request: 256, limit: 512}
+      - {name: verifier, request: 64, limit: 128}
+      - {name: portal, request: 128, limit: 256}
+      - {name: confirmation-page, request: 32, limit: 64}
+      - {name: opa, count: 2, request: 64, limit: 128}
+      - {name: keyclerk-postgresql, request: 512, limit: 1024}
+    share: {request: 1120, limit: 2240}   # the sum of the rows above; the claim made in the README
+    neighbours:   # not KeyClerk's, on the same node; given so the node size adds up
+      - {name: keycloak, request: 1280, limit: 2048, note: "Keycloak's sizing guide: about 1.25 GB idle, plus about 0.5 GB per 100,000 active sessions"}
+      - {name: keycloak-postgresql, request: 512, limit: 1024}
+      - {name: os-and-k3s, request: 1024, limit: 1024}
+    disk:   # per full node, first year, one site with a few thousand people in scope
+      - {name: keyclerk-database, gb: 10}
+      - {name: journal, gb: 1}
+      - {name: keycloak-database, gb: 5}
+      - {name: images, gb: 2}
+    backups: "object storage outside the node, at most 3 times the two databases"
+    growth:
+      event_bytes: 1024           # a CloudEvents envelope with one OCSF event
+      index_factor: 2             # table plus indexes
+      sign_in_retention_days: 90  # a Keycloak sign-in is a metric, or an event kept 90 days at most, never permanent history
+      proof_vault: "the sealed-proof-vault module keeps proofs on its own volume, sized by its retention (section 19), never in the database"
+    scale: "RAM barely grows with the organisation: people reached by rules over attributes get no KeyClerk record (section 5 discovery); disk grows with events, so a long-kept event type needs its daily volume times the event size times the index factor to fit the database row above"
+    ring_check: "during the acceptance run, the peak memory of each container (cgroup memory.peak) and the disk used per volume are written to a measurement file; python tools/footprint.py --measured FILE fails if a container exceeds its limit, KeyClerk's share exceeds its share, or a volume exceeds its row"
+  modules:   # off by default, switched on per tenant; each its own image or plugin, none in the core's process
+    rules: "a module declares the privileges it needs (device access, host network, an HSM), and admission policy refuses anything it did not declare; CI runs every core guarantee with all modules off; a core feature that needs a module refuses to run without it: uploads of proof are refused unless the sealed-proof-vault module (its intake and isolated viewer) is on, and without it proof is checked in person only"
+    list:
+      - {name: physical-access, what: "PACS connector and OSDP controller (section 14 physical), out of the engine's process"}
+      - {name: sealed-proof-vault, what: "the intake, the isolated viewer, the vault and its HSM or ceremony (section 19)"}
+      - {name: proof-plugins, what: "methods beyond the in-person check (section 14 proof_contract)"}
+      - {name: edge, what: "edge sign-in, the bundle applier and the envelope (sections 8, 13)"}
+      - {name: ftef, what: "the FTEF trust source port (section 17 keyclerk_fit.ftef)"}
+      - {name: nats, what: "the event adapter in Insular (sections 18, 21)"}
+  position: "KeyClerk stays access leases for Keycloak; midPoint stays the full suite to federate with when a tenant needs it (section 17)"
+  contracts:   # defined now, built when needed; every one carries the entity key
+    entity:
+      key: "every person is a person-pseudonym entity (ADR-0154: entity_id = person-pseudonym:<site>/<pseudonym>), the pseudonym a keyed hash of the anchor"
+      custody: "the pseudonym key is per tenant, held in OpenBao (or the tenant's HSM), never exported; pseudonyms are per site unless the tenant records a reason to link sites; a key rotation re-pseudonymises through a mapping kept as long as the events it covers"
+      erasure: "the pseudonym is still personal data (GDPR recital 26): erasure deletes the person's mapping and every name resolution, so the stable pseudonym in the append-only log can no longer be linked to anyone; a low-entropy anchor (an employee number) is hashed with the tenant key only, never published"
+    event:
+      name: keyclerk-event-v1
+      envelope: "CloudEvents 1.0: id (UUIDv7), source (the KeyClerk instance), type keyclerk.<noun>.<verb>.v1, subject (the entity_id), time, datacontenttype; data: one OCSF event plus decision_id when a decision caused it"
+      rules: "append-only; at least once; idempotent by id; never carries more personal data than the entity_id"
+    decision: "every KeyClerk decision writes decision-record-v1 (ADR-0154), and its events carry the decision_id"
+    timeline:
+      what: "browse back and forward through what happened, for an entity, a site, a lease or the whole tenant"
+      api: "events(filter, before | after cursor, limit): a cursor over (time, id) in both directions; seek(time); filters by entity, type, site and time range (tools/keyclerk_events.py)"
+      truth: "two views side by side, and differences flagged: what was decided then (the stored decision records and events, which are the record of what was enforced) and what the current records derive for that moment (state_at, historical mode: a revocation counts from its own time); a derivation never replaces the stored record"
+      bitemporal: "every record carries a valid time and a recorded time (written when it entered the records), so a back-dated change shows as back-dated, and rule data is pinned by version in each decision record"
+      rules: "read-only; what a viewer sees follows section 16 and section 19; browsing back and every export are themselves events"
+    metrics:
+      transport: "OpenTelemetry metrics, exposed as OpenMetrics; resource attributes carry the KeyClerk instance, site and tenant, never a person's entity key"
+      names: [keyclerk_reconcile_seconds, keyclerk_plan_changes_total, keyclerk_drift_findings_total, keyclerk_queue_depth (by lane), keyclerk_leaver_bound_seconds (by channel), keyclerk_revocation_list_age_seconds (by site), keyclerk_bundle_age_seconds (by site), keyclerk_leases_active (by category), keyclerk_approvals_pending, keyclerk_approval_seconds, keyclerk_lease_epoch, keyclerk_journal_head_age_seconds, keyclerk_door_events_total (by result), keyclerk_on_site (by site)]
+      rules: "names are stable once published; a removal is a major version; a count below 5 (on site, leases by category) is shown as fewer than 5, so a small site does not reveal one person's presence"
+    sensors: "live inputs (door events from the PACS or OSDP, presence, device posture, Keycloak sign-ins) enter as signed keyclerk events or OpenTelemetry logs signed by their sensor; an unsigned input is observed but never acts"
+    query:
+      what: "one read-only query surface over events, decision records, metrics and derived state, used by the portal, automation and AI alike"
+      shape: "a query API (time range, entity, type, aggregate) over views with security_invoker and row-level security bound to the viewer's signed claims, on the read replica; viewers never get SQL; aggregates need a minimum group of 5, each query has a budget, and every query is an event"
+    automation:
+      what: "processes that react to events: subscriptions by event type and entity, delivered at least once, idempotent"
+      rules: "an automation acts only by filing a request or a suspension through the same path as people (records, OPA, the reconciler), within autonomy.yaml's levels and with its kill switch; it may suspend (reversible, section 4) but never revoke (a revoked id never returns) and never approves; each automation has a rate cap and a breaker, and an event caused by an automation that would trigger the same automation again is dropped (loop detection)"
+    ai_and_language:
+      what: "questions in natural language over the timeline, state and decisions, and requests drafted for a person to sign"
+      interface: "an MCP server whose tools are the query surface (timeline, state_at, who_has, why_can_or_cannot, explain_decision) plus file_request, which only drafts a request for a person and is rate-limited; every tool call runs on behalf of the asking person by token exchange, never with the server's own rights"
+      rules: "explanations are redacted by data class for the asker (a band, a screening or a proof shortfall of someone else is never explained to a third person); every field a person or source wrote (names, notes, reasons) is passed to the model as quoted data, never as instructions; answers cite event and decision ids; approvals are never given by a model (a passkey on the confirmation page); models run in the tenant's Isle only, never outside it (section 19)"
+  acceptance_test: "a test run with all modules off: a reduction acknowledged during a primary failover is found in the out-of-database journal and re-applied; a revocation list never shrinks after a failover and a shrinking pull raises the alarm; a stuck listener never blocks a reduction; a large timeline query on the replica leaves the leaver bound unchanged; a metrics series with fewer than 5 people shows as fewer than 5; an MCP question about another person's band is refused; an automation loop is broken by the loop detector; a proof upload is refused with the vault module off"
+# 23. Delegated administration and nested groups: secure RBAC lifecycle management, with delegation and nesting of groups so
+# a single root trust owner can delegate group membership lifecycle management to multiple distributed deputies.
+# Attributes may be collected from multiple data sources and a persona's attributes can grant access, but many of them are
+# based on group membership elsewhere in the chain. Insular can add risk-based access control here, with the contract
+# scaffolded on FTEF.
+delegated_administration:
+  root:
+    who: "one root trust owner per tenant: an appointed special role (section 4), never requested; holds every power over the tenant's group tree and is the only source of top-level delegations; the security officer appoints holders and a named successor"
+    role_not_person: "delegations hang off the root role: a delegation made by whoever held the role at the time stays valid when the holder changes, so a succession never cascades; when a holder is revoked for cause with a compromise time, the delegations that holder made from then on end, the rest go to the successor's review within 14 days"
+    limits: "the root never approves their own memberships; a root delegation of elevated or privileged scope carries the security officer's key; the root is not the security officer (section 4 split)"
+  tree:
+    meaning: "the administrative tree: one per tenant under one top group; it says who manages a group, not who is in it"
+    group: "a managed group has an immutable id, its parent, the roles or entitlements it carries (set only by their owners in the catalogue, never by a deputy) and a fixed max_risk set at creation; a catalogue change that would make it carry more than its class is refused; to carry more, create a new group (prior art: Entra isAssignableToRole, fixed at creation)"
+    moves: "moving a group to another parent needs authority over the lowest common ancestor and counts as a widening; only the root or the role owner renames a group, and every approval screen shows the id, what the group carries and its effective class"
+  nesting:
+    meaning: "a group may include other groups: members of the included group become members of the including one; inclusion forms a graph separate from the tree"
+    effective: "effective members are the named members, the effective members of every included group and the people matched by attribute rules, flattened by the engine; nothing reads nesting at decision time but the flattened result (tools/delegation.py effective_members)"
+    effective_risk: "a group's effective class is the highest of its own and of every group that includes it, transitively, because its members reach those rights; every authority, second-key, rate and review rule uses the effective class; derived, never a sticky flag (the AdminSDHolder lesson)"
+    rules:
+      no_cycles: "an include that would close a cycle is refused"
+      depth: "at most 3 levels of inclusion (rule data), checked for every including ancestor, not only the changed group"
+      class: "B may be included into A only if B's own class is at least A's effective class"
+      control: "an include of B into A needs the includes power over A and the members power over B (one deputy holds both, or B's manager adds their key)"
+      privileged: "a privileged group has named members only: it never includes, is never included and never has a rule (prior art: Entra role-assignable groups cannot contain groups and cannot be dynamic)"
+      self: "the self rule is checked after flattening: an include that puts the actor into a group they manage is refused"
+      tenant: "an include never crosses tenants or planes"
+  delegation:
+    record: "delegation_id, delegate, group (the top of the delegated subtree), powers, max_risk, max_membership_days, depth_left, start, end, by, parent (root or a delegation), approved_by"
+    powers: {members: "add, end and renew named members", subgroups: "create and retire groups below, without choosing what they carry", includes: "include and remove groups (nesting.rules.control)", rules: "add and end attribute rules (attribute_rules)", delegate: "pass a subset of these powers on, while depth_left allows"}
+    place: "a delegation may also be limited to a place: it then covers only groups at that place or inside it, so a building's steward hands out that building's door groups and nothing logical; a child's place is inside its parent's (ADR-0174)"
+    attenuation: "a delegation never exceeds its parent: powers a subset, the group inside the parent's subtree, max_risk and max_membership_days no higher, depth_left lower, start and end within the parent's (nothing outlives its parent); the same shape as X.509 pathLenConstraint and nameConstraints, and capability attenuation (SPKI, macaroons, biscuit)"
+    lifetime: "at most 180 days (rule data); renewed by the delegator, or by the delegator's delegator or the root when the delegator is away, with reminders at 30, 14 and 3 days"
+    delegates: "a human tenant person known at home: never an agent, never an external, never edge-born, never the delegator or anyone already in the chain; every person comparison uses the keyed identity-fact hash (persons), so two anchors of one person are one person; delegated powers are never used on someone's behalf (section 16 on_behalf); a privileged delegation below root needs a second key from outside the chain; at most 10 direct delegates per delegation (rule data)"
+    authority: "derived at decision time: an actor holds a power over a group if one of their delegations is effective now, names that power, covers the group by its subtree, allows the group's effective class, every delegation up to root is effective, and the actor is not compromised; nothing about authority is stored"
+    stand_in: "a deputy away appoints no stand-in themselves; section 16 stand_in rules apply, appointed by their delegator"
+  membership:
+    record: "membership_id, group, member (an anchor, a group for an include, or an attribute rule), by, under (the delegation used, or root), approved_by, start, end"
+    rules:
+      self: "never the actor, compared by identity fact"
+      who: "members are tenant persons; externals reach groups only through leases (section 14)"
+      end: "every membership ends: at most the delegation's max_membership_days"
+      second_key: "privileged groups, attribute rules on elevated groups, and adding a deputy to an elevated or privileged group need a second key from outside the actor's chain (neither above nor below it; the root is above every chain), preferably the role owner or the security officer; reciprocal adds between deputies are a risk signal"
+      sod: "the SoD register (section 16) is checked against each person's effective entitlements after flattening, at every membership, include, rule and catalogue change"
+      rate: "at most 20 widenings per deputy per day and 60 per top-level subtree, delegations counted too, so many sub-deputies do not multiply the cap (rule data)"
+      recheck: "every rule is re-checked now, never grandfathered: a membership that no longer passes (its group's class rose, its second key was voided) is invalid and gives nothing"
+      assertion: "every widening carries a fresh signed assertion of the actor (section 15)"
+  attribute_rules:   # the ABAC research (NIST SP 800-162, Kuhn, Coyne and Weil 2010, NIST IR 8112)
+    position: "an attribute rule is the third way into a group, next to named members and includes; most attributes are someone else's group or HR record, so a rule delegates membership to whoever writes the attribute, and that writer is held to a deputy's limits; attributes narrow freely, they widen only under the rules below (the role-centric and dynamic-role variants of Kuhn, Coyne and Weil)"
+    rule: "{attribute, values, source, max_age_hours}: the attribute is in the attribute registry (identity.yaml attributes) with pedigree, may_widen and allowed values; the source is one of its providers; max_age_hours within its ttl"
+    widen: "only an attribute with may_widen true adds members; a derived or sourced attribute (pedigree other than authoritative) only on low groups; never on a privileged group; on an elevated group with a second key"
+    upstream_group: "a rule on upstream_group (a group claim from the tenant's IdP) is a delegation to that group's owner upstream: registered with pedigree derived and that owner as its authority, shown in the tree as an external authority, and in the drift diff (prior art: Okta group rules, Entra dynamic groups; Entra is retiring its memberOf operator for scale, unverified)"
+    freshness: "a missing or stale attribute never matches (absent is the strictest value); while cut off, a widening attribute is absent and a narrowing one may use its last known value within the label's offline grace"
+    conflict: "one authority per attribute; a second source that disagrees gives the narrower result and a finding, never a merge"
+    versions: "a rule is a versioned artefact like a role version: its content hash, a merge request by two people, an owner who is not its author"
+    preview: "every rule change shows who matches now and who would match (added and removed, counts and names) before it is saved; a change adding more than 25 people needs a second key (rule data)"
+    drift: "value changes from one source that widen are capped per hour; a burst freezes widenings from that source and pages its authority; narrowings always pass"
+    explain: "every flattened membership records its path: member through rule R version v because attribute = value from source S, refreshed T"
+    registry_metadata: "per attribute (NIST IR 8112): pedigree (authoritative, sourced, derived, self_asserted), provider, authority, allowed_values, ttl, may_widen, offline; per value in the bundle: source, last refresh and expiry"
+  risk_port:   # risk-based access control on this, the contract scaffolded on FTEF
+    principle: "a membership gives rights only while its member's trust meets the floor of the group's effective class; trust is proof trust per claim and the person's risk band, never one scalar (section 20 two_axes); a member below the floor stays recorded but dormant, sees which proof would lift it, and is never dropped silently"
+    contract: "keyclerk-trust-input-v1 (the engine's keyclerk/schema/trust-input.schema.json, ADR-0176): per person the evidenced band per claim with method and valid_until, the risk band, the situation level, risk acceptances and the input digests; shaped on FTEF 5.3 to 6.8 (bands none < low < medium < high, acceptances, replayable inputs)"
+    sources: "standalone, KeyClerk fills it from its own proof results (section 20); in Insular the Isle's risk and trust ports fill it (risk_feed, adaptive-policy.yaml), and an FTEF partner band reaches it through the trust_source port (section 17): the rule does not change with the source"
+    acceptance: "FTEF 6.3 applied to people: an acceptance lifts at most one band above the evidenced band, never to high, never for a privileged group, only between decided_at and until, never decided by the person who asked, and lapses when the situation level rises; accepted trust never feeds anything else (no-transit); acceptances count against the section 20 budget"
+    disconnected: "while cut off, trust only moves down; nothing cached counts past the isolation horizon (FTEF 6.8, section 8)"
+    rule_data:
+      floor_by_risk: {low: {identity: low}, elevated: {identity: medium}, privileged: {identity: high, likeness: medium}}
+      usable_risk_bands: [green, amber]
+      no_acceptance_for: [privileged]
+      acceptance_max_band: medium
+      acceptance_max_days: 90
+      situation_levels: [normal, elevated, high, severe]
+      require_trust: true   # a member without trust input stays dormant
+  ending:
+    retire: "orderly end (role change, leaver without cause, or simply reaching its end): the retiring deputy loses every power at once; delegations below and memberships made under it stay for 14 days, in which the delegator re-issues them one by one with a review (no bulk for elevated and above, the end capped by the adopter's limits), or they end"
+    revoke: "for cause: the delegation and everything below end at once, and everything the person made, renewed or approved from the stated compromise time is void, whatever delegation it used (memberships, includes, rules, subgroups, second keys), and certifications they gave reopen; a retire can be turned into a revoke at any time"
+    impact: "before a retire or revoke is confirmed the portal shows what would end (tools/delegation.py impact)"
+    revoked_ids: "a revoked delegation or membership id never returns; records are never deleted, and once ended never change (tools/records.py guard)"
+  decision: "OPA decides every administrative act (the engine's keyclerk/policy/delegation.rego, ADR-0176) from data.keyclerk.admin_authority: authority, second keys from outside the chain, self, privileged-only-named, rate, fresh assertion, never on behalf or by an agent, and cut-off, with deny reasons in plain words; an allow needs the bundle's administrative revision at or after the newest revocation the caller knows (a zookie)"
+  concurrency: "changes to one chain are serialised on its version through the per-anchor queues of section 18; removals reach Keycloak before additions, from one versioned snapshot, idempotently; a difference between Keycloak and the engine is a drift finding"
+  carriers: "the engine writes the flattened effective membership as flat groups /groups/<id> in Keycloak; Keycloak subgroups and their inherited role mappings are not used, and deputies get no Keycloak admin rights: Keycloak's fine-grained admin permissions (v2, default since 26.2: manage-membership, manage-members) would be a second path around OPA and two-key; delegated powers never reach members' credentials, attributes or sessions"
+  reviews: "each deputy certifies the named members of their subtree (privileged every 30 days, elevated 90, low 180), never a membership they made themselves; an include is a review item with the effective member count and its change since the last review; elevated and privileged includes end when unanswered; each delegator certifies their delegates"
+  cut_off: "while cut off, deputies may only end memberships; ends above a count go to the Isle deputy; on reconnection, ends made after a home revocation of the actor are flagged and can be undone"
+  privacy: "a deputy sees the named members of their own subtree; for an include, the group's id, manager and count only; effective member lists of privileged groups only to the root, the security officer and the auditor; the people picker returns name and unit, is rate-limited, and every view is logged (section 19)"
+  portal: "a tree view of who manages what and why (the chain to root and external authorities from attribute rules), for any membership every path that gives it, the impact preview before a change, and batch onboarding of a joiner cohort pre-approved by the delegator within the rate cap"
+  naming: "midPoint uses deputy for a person acting for another, and section 8 has the Isle security deputy; the portal says group steward where that would confuse"
+  prior_art: ["Microsoft Entra administrative units and restricted management administrative units, group owners, PIM for groups, role-assignable groups (no nesting, no dynamic membership, fixed at creation)", "Microsoft Entra entitlement management catalog roles (catalog owner, access package manager, assignment manager)", "Active Directory delegation of control on OUs; protected groups and AdminSDHolder as the lesson against sticky flags", "Keycloak fine-grained admin permissions v2 (default since 26.2: manage-membership needs manage-group-membership on the user side too)", "AWS IAM permissions boundaries", "Okta group rules and Entra dynamic groups", "Zanzibar (Leopard index for nested groups, zookies) and OpenFGA ListUsers", "X.509 pathLenConstraint and nameConstraints, SPKI/SDSI, macaroons, UCAN, biscuit", "NIST SP 800-162, SP 800-178, NIST IR 8112, Kuhn, Coyne and Weil 2010"]
+  rule_data: {max_include_depth: 3, max_delegation_days: 180, retire_grace_days: 14, widenings_per_deputy_per_day: 20, widenings_per_subtree_per_day: 60, max_direct_delegates: 10, root_max_membership_days: 365, rule_change_second_key_above: 25, review_days: {privileged: 30, elevated: 90, low: 180}, second_key_standing: warn, reciprocity_days: 30, max_approver_days: 365}   # ADR-0182: standing rolled out off, warn, enforce
+  acceptance_test: "a test run with the demo tenant: a deputy adds a member within their subtree and the person reaches the share through Keycloak; the same deputy is refused outside it; a nested include flattens into the flat group; a revoke for cause removes everything the deputy made since the compromise from Keycloak within the leaver bound; a group whose class is raised drops members made without a second key; a member below the trust floor stays dormant until a proof lifts them"
+# 24. Situation levels: real-world events change access both ways: announcements of higher security levels that increase
+# outside risk influence visitor access, and can also grant additional permissions to new personnel.
+# Scopes are places and org units (ADR-0174, platform/places.yaml). Builds on adaptive-policy.yaml world_state (levels, the officer's signed record, lowering by two people)
+# and FTEF's situation level (an acceptance lapses when the level rises).
+situation_response:
+  principle: "a level is an announcement about the outside world; what it does to access is decided beforehand, per level, in a playbook reviewed in peacetime; restrictions apply automatically, extra permissions only from what was prepared and approved in advance and switched on by a person's signed activation, so a forged or mistaken announcement can narrow access but never widen it"
+  levels: "the world_state levels of adaptive-policy.yaml: normal, elevated, high, severe (one scale for the risk score, FTEF acceptances and this section)"
+  announcement:
+    record: "situation_id, level, scope (the tenant, a physical place or an org unit, ADR-0174), source (officer, or a registered feed), by, at, reason, review_by, exercise, approved_by; a feed record also carries issued_at and a nonce"
+    scope: "a place's level is the highest over its scope chain (the tenant, every place it is within, and for an outpost the site that runs it); an org unit's over its parents; a decision at a resource's place for a person of an org uses both, so a site can raise above the tenant, never below it, and a site-level activation never grants anything elsewhere"
+    who: "the security officer for any scope; a place's deputy for that place; a shared place's steward for it (and only the steward announces for a shared place); an on-call rota of named officer deputies may raise and confirm, never lower"
+    sources:
+      officer: "the tenant's security officer (or the Isle deputy for their site) announces with a passkey-signed record; it counts for restrictions and for activations"
+      feed: "a registered external source (national threat level, the sector CSIRT, CCB/CERT.be advisories, MISP) may raise the restriction level of a scope automatically through a signed mapping in rule data: at most one step above the level people announced and never above high, so severe and Isle isolation always need a person; a record that is older than the feed's maximum age, reuses a nonce or comes within the feed's minimum interval counts for nothing; it never counts for activations and never lowers anything"
+      peer: "in Insular, a parent or peer Isle's announcement reaches its children as a feed (restrictions only until confirmed locally)"
+    signature: "a record whose signature does not verify counts as absent for every purpose and is a finding; a feed key id alone proves nothing"
+    lowering: "lowering is a widening: a second person who did not raise the current level approves it, with fresh assertions, and not within the level's minimum dwell; the rota never lowers; an unsigned, unconfirmed or single-key lowering is ignored and the higher level stays"
+    exercise: "an exercise is signed with a separate exercise key that the production PDP refuses, drives the playbook in an exercise tenant or as a dry run that reports what would change, and never changes production access; a real announcement during an exercise always wins"
+  two_levels:
+    restriction_level: "the highest of every valid announcement for the scope, feeds included"
+    activation_level: "the highest of the announcements by people with standing (never a feed); a raise activates at once, and stays active past confirm_hours only when a second person (the rota, another officer, the root) confirms it; standby memberships and surge packages look only at this one"
+  restrictions:   # applied at once on a rise, lifted only by a valid lowering
+    proof: "the trust floors of section 23 risk_port rise per level for externals and, at severe, for everyone (rule data floor_raise)"
+    visitors: "per level, which external categories may enter and how (section 14): pre-registered only, escort required, walk-ins refused, categories suspended; a suspended category's leases go dormant, not ended, and come back when the level falls"
+    leases: "new leases are capped shorter per level; running leases keep their end"
+    attribute_rules: "from high, rules on derived attributes (an upstream group) pause: their matches go dormant; named members and authoritative rules stay"
+    acceptances: "risk acceptances decided at a lower level lapse (FTEF 6.3, section 20)"
+    delegation: "rate caps per deputy and per subtree shrink per level; at severe, deputies may only end memberships unless a standby or surge entry applies"
+    freshness: "evidence freshness is multiplied as in policies/federation.yaml world_state_freshness"
+    physical: "the physical-access module receives the level and switches the door schedules the place's plan names for it; KeyClerk is the source of the level, the PACS adapter sets the PACS threat level, reads it back and reconciles a difference"
+    life_safety: "a level, a dormant lease or a revocation never changes egress: free exit under the fire code and fire-alarm door release stay; dormant leases block entry only; people on site keep their exit and assembly-point access and stay on the evacuation roster"
+    dormant_return: "a dormant lease resumes on a fall only if its sponsor, end date and trust floor still hold"
+    acceptances_degraded: "an acceptance records the highest level it is valid up to, decided beforehand; on a lapse the service moves to its declared degraded mode with a re-decide deadline, never a silent hard stop for a service that carries safety"
+  activations:   # the inverse: prepared permissions that a higher level switches on
+    standby: "a membership prepared in peacetime under all the normal rules (authority, second key, trust floor), marked active from a level: crisis team, first responders, business continuity roles; it gives rights only while the activation level at its group's place is at or above that level, and goes back to standby when the level falls; holders meet the floor of the level they serve in at enrolment and recertification, are recertified like grants, end with a mover or leaver event, and an entry no exercise touched for 13 months is flagged; standby membership is need-to-know, out of directory and group claims until active, with pseudonymous ids in events"
+    surge_package: "an access package for new personnel during a raised level (surge staff, temporary hires, mutual aid from a connected organisation): prepared and approved in peacetime by two people other than its coordinator, with its groups (never privileged), a count cap per raised episode across all announcements, a short lease (at most 72 hours, renewable while the level holds) and a named surge coordinator who is never the officer who raises levels and approves alone during the level; a person reaches at most 14 surge days in all, then the normal joiner path applies, and a surge proof never counts for a regular grant; the identity floor never drops below an in-person check (low); every surge grant goes to the officer's review within 7 days after the level falls, and ends with the level (prior art: the Joint Commission's disaster privileges)"
+    surge_end: "when a surge grant ends, the lease ends, sessions end and the PACS receives the change, each step acknowledged; a missing acknowledgement raises an alarm"
+    activation: "a standby entry or a surge package switches on only when the activation level at its place reaches it; a feed-only rise never switches anything on"
+    never: "a level never creates a delegation, never widens a group's class, never lowers a trust floor, never touches privileged groups, special roles or the envelope of section 8"
+  cut_off: "a cut-off site may raise its own level (restrictions); activating its standby entries needs its Isle deputy and a second local person and counts against the section 8 envelope cap; it never lowers a level set at home; on reconnection home levels apply first"
+  automation: "section 22 automations and the MCP server may only draft a proposed announcement; they never sign, confirm, lower or activate, and file_request never targets standby or surge entries"
+  notices: "one aggregated notice per scope per change, not one per rule it triggers"
+  decision: "the levels travel in the bundle with each announcement's signature; OPA applies the restriction level to every decision and the activation level to standby and surge entries; an announcement whose signature does not verify counts as absent for activations and as a raise for restrictions only if it came from a registered feed key"
+  events: "keyclerk.situation.raised.v1, keyclerk.situation.lowered.v1, keyclerk.situation.confirmed.v1, keyclerk.standby.activated.v1, keyclerk.surge.granted.v1; Pharos shows the level of every scope as a banner"
+  pane: "per scope: the level, its source and review date, what the playbook changed (leases dormant, rules paused, floors raised), the standby entries active, surge grants with their coordinator and count against the cap, and reviews due after a fall"
+  rule_data:
+    floor_raise: {external: {normal: 0, elevated: 0, high: 1, severe: 2}, tenant: {normal: 0, elevated: 0, high: 0, severe: 1}}
+    visitors:
+      normal: {visitor: open, contractor: open, partner: open}
+      elevated: {visitor: escort, contractor: open, partner: open}
+      high: {visitor: pre_registered_escort, contractor: escort, partner: open}
+      severe: {visitor: suspended, contractor: suspended, partner: escort}
+    lease_max_days: {normal: null, elevated: null, high: 30, severe: 7}
+    pause_derived_rules_from: high
+    rate_factor: {normal: 1.0, elevated: 1.0, high: 0.5, severe: 0}
+    surge: {max_hours: 72, review_days_after_fall: 7, max_days_per_person: 14}
+    feed: {max_level: high, max_age_hours: 24, min_interval_hours: 6}
+    confirm_hours: 12
+    min_dwell_hours: 6
+  prior_art: ["PACS threat levels: Genetec Security Center (per area or system, activation and deactivation actions, minimum clearance per area, never cleared automatically) and LenelS2 Elements node threat levels (some people lose access while others gain it): the closest products to restriction plus standby", "UK threat levels (set by JTAC) and the ProtectUK building response levels Normal, Heightened, Exceptional that organisations act on", "the ISPS Code security levels 1 to 3, set by the Contracting Government, with access measures per level in the port facility security plan (Part A 16, Part B 16.10 to 16.21; EU Regulation 725/2004)", "the Belgian OCAM/CUTA threat levels 1 to 4, assessed per person, group, event or target, with measures decided by the authorities", "the US NTAS alerts with a sunset date, as the contrast to levels that never expire", "the Joint Commission disaster privileges, granted on plan activation and re-decided within 72 hours", "NIST SP 800-53 AC-2(2) automatic disabling of emergency accounts", "ISO 22301 clause 8.4", "CISA Shields Up as posture guidance, not a level system", "FTEF 6.3 situation level and acceptance lapse", "OpenID CAEP events for continuous re-evaluation"]
+
+decided:
+  - {id: licence, decision: "KeyClerk is published under EUPL-1.2 or later (ADR-0183)", by: "decided"}
+

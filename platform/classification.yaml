@@ -1,0 +1,48 @@
+# Classification of the infrastructure versus the tenants it hosts.
+# Rule 1 (high-water mark): a layer that sees tenant plaintext or holds authority over tenant integrity (it can mint
+#   identities, keys or code) must be accredited at least at the highest label it hosts.
+# Rule 2 (ciphertext layers): a layer that only ever sees ciphertext or content-free metadata, with keys it cannot
+#   reach, may be at a lower level (red/black separation by layered encryption).
+# Rule 3 (co-hosting): tenants of different labels may share a plaintext layer only if the boundary between them on
+#   that layer meets the higher label's isolation floor and the label difference is at most max_cohost_gap (below); the top
+#   label never shares a plaintext layer with another tenant (own perimeter).
+# Rule 4 (nested perimeters): rings are segmentation, never trust: every ring has its own enforcement point,
+#   identities and keys, and every request is authenticated and authorised again at each ring.
+labels: [Internal, Sensitive, Restricted]      # ordered low -> high; a higher label can be appended later
+max_cohost_gap: 1
+
+layers:
+  hardware-hypervisor: {sees: plaintext, note: "provider memory access; confidential computing could lower this later"}
+  host-kernel:         {sees: plaintext}
+  control-plane:       {sees: plaintext, note: "K3s API and Flux can exec into and change any workload"}
+  key-management:      {sees: plaintext, note: "OpenBao holds data keys and intermediates"}
+  identity-broker:     {sees: authority, note: "Keycloak can mint identities for any tenant it serves"}
+  build-and-release:   {sees: authority, note: "CI and signing can inject code"}
+  observability:       {sees: metadata, note: "content-free logs and metrics only (redaction enforced)"}
+  transport-network:   {sees: ciphertext, note: "TLS and WireGuard everywhere; black network"}
+  backup-storage:      {sees: ciphertext, note: "restic, encrypted with tenant-scoped keys the storage never holds"}
+
+rings:
+  - {ring: R0, name: internet, enforcement: "provider firewall"}
+  - {ring: R1, name: platform edge, enforcement: "Envoy Gateway + broker (authentication), rate limits"}
+  - {ring: R2, name: platform core, enforcement: "control plane and key management behind WireGuard admin access with FIDO2 + SSH certificates"}
+  - {ring: R3, name: tenant enclave, enforcement: "namespace or node pool or cluster per tenant; network policy default deny; tenant-scoped identities"}
+  - {ring: R4, name: tenant data, enforcement: "end-to-end encryption with tenant-held keys; the only ring the operator cannot cross"}
+
+# Full-stack zero trust coverage: every CISA ZTMM v2 pillar and cross-cutting capability maps to model artefacts.
+zero_trust:
+  frameworks: [NIST SP 800-207, NIST SP 1800-35 (NCCoE, final 2025), CISA ZTMM v2, NCSC zero trust architecture design principles]
+  nist_800_207_roles:
+    policy_engine: [OPA in the evaluator, tools/greenlight.py]
+    policy_administrator: [Keycloak, OpenBao]
+    policy_enforcement_points: [Envoy Gateway, oauth2-proxy, Cilium, NetBird, nftables]
+  pillars:
+    identity: [platform/icam.yaml, governance/separation.yaml]
+    devices: [packs/vdhome-platform/pack.yaml, pki/hierarchy.yaml]
+    networks: [tools/gen_firewall.py, catalog/patterns.yaml, platform/isolation.yaml]
+    applications_and_workloads: [intent/apps/vault.yaml, tools/resolve.py, platform/isolation.yaml]
+    data: [governance/separation.yaml, platform/classification.yaml]
+  cross_cutting:
+    visibility_and_analytics: [catalog/capabilities.yaml, tools/federate.py]
+    automation_and_orchestration: [governance/autonomy.yaml, platform/gitops.yaml]
+    governance: [intent/intent.yaml, catalog/authority.yaml, frameworks/register.yaml]

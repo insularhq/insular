@@ -1,0 +1,39 @@
+# Full-stack zero trust. The focal point is one trust algorithm (the policy engine: OPA in production, pinned by the
+# reference model tools/authz.py): deny-overrides over identity, roles, registered attributes, fresh context (device
+# posture, evidence state, grants), tenant membership and the actor chain. Every request path reaches it in one of four
+# ways: asked at runtime, compiled into the enforcement point from the same signed policy bundle, verified by
+# signature, or a declared exception with compensating controls.
+focal_point:
+  engine: "OPA with the signed policy bundle; one local instance per gateway cell and per site (no remote call per request)"
+  algorithm: "deny overrides; default deny; every actor in the chain must pass; fresh, timestamped signals only; tenant of subject and resource must match"
+  continuous: "short tokens and sessions per label, revocation pushed, evidence state as a signal, so a decision is re-made rather than remembered"
+
+request_paths:
+  - {path: "person to application",        subjects: [person],              peps: [NetBird, Envoy Gateway, Cilium, service], pdp: runtime,  signals: [acr, device_posture, evidence_state, role, tenant]}
+  - {path: "agent to tool",                subjects: [agent],               peps: [execution path, Envoy Gateway, service], pdp: runtime,     signals: [role, tenant, acr, evidence_state]}
+  - {path: "workload to workload",         subjects: [workload],            peps: [Cilium, service],                        pdp: compiled,    signals: [tenant, evidence_state]}
+  - {path: "workload to data key",         subjects: [workload],            peps: [OpenBao],                                pdp: runtime,     signals: [tenant_unwrap_grant, evidence_state]}
+  - {path: "workload to database",         subjects: [workload],            peps: [OpenBao dynamic credentials, PostgreSQL row-level security], pdp: compiled, signals: [tenant, role]}
+  - {path: "consumer to data product",     subjects: [person, workload, agent], peps: [NATS accounts, Envoy Gateway, Trino], pdp: compiled, signals: [tenant, role, location_class]}
+  - {path: "caller to inference",          subjects: [person, workload, agent], peps: [inference gateway],                pdp: runtime,     signals: [role, tenant, acr]}
+  - {path: "officer to release gateway",   subjects: [person],              peps: [release gateway],                        pdp: runtime,     signals: [role, release_officer_qualified, acr]}
+  - {path: "system to sealed segment",     subjects: [workload, person],    peps: [key access service],                     pdp: runtime,     signals: [clearance_internal, tenant]}
+  - {path: "device to network",            subjects: [device],              peps: [NetBird],                                pdp: compiled,    signals: [device_posture]}
+  - {path: "VM to VM",                     subjects: [workload],            peps: [Proxmox firewall],                       pdp: compiled,    signals: [tenant]}
+  - {path: "operator to infrastructure",   subjects: [person],              peps: [WireGuard, management cell, OpenBao SSH CA], pdp: runtime, signals: [acr, role, device_posture]}
+  - {path: "release to cluster",           subjects: [workload],            peps: [Flux, admission policy],                 pdp: signature,   signals: [signature]}
+  - {path: "site to centre",               subjects: [infrastructure],      peps: [federation (signed lights), reconcile],  pdp: signature,   signals: [signature]}
+  - {path: "data to an external model via the AI egress gate", subjects: [person, workload], peps: [inference gateway, AI egress leak gate], pdp: runtime, signals: [tenant, role, acr]}   # ADR-0164: in this order; the gate accepts only the inference gateway's mTLS identity; denied until a provider forwards externally
+  - {path: "break-glass to infrastructure", subjects: [person],             peps: [WireGuard, break-glass SSH CA],          pdp: exception,   signals: [break_glass_unlock]}
+
+exceptions:   # paths that bypass the runtime engine, each with its compensation
+  "break-glass to infrastructure": "2-of-3 hardware tokens, certificates of at most 4 hours minted at use, every use alerts and lands in the audit chain, retroactive decision card (ADR-0015)"
+
+nist_800_207_tenets:   # the seven tenets of SP 800-207 section 2.1, each mapped to where the model meets it
+  "1 all data sources and computing services are resources": "catalog/capabilities.yaml, catalog/interfaces.yaml"
+  "2 all communication is secured regardless of network location": "platform/icam.yaml (TLS 1.3, mTLS), platform/sdn.yaml"
+  "3 access is granted per session": "platform/icam.yaml token and session lifetimes per label"
+  "4 access is determined by dynamic policy": "tools/authz.py (fresh context, tenant binding), policies/vault-access.yaml"
+  "5 the integrity and security posture of all assets is monitored": "platform/edge.yaml, catalog/capabilities.yaml evidence, Keylime attestation"
+  "6 authentication and authorization are dynamic and strictly enforced": "request_paths above, gateway cells, step-up on acr"
+  "7 as much information as possible is collected to improve security posture": "platform/automation.yaml records, assurance plane, OCSF events"

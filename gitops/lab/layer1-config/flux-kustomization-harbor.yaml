@@ -1,0 +1,14 @@
+# The ring's Harbor (ADR-0151): every ring runs one; partners are admitted at run time (the lab tooling)
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: harbor, namespace: flux-system}
+spec:
+  interval: 10m
+  dependsOn: [{name: segmentation}, {name: identity}, {name: tenant-demo}]
+  sourceRef: {kind: OCIRepository, name: lab-gitops}
+  path: ./harbor
+  prune: true
+  wait: false   # Matrix waits for its registration token (a ring secret), the PDP for harbor-partners: both made in the ring
+  timeout: 10m
+  postBuild:   # the ring's own domain; without the ConfigMap the lab default applies
+    substituteFrom: [{kind: ConfigMap, name: ring-settings, optional: true}]
