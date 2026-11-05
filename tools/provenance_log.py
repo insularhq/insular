@@ -135,11 +135,14 @@ class Log:
 
 
 def verify_sth(sth: dict, pub) -> bool:
+    """A tree head comes from another site: anything malformed is False, never an exception (tools/fuzz_provenance_log.py)."""
     from cryptography.exceptions import InvalidSignature
+    if not isinstance(sth, dict) or not isinstance(sth.get("sig"), str):
+        return False
     try:
         pub.verify(bytes.fromhex(sth["sig"]), _canon({k: v for k, v in sth.items() if k != "sig"}))
         return True
-    except (InvalidSignature, KeyError, ValueError):
+    except (InvalidSignature, ValueError, TypeError):
         return False
 
 

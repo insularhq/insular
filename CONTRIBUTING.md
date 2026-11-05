@@ -19,6 +19,7 @@ rather than sending a pull request.
 ## How the maintainer's changes work
 
 - Every change keeps `python ci/check_public.py` green: it runs the published checks and tests, and all must pass.
+- New or changed behaviour comes with a test that fails without the change.
 - A change that alters intent carries a decision record.
 - A failure says what happened, why, and what completes the task.
 - A change worth a line in the release notes adds a fragment in `changelog.d/` (see its README), never an edit
