@@ -5,7 +5,7 @@
 ## Decisions and checks
 
 - Decision record touched or added:
-- Line in `CHANGELOG.md`, or why none is needed:
+- Fragment in `changelog.d/`, or why none is needed:
 - `python ci/check_public.py` passes: [ ]
 
 ## AI use

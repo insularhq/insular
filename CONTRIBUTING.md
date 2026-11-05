@@ -21,7 +21,8 @@ rather than sending a pull request.
 - Every change keeps `python ci/check_public.py` green: it runs the published checks and tests, and all must pass.
 - A change that alters intent carries a decision record.
 - A failure says what happened, why, and what completes the task.
-- A change worth a line in the release notes adds it to `CHANGELOG.md`.
+- A change worth a line in the release notes adds a fragment in `changelog.d/` (see its README), never an edit
+  to `CHANGELOG.md`.
 - AI use is stated: the pull request template has the level, and commits say so in an `Assisted-by:` trailer. The
   maintainer's own work is "Human-designed, AI-coded".
 - Everything posted here is public at once: text and diffs pass a public text check.
