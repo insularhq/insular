@@ -7,6 +7,7 @@ resources:
   - certificaterequestpolicy-lab-probe.yaml
   - certificaterequestpolicy-pane-gateway.yaml
   - certificaterequestpolicy-ring-ca.yaml
+  - clusterissuer-ring-ca.yaml   # here, before every unit that issues from it
   - certificaterequestpolicy-barman-cloud.yaml
   - clusterrole-cert-policy-use.yaml
   - clusterrolebinding-cert-policy-use.yaml
