@@ -17,3 +17,4 @@ tools/places.py
 tools/situation.py
 tools/access_paths.py
 tools/api_schemas.py
+ci/changelog.py check

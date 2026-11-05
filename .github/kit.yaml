@@ -1,0 +1,23 @@
+# What repo-kit renders into this repository and checks it against (repo-kit settings and templates).
+kit: 1
+profile: product
+values:
+  Name: Insular
+  NAME: INSULAR
+  org: insularhq
+  repo: insular
+  licence: EUPL-1.2
+  contribution_terms: "Outside pull requests are not merged until a contributor licence agreement is published; issues and discussion are welcome now."
+  maintainer: vdhome-dev
+  since: "2026-11"
+  year: "2026"
+  gate_command: "python ci/check_public.py"
+  supported_line: "main"
+  status_line: "Early: a model and a GitOps tree tried on a lab, not yet for production."
+  next_milestone: "0.1.0"
+  components: "the model and its registers, the tools and checks, the GitOps tree, docs"
+  one_sentence: "A secure delivery platform, as code: the model, its decisions and the checks that hold them together."
+  badges: ""
+  why_hint: ""
+  hook_setup: ""
+  trademark_status: " (not a registered trademark)"
