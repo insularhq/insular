@@ -2143,7 +2143,7 @@ def test_every_lab_image_is_pinned_by_digest():
                 seen += 1
             elif kind == "EnvoyProxy":
                 assert "@sha256:" in doc["spec"]["provider"]["kubernetes"]["envoyDeployment"]["container"]["image"], f.name
-            elif kind == "Cluster" and doc.get("apiVersion", "").startswith("postgresql.cnpg.io"):
+            elif kind == "Cluster" and doc.get("apiVersion", "").split("/")[0] == "postgresql.cnpg.io":
                 assert "@sha256:" in doc["spec"]["imageName"], f.name
             for img in _re.findall(r"image: *\"?([^\s\"]+)", f.read_text(encoding="utf-8")):
                 assert "@sha256:" in img, (f.name, img)
@@ -2500,7 +2500,7 @@ def test_size_s_renders_the_whole_ring_on_one_node():
             assert (d["kind"], d["metadata"]["name"]) in patched, (d["kind"], d["metadata"]["name"], "not reduced at size S")
     # a JSON-patch replace needs its path: every PostgreSQL cluster declares the anti-affinity the S overlay relaxes
     for d in docs:
-        if d["kind"] == "Cluster" and d.get("apiVersion", "").startswith("postgresql.cnpg.io"):
+        if d["kind"] == "Cluster" and d.get("apiVersion", "").split("/")[0] == "postgresql.cnpg.io":
             assert "podAntiAffinityType" in ((d["spec"].get("affinity") or {})), (d["metadata"]["name"], "the S patch cannot apply")
     children = {d["metadata"]["name"] for d in docs if d["kind"] == "Kustomization" and d.get("apiVersion", "").startswith("kustomize.toolkit")}
     carry = [pt for pt in comp["patches"] if pt["target"]["kind"] == "Kustomization"][0]
@@ -2797,7 +2797,7 @@ def test_every_database_that_holds_data_is_backed_up_on_a_schedule():
     import yaml as _y
     root = Path(__file__).resolve().parent.parent / "gitops/lab"
     docs = [(f, d) for f in root.rglob("*.yaml") for d in _y.safe_load_all(f.read_text(encoding="utf-8")) if isinstance(d, dict)]
-    clusters = [d for _, d in docs if d.get("kind") == "Cluster" and d.get("apiVersion", "").startswith("postgresql.cnpg.io")
+    clusters = [d for _, d in docs if d.get("kind") == "Cluster" and d.get("apiVersion", "").split("/")[0] == "postgresql.cnpg.io"
                 and d["metadata"].get("namespace") not in ("vdh-test", None)]
     assert len(clusters) >= 3
     stores = {(d["metadata"]["namespace"], d["metadata"]["name"]) for _, d in docs if d.get("kind") == "ObjectStore"}

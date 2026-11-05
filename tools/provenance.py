@@ -124,7 +124,7 @@ def _gh(path: str):
 def refresh(prov: dict, today: date) -> dict:
     for name, c in prov["components"].items():
         src = c.get("source") or ""
-        if not src.startswith("github.com/"):
+        if src.split("/", 1)[0] != "github.com":
             continue
         repo = src.removeprefix("github.com/")
         meta = _gh(f"repos/{repo}")

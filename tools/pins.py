@@ -73,7 +73,7 @@ def check(base: Path | str | None = None) -> list[str]:
             if not isinstance(doc, dict):
                 continue
             kind = doc.get("kind")
-            if kind == "Kustomization" and doc.get("apiVersion", "").startswith("kustomize.config.k8s.io"):
+            if kind == "Kustomization" and doc.get("apiVersion", "").split("/")[0] == "kustomize.config.k8s.io":
                 errs += _images_list(doc.get("images"), rel)
             if kind == "HelmRelease":
                 for name, value in _patch_image_envs(doc):
