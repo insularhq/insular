@@ -59,7 +59,7 @@ def load() -> None:
 class Intake(BaseHTTPRequestHandler):
     def _kind(self):
         m = re.fullmatch(r"/mgmt/(state|logs|evidence)/?", self.path.split("?")[0])
-        return m.group(1) if m else None
+        return KINDS[KINDS.index(m.group(1))] if m else None   # the constant, so the file name never comes from the request
 
     def _send(self, code: int, body: dict) -> None:
         raw = json.dumps(body).encode()
