@@ -1,0 +1,40 @@
+# The service-account token outside /run/secrets: for a workload that needs the Kubernetes API and also mounts a
+# Secret at /run/secrets (an image that reads its keys there), where the automounted token's mountpoint would sit
+# inside that read-only volume and the container never starts.
+# It adds what Kubernetes itself mounts (a projected token refreshed by the kubelet, the cluster CA, the namespace) at
+# /var/lib/vdh-sa, tells the first container where with SA_DIR, and turns the automatic mount off. A workload opts in
+# with the label vdh.io/template-sa-token: "true" on the workload itself, and its unit lists this component. The
+# workload must have volumes, and its first container volumeMounts and env (the patches append to them).
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+patches:
+  - target: {group: batch, kind: CronJob, labelSelector: "vdh.io/template-sa-token=true"}
+    patch: |-
+      - {op: add, path: /spec/jobTemplate/spec/template/spec/automountServiceAccountToken, value: false}
+      - op: add
+        path: /spec/jobTemplate/spec/template/spec/volumes/-
+        value:
+          name: vdh-sa-token
+          projected:
+            defaultMode: 420
+            sources:
+              - {serviceAccountToken: {path: token, expirationSeconds: 3607}}
+              - {configMap: {name: kube-root-ca.crt, items: [{key: ca.crt, path: ca.crt}]}}
+              - {downwardAPI: {items: [{path: namespace, fieldRef: {apiVersion: v1, fieldPath: metadata.namespace}}]}}
+      - {op: add, path: /spec/jobTemplate/spec/template/spec/containers/0/volumeMounts/-, value: {name: vdh-sa-token, mountPath: /var/lib/vdh-sa, readOnly: true}}
+      - {op: add, path: /spec/jobTemplate/spec/template/spec/containers/0/env/-, value: {name: SA_DIR, value: /var/lib/vdh-sa}}
+  - target: {group: apps, kind: Deployment, labelSelector: "vdh.io/template-sa-token=true"}
+    patch: |-
+      - {op: add, path: /spec/template/spec/automountServiceAccountToken, value: false}
+      - op: add
+        path: /spec/template/spec/volumes/-
+        value:
+          name: vdh-sa-token
+          projected:
+            defaultMode: 420
+            sources:
+              - {serviceAccountToken: {path: token, expirationSeconds: 3607}}
+              - {configMap: {name: kube-root-ca.crt, items: [{key: ca.crt, path: ca.crt}]}}
+              - {downwardAPI: {items: [{path: namespace, fieldRef: {apiVersion: v1, fieldPath: metadata.namespace}}]}}
+      - {op: add, path: /spec/template/spec/containers/0/volumeMounts/-, value: {name: vdh-sa-token, mountPath: /var/lib/vdh-sa, readOnly: true}}
+      - {op: add, path: /spec/template/spec/containers/0/env/-, value: {name: SA_DIR, value: /var/lib/vdh-sa}}

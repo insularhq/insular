@@ -85,6 +85,8 @@ def serve(data: Scim):
                 g = data.groups.get(parts[-1])
                 return self._send(200 if g else 404, {"id": g["id"], "name": g["displayName"], "path": "/" + g["displayName"],
                                                     "attributes": g.get("attributes", {})} if g else None)
+            if "/admin/realms/" in u.path and u.path.endswith("/children"):        # Keycloak 26: a group's child groups,
+                return self._send(200, [])                                         # read since KeyClerk 0.28.0 (none here)
             if "/admin/realms/" in u.path and u.path.endswith("/members"):
                 g = data.groups.get(parts[-2], {})
                 users = [data.users[m["value"]] for m in g.get("members", []) if m["value"] in data.users]

@@ -25,20 +25,20 @@ pins:
 - name: keyclerk
   kind: package
   upstream: https://github.com/keyclerk/keyclerk
-  tag: v0.26.3
-  commit: cfc57939f3d88a7e44d62674465734d2c2f6f79c
+  tag: v0.28.0
+  commit: ee84b45287a37fe2e6bc0f05c2b640d431b5607c
   # the tag's public release wheel, which the public CI installs by this hash (pip cannot hash-check a git install)
-  wheel_sha256: 90be6498b44d1147d99b0d5b93cb3441e84253e9d78fc69bf5e200289e63ab54
+  wheel_sha256: a26495f8decfb390abc7ef21b713471e83dfefc2b72bcf041b2f254a15893536
   source_checkout: ../keyclerk
   obligations: conformance/keyclerk.yaml
 - name: keyclerk-edge-conformance
   kind: vendored
   upstream: https://github.com/keyclerk/keyclerk
-  version: v0.26.3
-  commit: cfc57939f3d88a7e44d62674465734d2c2f6f79c
+  version: v0.28.0
+  commit: ee84b45287a37fe2e6bc0f05c2b640d431b5607c
   upstream_checkout: ../keyclerk
   files:
-    frameworks/keyclerk/0.26.3/edge-conformance.json:
+    frameworks/keyclerk/0.28.0/edge-conformance.json:
       from: tests/conformance/edge.json
-      sha256: 5a2c03be54899108a3a13242bcc93f8505d5e390a96527acd176f20b98856a16
+      sha256: 33180bbe6af0afee62ff0477f01142a228ae975889d2ae7c799417aa1e5620bb
   obligations: conformance/keyclerk-edge.yaml

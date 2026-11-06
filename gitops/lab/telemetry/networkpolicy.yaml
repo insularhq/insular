@@ -22,5 +22,5 @@ spec:
       ports: [{port: 9000}]   # the backup job asks ClickHouse for its BACKUP
     - from: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: vdh-forge}}, podSelector: {matchLabels: {app: forgejo}}}]
       ports: [{port: 8088}]   # the forge's webhook: Forgejo only
-    - from: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: vdh-pharos}}}]
+    - from: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: vdh-pharos}}, podSelector: {matchExpressions: [{key: app, operator: In, values: [prometheus, grafana]}]}}]
       ports: [{port: 8123}, {port: 9004}, {port: 8888}]   # 8888: the gateway collector's own metrics

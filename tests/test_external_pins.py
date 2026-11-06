@@ -34,3 +34,5 @@ def test_without_trust_input_group_memberships_stay_dormant():
     bare = reconcile.desired(doc, at)
     full = reconcile.desired(doc, at, reconcile.load_trusts(str(ROOT / "instances" / "vdh-demo" / "trust.yaml")))
     assert not any(g.startswith("/groups/") for g, _ in bare) and any(g.startswith("/groups/") for g, _ in full)
+
+

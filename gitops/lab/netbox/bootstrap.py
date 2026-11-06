@@ -4,6 +4,7 @@
 # token, version 2 (hashed with the pepper), expiring after 14 days and replaced when fewer than 7 remain (trust is a
 # lease); the Authorization header goes into a Secret per account through the Kubernetes API and is never printed.
 import json
+import os
 import ssl
 import urllib.error
 import urllib.request
@@ -13,7 +14,8 @@ from core.models import ObjectType
 from django.utils import timezone
 from users.models import ObjectPermission, Token, User
 
-SA = "/var/run/secrets/kubernetes.io/serviceaccount"
+# the token directory: the automounted default, or where the sa-token template puts it (SA_DIR)
+SA = os.environ.get("SA_DIR", "/var/run/secrets/kubernetes.io/serviceaccount")
 API = "https://kubernetes.default.svc"
 MANAGED = "vdh-managed"
 ACCOUNTS = {

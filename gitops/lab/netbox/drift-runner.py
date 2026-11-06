@@ -21,7 +21,8 @@ import urllib.request
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import drift  # noqa: E402
 
-SA = "/var/run/secrets/kubernetes.io/serviceaccount"
+# the token directory: the automounted default, or where the sa-token template puts it (SA_DIR)
+SA = os.environ.get("SA_DIR", "/var/run/secrets/kubernetes.io/serviceaccount")
 API = "https://kubernetes.default.svc"
 NB = os.environ.get("NETBOX_URL", "http://netbox.vdh-netbox.svc.cluster.local:8080")
 TOKEN_FILE = os.environ.get("TOKEN_FILE", "/token/authorization")

@@ -7,10 +7,12 @@ spec:
   podSelector: {}
   policyTypes: [Ingress]
   ingress:
-    - from:
-        - {podSelector: {}}
-        - {namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: envoy-gateway-system}}}
-        - {namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: vdh-pdp}}}
-        - {namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: cnpg-system}}}
+    - from: [{podSelector: {}}]
+    - from: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: envoy-gateway-system}}}]
+      ports: [{port: 8080, protocol: TCP}, {port: 8091, protocol: TCP}]   # the gateway's routes: Keycloak and the KeyClerk desk
+    - from: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: vdh-pdp}}, podSelector: {matchLabels: {app: pdp}}}]
+      ports: [{port: 8080, protocol: TCP}]   # the PDP reads Keycloak's signing keys
+    - from: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: cnpg-system}}}]
+      ports: [{port: 8000, protocol: TCP}, {port: 5432, protocol: TCP}]   # the CloudNativePG operator to its database instances
     - from: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: vdh-pharos}}, podSelector: {matchLabels: {app: prometheus}}}]
       ports: [{port: 9187, protocol: TCP}, {port: 9000, protocol: TCP}]   # Pharos scrapes the database exporter (the lab tooling) and Keycloak's metrics

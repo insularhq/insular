@@ -31,6 +31,9 @@ resources:
   - clusterrole-vdh-ipam-drift.yaml
   - clusterrolebinding-vdh-ipam-drift.yaml
   - deployment-ipam-drift.yaml
+# the bootstrap job needs the API token and NetBox's keys at /run/secrets: the sa-token component
+components:
+  - ../components/sa-token
 configMapGenerator:
   - name: netbox-code
     namespace: vdh-netbox

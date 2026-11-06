@@ -75,7 +75,7 @@ def seed_approvals() -> list[dict]:
     """The approvals in the records every instance started from: reviewed in git, made before proofs existed, so the
     deployment pins them record by record (engine decision 0006). Every later approval needs the broker's proof."""
     from keyclerk.approvals import KEYED, record_hash   # each pin bound to the record as approved; the
-    out = []                                            # kinds follow the engine's, which checks every one (0.26.3)
+    out = []                                            # kinds follow the engine's, which checks every one
     for f in sorted((ROOT / "instances").glob("*/grants.yaml")):
         doc = yaml.safe_load(f.read_text(encoding="utf-8")) or {}
         for kind, field in KEYED:
