@@ -2,7 +2,7 @@
 # NetBox image; tokens replaced a week before they end and written to one Secret per account
 apiVersion: batch/v1
 kind: CronJob
-metadata: {name: netbox-bootstrap, namespace: vdh-netbox, annotations: {vdh.component: "NetBox"}}
+metadata: {name: netbox-bootstrap, namespace: vdh-netbox, labels: {vdh.io/template-sa-token: "true"}, annotations: {vdh.component: "NetBox"}}   # the token outside /run/secrets (components/sa-token)
 spec:
   schedule: "*/30 * * * *"
   concurrencyPolicy: Forbid

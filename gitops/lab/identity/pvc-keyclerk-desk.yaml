@@ -1,4 +1,4 @@
-# the desk's signed records (the engine's file store at 0.26.3)
+# the desk's signed records (the engine's file store)
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata: {name: keyclerk-desk, namespace: vdh-identity}

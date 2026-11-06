@@ -1,2 +1,2 @@
 # The KeyClerk engine, pinned by commit (frameworks/external-pins.yaml); pip installs it from the public repository.
-keyclerk @ https://github.com/keyclerk/keyclerk/releases/download/v0.26.3/keyclerk-0.26.3-py3-none-any.whl --hash=sha256:90be6498b44d1147d99b0d5b93cb3441e84253e9d78fc69bf5e200289e63ab54
+keyclerk @ https://github.com/keyclerk/keyclerk/releases/download/v0.28.0/keyclerk-0.28.0-py3-none-any.whl --hash=sha256:a26495f8decfb390abc7ef21b713471e83dfefc2b72bcf041b2f254a15893536

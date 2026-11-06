@@ -112,7 +112,19 @@ def check_package(p: dict) -> list[str]:
     wheel = f"sha256:{p['wheel_sha256']}" if p.get("wheel_sha256") else None
     if commit != p["commit"] and (wheel is None or commit != wheel):
         errs.append(f"{p['name']}: installed from {commit or 'an unknown source'}, pinned commit {p['commit'][:12]}")
-    return errs
+    return errs + check_requirements(p)
+
+
+def check_requirements(p: dict, root: Path = ROOT) -> list[str]:
+    """The install line (requirements-<name>.txt) names the pinned commit, or the pinned release wheel: a re-pin that
+    left it behind installed the old engine in CI (it still named 0.26.3's commit)."""
+    f = root / f"requirements-{p['name']}.txt"
+    if not f.exists():
+        return []
+    text = f.read_text(encoding="utf-8")
+    if p["commit"] in text or (p.get("wheel_sha256") and p["wheel_sha256"] in text):
+        return []
+    return [f"{f.name} does not install the pinned {p['name']} {p['tag']} (commit {p['commit'][:12]}): update its line"]
 
 
 def check_obligations(p: dict) -> list[str]:

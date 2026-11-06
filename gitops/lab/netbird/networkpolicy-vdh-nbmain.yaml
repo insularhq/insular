@@ -9,5 +9,5 @@ spec:
   policyTypes: [Ingress]
   ingress:
     # inside the ring only: endpoints arrive through the ring front (the node's host network), never directly
-    - from: [{namespaceSelector: {}}]
+    - from: [{podSelector: {}}]
       ports: [{port: 443, protocol: TCP}, {port: 3478, protocol: UDP}]

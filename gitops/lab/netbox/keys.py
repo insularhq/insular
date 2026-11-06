@@ -6,13 +6,15 @@ its keys before NetBox starts. Usage: python3 /app/keys.py
 from __future__ import annotations
 
 import json
+import os
 import secrets
 import ssl
 import sys
 import urllib.error
 import urllib.request
 
-SA = "/var/run/secrets/kubernetes.io/serviceaccount"
+# the token directory: the automounted default, or where the sa-token template puts it (SA_DIR)
+SA = os.environ.get("SA_DIR", "/var/run/secrets/kubernetes.io/serviceaccount")
 API = "https://kubernetes.default.svc"
 NAME = "netbox-keys"
 

@@ -1,11 +1,11 @@
 # ADR-0177: KeyClerk on the Isle, beside the Keycloak it governs. One pod: the desk (records, people's
 # requests and approvals) and the reconciler (the only writer to Keycloak, through its scoped client, the same way as
-# tools/keyclerk_local.py). The image is a build of the signed 0.26.3 tag (ADR-0184 D5), carried onto the node
+# tools/keyclerk_local.py). The image is a build of the signed 0.28.0 tag (ADR-0184 D5), carried onto the node
 # by digest (the lab tooling); IfNotPresent: a node without it fails to pull, loudly. Keycloak's clients, the
 # client secrets, the records key and the management token come from the lab tooling (Secret keyclerk).
 apiVersion: apps/v1
 kind: Deployment
-metadata: {name: keyclerk, namespace: vdh-identity, labels: {app: keyclerk}, annotations: {vdh.component: "KeyClerk", vdh.app-version: "0.26.3"}}
+metadata: {name: keyclerk, namespace: vdh-identity, labels: {app: keyclerk}, annotations: {vdh.component: "KeyClerk", vdh.app-version: "0.28.0"}}
 spec:
   replicas: 1
   strategy: {type: Recreate}   # one desk per store (desk.lock); RWO volumes
@@ -17,7 +17,7 @@ spec:
       securityContext: {runAsNonRoot: true, runAsUser: 10001, fsGroup: 10001, seccompProfile: {type: RuntimeDefault}}
       containers:
         - name: desk
-          image: registry.vdh.lab/vdh-lab/keyclerk@sha256:33cc743f0c3dea7395edff51cef05fe249fc7878cbd86b17600cce96e57db5d0
+          image: registry.vdh.lab/vdh-lab/keyclerk@sha256:b252cfe0eaa99100dbf8b82f3ed30c27d627d4ef10c304ff275c3979421b1ae5
           imagePullPolicy: IfNotPresent
           args: [keyclerk.api, --config, /etc/keyclerk/keyclerk.yaml, --store, /var/lib/keyclerk-desk,
                  --signing-key, /run/secrets/keyclerk/records.key, --seed, /etc/keyclerk/keyclerk-seed.yaml,
@@ -41,7 +41,7 @@ spec:
             - {name: desk, mountPath: /var/lib/keyclerk-desk}
             - {name: state, mountPath: /var/lib/keyclerk, readOnly: true}
         - name: reconciler
-          image: registry.vdh.lab/vdh-lab/keyclerk@sha256:33cc743f0c3dea7395edff51cef05fe249fc7878cbd86b17600cce96e57db5d0
+          image: registry.vdh.lab/vdh-lab/keyclerk@sha256:b252cfe0eaa99100dbf8b82f3ed30c27d627d4ef10c304ff275c3979421b1ae5
           imagePullPolicy: IfNotPresent
           args: [keyclerk.reconcile, --config, /etc/keyclerk/keyclerk.yaml,
                  --records, /var/lib/keyclerk-desk/records.yaml, --signing-key, /run/secrets/keyclerk/records.pub,
