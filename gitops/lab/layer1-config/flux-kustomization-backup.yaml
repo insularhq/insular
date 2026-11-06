@@ -3,7 +3,7 @@ kind: Kustomization
 metadata: {name: backup, namespace: flux-system}
 spec:
   interval: 10m
-  dependsOn: [{name: segmentation}]   # no workload before its policy
+  dependsOn: [{name: segmentation}, {name: backup-plugin}]   # no workload before its policy; the store's CRD first
   sourceRef: {kind: OCIRepository, name: lab-gitops}
   path: ./backup
   prune: true
