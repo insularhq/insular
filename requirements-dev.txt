@@ -2,6 +2,6 @@ pyyaml==6.0.3
 pytest==9.2.0
 jsonschema==4.26.0
 cryptography==50.0.2
-libosdp==3.2.9   # OSDP control panel for the physical-access tests; wheels for Windows and Linux
+libosdp==3.2.10   # OSDP control panel for the physical-access tests; wheels for Windows and Linux
 # hash-locking (pip --require-hashes) for the Linux CI platform: work order
-hypothesis==6.170.14   # stateful property tests of the access lifecycle; MPL-2.0, test only
+hypothesis==6.170.15   # stateful property tests of the access lifecycle; MPL-2.0, test only
